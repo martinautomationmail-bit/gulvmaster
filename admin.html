@@ -4643,6 +4643,31 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
 .rte-editable ul.arrow-list li{position:relative;padding-left:20px}
 .rte-editable ul.arrow-list li::before{content:'→';position:absolute;left:0;top:0;color:var(--bly-accent);font-weight:700}
 .rte-btn.active{border-color:var(--bly-accent);color:var(--bly-accent);background:var(--bly-accent-soft)}
+/* v2.54.0 — rig note-editor */
+.rte-notewrap{border:1.5px solid #E5E7EB;border-radius:12px;background:#fff;overflow:hidden;transition:border-color .15s,box-shadow .15s}
+.rte-notewrap:focus-within{border-color:#6366F1;box-shadow:0 0 0 4px rgba(99,102,241,.12)}
+.rte-notewrap .rte-ntb{display:flex;align-items:center;gap:2px;margin:0;padding:5px 6px;border-bottom:1px solid #F0F1F3;background:#FAFAFB;flex-wrap:wrap}
+.rte-notewrap .rte-btn{width:28px;height:28px;border:0;background:transparent;border-radius:7px;color:#4B5563;font-size:13.5px}
+.rte-notewrap .rte-btn:hover{background:#EEF0F4;color:#111318}
+.rte-notewrap .rte-btn.active{background:#E0E7FF;color:#4338CA}
+.rte-notewrap .rte-sep{width:1px;height:18px;background:#E5E7EB;margin:0 3px}
+.rte-notewrap .rte-grow{flex:1}
+.rte-notewrap .rte-expand{width:auto;padding:0 7px;gap:5px;font:600 12px Inter,system-ui,sans-serif}
+.rte-notewrap:not(.rte-expanded) .rte-expand span{display:none}
+.rte-notewrap:not(.rte-expanded) .rte-expand{width:28px;padding:0}
+.rte-notewrap .rte-editable.rte-note{border:0!important;box-shadow:none!important;border-radius:0;min-height:120px;max-height:340px;padding:12px 14px;font-size:14px;line-height:1.6;color:#111318;resize:vertical;outline:0;background:#fff}
+.rte-notewrap .rte-editable ul,.rte-notewrap .rte-editable ol{margin:4px 0;padding-left:24px}
+.rte-notewrap .rte-editable li{margin:2px 0}
+.rte-notewrap .rte-editable ul ul{list-style:circle}
+.rte-backdrop{position:fixed;inset:0;z-index:100000;background:rgba(15,23,42,.45);backdrop-filter:blur(3px);display:flex;align-items:center;justify-content:center;padding:24px;animation:rteFade .15s ease}
+@keyframes rteFade{from{opacity:0}to{opacity:1}}
+.rte-bigcard{background:#fff;border-radius:18px;width:min(920px,100%);height:min(86vh,900px);display:flex;flex-direction:column;box-shadow:0 30px 80px rgba(15,23,42,.35);padding:16px 18px 18px}
+.rte-bighead{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px}
+.rte-bighead b{font:800 16px Inter,system-ui,sans-serif;color:#111318}
+.rte-bigdone{border:0;background:#111318;color:#fff;border-radius:10px;padding:9px 16px;font:700 13px Inter,system-ui,sans-serif;cursor:pointer}
+.rte-notewrap.rte-expanded{flex:1;min-height:0;display:flex;flex-direction:column}
+.rte-notewrap.rte-expanded .rte-editable.rte-note{flex:1;max-height:none;resize:none;font-size:15.5px;padding:18px 22px}
+
 /* RUNDE DC (Martin: "Gør det muligt ved signatur at bruge HTML struktur") —
    "</>"-knappen i makeMailComposeField() skifter boksen om til rå HTML-
    kildekode. De øvrige værktøjsknapper (fed/link/lister/billede/smiley)
@@ -4965,7 +4990,7 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
        i browseren faktisk ER det nyeste deploy, eller om Render/GitHub bare
        ikke er nået at opdatere endnu — i stedet for at skulle gætte om en
        rettelse "stadig ikke virker" eller bare endnu ikke er live. -->
-  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build v2.53.1 · 2026-10-30</span></div>
+  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build v2.54.0 · 2026-10-30</span></div>
 </aside>
 <div class="app-content">
 <!-- RUNDE FB — AI-ASSISTENTEN (Martin: "en ai der er nede i venstre hjørne af
@@ -12022,19 +12047,34 @@ function makeRichField(id){
 // slet ikke kan påvirkes — og med sin egen værktøjslinje: Fed, Punktliste,
 // Talliste, Pilliste. Serveren saniterer ved gem (se sanitizeBookingNote i
 // server.js), som tillader netop b/strong/br/ul/ol/li (+ class="arrow-list").
+function rteIsRich(v){return /<(b|strong|i|em|u|br|ul|ol|li|div|p)\b[^>]*>|&(amp|lt|gt|nbsp|quot);/i.test(String(v||''));}
+// Klient-side spejl af serverens sanitizeBookingNote (kun visning).
+function rteSafeHtml(h){var s=String(h||'').replace(/<(script|style)[^>]*>[\s\S]*?<\/\1>/gi,'');s=s.replace(/<ul\b[^>]*>/gi,function(t){return /arrow-list/.test(t)?'<ul class="arrow-list">':'<ul>';});s=s.replace(/<(\/?)(b|strong|i|em|u|br|ol|li)\b[^>]*>/gi,'<$1$2>');s=s.replace(/<(div|p)\b[^>]*>/gi,'<br>').replace(/<(?!\/?(b|strong|i|em|u|br|ul|ol|li)\b)[^>]*>/gi,'');return s.replace(/^(\s*<br>)+/,'');}
+function rtePlainToHtml(v){v=String(v||'');return rteIsRich(v)?v:esc(v).replace(/\n/g,'<br>');}
+// v2.54.0 — rig note-editor (Martin: "et rigtig note felt med fed skrift,
+// indhak osv" + "så man kan trykke så det bliver større"). Bruges til
+// opgave-noten (pdtd-note-input) og "Note til medarbejder" (qp-note/assign-note).
+// Samme .value-transparens som før; serveren saniterer (sanitizeBookingNote).
 function makeRichNoteField(id){
   var ta=document.getElementById(id);
   if(!ta||ta.dataset.rteInit)return;
   ta.dataset.rteInit='1';
-  var seed=ta.value||'';
+  var seed=rtePlainToHtml(ta.value||'');
   ta.style.display='none';
   var wrap=document.createElement('div');
-  wrap.className='rte-wrap';
-  wrap.innerHTML='<div class="rte-toolbar">'+
-    '<button type="button" class="rte-btn" data-cmd="bold" title="Fed skrift"><b>F</b></button>'+
-    '<button type="button" class="rte-btn" data-cmd="ul" title="Punktopstilling">•</button>'+
-    '<button type="button" class="rte-btn" data-cmd="ol" title="Talopstilling">1.</button>'+
-    '<button type="button" class="rte-btn" data-cmd="arrow" title="Pil-indhak">→</button>'+
+  wrap.className='rte-wrap rte-notewrap';
+  function B(cmd,title,html){return '<button type="button" class="rte-btn" data-cmd="'+cmd+'" title="'+title+'">'+html+'</button>';}
+  wrap.innerHTML='<div class="rte-toolbar rte-ntb">'+
+    B('bold','Fed (Ctrl+B)','<b>B</b>')+B('italic','Kursiv (Ctrl+I)','<i style="font-family:Georgia,serif">I</i>')+B('underline','Understreg (Ctrl+U)','<u>U</u>')+
+    '<span class="rte-sep"></span>'+
+    B('ul','Punktopstilling','<svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><circle cx="2.5" cy="4" r=".9" fill="currentColor"/><circle cx="2.5" cy="8" r=".9" fill="currentColor"/><circle cx="2.5" cy="12" r=".9" fill="currentColor"/><path d="M6 4h8M6 8h8M6 12h8"/></svg>')+
+    B('ol','Talopstilling','<svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><text x="0" y="6" font-size="5.5" fill="currentColor" stroke="none" font-weight="700">1</text><text x="0" y="13" font-size="5.5" fill="currentColor" stroke="none" font-weight="700">2</text><path d="M6 4h8M6 11h8"/></svg>')+
+    B('arrow','Pil-liste','→')+
+    '<span class="rte-sep"></span>'+
+    B('indent','Ryk ind (Tab)','<svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M2 3h12M7 8h7M2 13h12M2 6l3 2-3 2"/></svg>')+
+    B('outdent','Ryk ud (Shift+Tab)','<svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M2 3h12M7 8h7M2 13h12M5 6L2 8l3 2"/></svg>')+
+    '<span class="rte-grow"></span>'+
+    '<button type="button" class="rte-btn rte-expand" data-cmd="expand" title="Åbn stort (Esc lukker)"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M10 2h4v4M6 14H2v-4M14 2L9 7M2 14l5-5"/></svg><span>Udvid</span></button>'+
     '</div>';
   var editable=document.createElement('div');
   editable.className='rte-editable input rte-note';
@@ -12046,45 +12086,80 @@ function makeRichNoteField(id){
   var syncingFromValue=false;
   Object.defineProperty(ta,'value',{
     get:function(){return internal;},
-    set:function(v){internal=v||'';syncingFromValue=true;editable.innerHTML=internal;syncingFromValue=false;},
+    set:function(v){internal=rtePlainToHtml(v||'');syncingFromValue=true;editable.innerHTML=internal;syncingFromValue=false;updateActive();},
     configurable:true
   });
   if(seed)editable.innerHTML=seed;
-  editable.addEventListener('input',function(){
-    if(syncingFromValue)return;
-    internal=editable.innerHTML;
-    ta.dispatchEvent(new Event('input'));
-  });
+  function changed(){internal=editable.innerHTML;if(/^(<br>|\s)*$/.test(internal))internal='';ta.dispatchEvent(new Event('input'));}
+  editable.addEventListener('input',function(){if(syncingFromValue)return;changed();updateActive();});
   editable.addEventListener('blur',function(){ta.dispatchEvent(new Event('change'));});
-  // Enter skal give <br> (som resten af noten forstår/saniterer), ikke <div>,
-  // som ikke er på serverens whitelist og derfor ville blive fjernet ved gem.
-  editable.addEventListener('keydown',function(){
-    document.execCommand('defaultParagraphSeparator',false,'br');
+  function inList(){var sel=window.getSelection(),n=sel&&sel.anchorNode;if(!n)return null;var el=n.nodeType===1?n:n.parentElement;var li=el&&el.closest('li');return li&&editable.contains(li)?li:null;}
+  function updateActive(){
+    if(document.activeElement!==editable)return;
+    ['bold','italic','underline'].forEach(function(c){var b=wrap.querySelector('[data-cmd="'+c+'"]');if(b)b.classList.toggle('active',document.queryCommandState(c));});
+    var li=inList(),list=li&&li.parentElement;
+    wrap.querySelector('[data-cmd="ul"]').classList.toggle('active',!!(list&&list.tagName==='UL'&&!list.classList.contains('arrow-list')));
+    wrap.querySelector('[data-cmd="ol"]').classList.toggle('active',!!(list&&list.tagName==='OL'));
+    wrap.querySelector('[data-cmd="arrow"]').classList.toggle('active',!!(list&&list.classList.contains('arrow-list')));
+  }
+  document.addEventListener('selectionchange',updateActive);
+  editable.addEventListener('keydown',function(e){
+    if(e.key==='Tab'){
+      if(inList()){e.preventDefault();document.execCommand(e.shiftKey?'outdent':'indent');changed();}
+      return;
+    }
+    if(e.key==='Escape'&&wrap.classList.contains('rte-expanded')){e.preventDefault();e.stopPropagation();setExpanded(false);}
   });
+  // Indsat tekst fra fx en mail: kun ren tekst, så der ikke følger fremmed
+  // formatering/farver med (serveren ville alligevel fjerne det meste).
+  editable.addEventListener('paste',function(e){
+    var t=(e.clipboardData||window.clipboardData).getData('text/plain');if(t==null)return;
+    e.preventDefault();document.execCommand('insertHTML',false,esc(t).replace(/\n/g,'<br>'));
+  });
+  var home=null,backdrop=null;
+  function setExpanded(on){
+    if(on===wrap.classList.contains('rte-expanded'))return;
+    if(on){
+      home=document.createComment('rte-home');wrap.parentNode.insertBefore(home,wrap);
+      backdrop=document.createElement('div');backdrop.className='rte-backdrop';
+      var lbl=(ta.closest('.form-group')&&ta.closest('.form-group').querySelector('.form-label,.tld-label'))||document.querySelector('label[for="'+id+'"]');
+      backdrop.innerHTML='<div class="rte-bigcard"><div class="rte-bighead"><b>'+esc(lbl?lbl.textContent.trim():'Note')+'</b><button type="button" class="rte-bigdone">Færdig</button></div></div>';
+      document.body.appendChild(backdrop);
+      backdrop.querySelector('.rte-bigcard').appendChild(wrap);
+      backdrop.addEventListener('mousedown',function(ev){if(ev.target===backdrop)setExpanded(false);});
+      backdrop.querySelector('.rte-bigdone').addEventListener('click',function(){setExpanded(false);});
+      wrap.classList.add('rte-expanded');
+    }else{
+      wrap.classList.remove('rte-expanded');
+      if(home&&home.parentNode){home.parentNode.insertBefore(wrap,home);home.remove();}
+      if(backdrop)backdrop.remove();backdrop=null;home=null;
+      ta.dispatchEvent(new Event('change'));
+    }
+    var x=wrap.querySelector('.rte-expand span');if(x)x.textContent=on?'Formindsk':'Udvid';
+    editable.focus();
+  }
   var toolbar=wrap.querySelector('.rte-toolbar');
   toolbar.addEventListener('mousedown',function(e){e.preventDefault();});
   toolbar.addEventListener('click',function(e){
     var btn=e.target.closest('.rte-btn');if(!btn)return;
-    editable.focus();
     var cmd=btn.getAttribute('data-cmd');
-    var sel,anchor,ul;
-    if(cmd==='bold'){document.execCommand('bold');}
-    else if(cmd==='ul'){document.execCommand('insertUnorderedList');}
+    if(cmd==='expand'){setExpanded(!wrap.classList.contains('rte-expanded'));return;}
+    editable.focus();
+    var li,list;
+    if(cmd==='bold'||cmd==='italic'||cmd==='underline'){document.execCommand(cmd);}
+    else if(cmd==='ul'){li=inList();list=li&&li.parentElement;if(list&&list.classList.contains('arrow-list'))list.classList.remove('arrow-list');else document.execCommand('insertUnorderedList');}
     else if(cmd==='ol'){document.execCommand('insertOrderedList');}
+    else if(cmd==='indent'||cmd==='outdent'){if(inList())document.execCommand(cmd);else if(cmd==='indent'){document.execCommand('insertUnorderedList');}}
     else if(cmd==='arrow'){
-      sel=window.getSelection();anchor=sel&&sel.anchorNode;
-      ul=anchor&&(anchor.nodeType===1?anchor.closest('ul'):anchor.parentElement&&anchor.parentElement.closest('ul'));
-      if(ul&&editable.contains(ul)){
-        ul.classList.toggle('arrow-list');
-      }else{
+      li=inList();list=li&&li.parentElement;
+      if(list&&list.tagName==='UL'){list.classList.toggle('arrow-list');}
+      else{
+        if(list&&list.tagName==='OL')document.execCommand('insertOrderedList');
         document.execCommand('insertUnorderedList');
-        sel=window.getSelection();anchor=sel&&sel.anchorNode;
-        ul=anchor&&(anchor.nodeType===1?anchor.closest('ul'):anchor.parentElement&&anchor.parentElement.closest('ul'));
-        if(ul)ul.classList.add('arrow-list');
+        li=inList();if(li&&li.parentElement.tagName==='UL')li.parentElement.classList.add('arrow-list');
       }
     }
-    internal=editable.innerHTML;
-    ta.dispatchEvent(new Event('input'));
+    changed();updateActive();
   });
 }
 // RUNDE CU — kompose-værktøjslinjen i det nye Mails-modul. Samme .value-
@@ -17968,7 +18043,7 @@ function openGanttTaskDetail(taskId){
   if(t.type_guess&&TYPE[t.type_guess]){typeBadge.style.display='inline-block';typeBadge.textContent=TYPE[t.type_guess].label;}
   else{typeBadge.style.display='none';}
   var descWrap=document.getElementById('gd-desc-wrap');
-  if(t.description){descWrap.style.display='block';document.getElementById('gd-desc').textContent=t.description;}else{descWrap.style.display='none';}
+  if(t.description){descWrap.style.display='block';var gdd=document.getElementById('gd-desc');if(rteIsRich(t.description)){gdd.innerHTML=rteSafeHtml(t.description);gdd.style.whiteSpace='normal';}else{gdd.textContent=t.description;gdd.style.whiteSpace='';}}else{descWrap.style.display='none';}
   // "Åbn sagen ↗" peger på sagens egen detaljeside i appen (tidligere: sagens
   // tidsplan i JobTread). Skjules helt hvis vi mod forventning ikke kan udpege
   // sagen — bedre end en knap der ikke gør noget.
@@ -35185,6 +35260,7 @@ function openPdTaskDetail(taskId){
   // RUNDE EB — jobnummeret er nu kundekortets undertitel (ren tekst, styling
   // kommer fra .pdtd-kundekort-sub) i stedet for en separat grid-celle.
   document.getElementById('pdtd-jobnumber').textContent=pjCurrent.job_number?('Sag '+pjCurrent.job_number):'Intet sagsnummer';
+  makeRichNoteField('pdtd-note-input');
   document.getElementById('pdtd-note-input').value=t.description||'';
   // RUNDE S — underleverandør-fakturabeløb/-note for denne opgave, se skema-
   // kommentaren ved gantt_tasks.subcontractor_cost i server.js.

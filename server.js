@@ -10536,7 +10536,7 @@ async function normalizeBooking(body, isNew) {
   // (ikke saniteres) før den flyder ind i samme, nu HTML-fortolkede, felt, ellers
   // ville fx et "<" i en gammel JobTread-beskrivelse blive tolket som et tag.
   const explicitNoteRaw = booking.notes !== undefined && booking.notes !== null ? sanitizeBookingNote(booking.notes) : '';
-  const fallbackNote = (isNew && !explicitNoteRaw && task.description) ? escPublic(String(task.description).trim()).replace(/\n/g, '<br>') : '';
+  const fallbackNote = (isNew && !explicitNoteRaw && task.description) ? (isRichNote(task.description) ? sanitizeBookingNote(task.description) : escPublic(String(task.description).trim()).replace(/\n/g, '<br>')) : '';
   const explicitNote = explicitNoteRaw;
   const finalNote = explicitNote || fallbackNote;
   // Link + vedhæftninger der hører til noten (fx et link til en tegning, eller
@@ -17800,7 +17800,9 @@ app.put('/api/projects/:id/tasks/:taskId', auth, panelAccess('projects'), asyncR
     progress: b.progress !== undefined ? Math.max(0, Math.min(1, Number(b.progress))) : current.progress,
     // "Note" på opgaven — samme description-felt der bruges i det almindelige
     // Gantt-opgave-detaljevindue (gd-desc), vist i sagens opgave-detaljer.
-    description: b.description !== undefined ? String(b.description).slice(0, 2000) : (current.description || ''),
+    description: b.description !== undefined
+      ? (isRichNote(b.description) ? truncateNoteHtml(sanitizeBookingNote(b.description), 10000) : String(b.description).slice(0, 10000))
+      : (current.description || ''),
     // RUNDE L (Martins ønske #2) — opgavens fase i Pipeline-visningen.
     status: b.status !== undefined && GANTT_TASK_STATUSES.includes(b.status) ? b.status : (current.status || 'todo'),
     // RUNDE P (Martins ønske) — "en tråd mellem hver task ... så hele sagen
@@ -25728,12 +25730,18 @@ function sanitizeBookingNote(html) {
   // <ul> er det ENESTE tag hvor vi bevarer en attribut: class="arrow-list",
   // som er hvordan note-editoren i admin.html markerer en pil-liste (→) i
   // stedet for en almindelig punktopstilling. Alt andet på <ul> barberes væk.
+  // v2.54.0 — Chrome laver <div>-linjer ved Enter i contenteditable. Dem
+  // lavede vi før bare om til ingenting (så linjerne klistrede sammen) — nu
+  // bliver hver linje til et <br>, og tomme <div><br></div> til ét linjeskift.
+  s = s.replace(/<(div|p)\b[^>]*>\s*<br\s*\/?>\s*<\/\1>/gi, '<br>');
+  s = s.replace(/<(div|p)\b[^>]*>/gi, '<br>').replace(/<\/(div|p)>/gi, '');
+  s = s.replace(/^(\s*<br\s*\/?>)+/i, '');
   s = s.replace(/<ul\b[^>]*>/gi, tag => /class\s*=\s*["']?[^"'>]*\barrow-list\b/i.test(tag) ? '<ul class="arrow-list">' : '<ul>');
   // Normalisér resten af det tilladte whitelist — fjerner alle attributter
   // (fx style="", onclick="") på disse tags.
-  s = s.replace(/<(\/?)(b|strong|br|ol|li)\b[^>]*>/gi, '<$1$2>');
+  s = s.replace(/<(\/?)(b|strong|i|em|u|br|ol|li)\b[^>]*>/gi, '<$1$2>');
   // Alt andet end whitelisten (b/strong/br/ul/ol/li) fjernes helt.
-  s = s.replace(/<(?!\/?(b|strong|br|ul|ol|li)\b)[^>]*>/gi, '');
+  s = s.replace(/<(?!\/?(b|strong|i|em|u|br|ul|ol|li)\b)[^>]*>/gi, '');
   return s.trim();
 }
 // Afkort en (allerede saniteret) note-HTML-streng til maks `max` tegn UDEN at
@@ -25750,6 +25758,9 @@ function truncateNoteHtml(html, max) {
 }
 // Simpel HTML → ren tekst, til brug hvor en rig note skal vises et sted der
 // IKKE understøtter HTML (fx en title="" tooltip, eller SMS/e-mail til kunden).
+// v2.54.0 — opgave-noter (gantt_tasks/jt_tasks.description) kan nu være rig
+// tekst fra note-editoren. Gamle noter/JobTread-beskrivelser er ren tekst.
+function isRichNote(s) { return /<(b|strong|i|em|u|br|ul|ol|li|div|p)\b[^>]*>|&(amp|lt|gt|nbsp|quot);/i.test(String(s || '')); }
 function richNoteToPlain(html) {
   if (!html) return '';
   let s = String(html);
@@ -25757,6 +25768,7 @@ function richNoteToPlain(html) {
   s = s.replace(/<br\s*\/?>/gi, '\n');
   s = s.replace(/<\/(ul|ol)>/gi, '\n');
   s = s.replace(/<[^>]+>/g, '');
+  s = s.replace(/&nbsp;/g, ' ').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&amp;/g, '&');
   s = s.replace(/\n{3,}/g, '\n\n').trim();
   return s;
 }
@@ -27587,7 +27599,7 @@ app.get('/kunde/:token', asyncRoute(async (req, res) => {
       ganttTasksForModal.push({
         id: String(t.id), name: label, job: jobLabel || null,
         start: t.start_date, end: t.end_date || t.start_date, days: durationDays,
-        desc: t.description || null, status: taskStatus.label, statusColor: taskStatus.color, statusBg: taskStatus.bg
+        desc: t.description ? (isRichNote(t.description) ? richNoteToPlain(t.description) : t.description) : null, status: taskStatus.label, statusColor: taskStatus.color, statusBg: taskStatus.bg
       });
       listRows += `<div class="g-list-row" data-task-id="${esc(String(t.id))}" onclick="openTaskModal('${esc(String(t.id))}')"><div class="g-list-row-title">${esc(label)}</div>${jobLabel ? `<div class="g-list-row-sub">${esc(jobLabel)}</div>` : ''}</div>`;
       barRows += `<div class="g-row"><div class="g-row-bg">${bgCols}</div><div class="g-bar" data-task-id="${esc(String(t.id))}" onclick="openTaskModal('${esc(String(t.id))}')" style="left:${offset * dw}px;width:${Math.max(dw - 4, span * dw - 4)}px;background:${barColor};cursor:pointer" title="${esc(label)}${jobLabel ? ' · ' + esc(jobLabel) : ''} (${t.start_date} – ${t.end_date || t.start_date}) — klik for detaljer">${dw >= 22 ? `<span class="g-bar-label">${esc(label)}</span>` : ''}</div></div>`;
