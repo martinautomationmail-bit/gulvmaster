@@ -16724,6 +16724,22 @@ async function migrateAutoProjectStages() {
     console.log('Automatiske sags-stadier oprettet.');
   } catch (e) { console.error('migrateAutoProjectStages fejlede:', e.message); }
 }
+// RUNDE GA (Martin: "mangler kun en kolonne for dem der siger at det alligevel
+// ikke blev udført") — manuel kolonne efter Faktureret. Ingen auto_rule, så
+// recomputeProjectStatuses() rører aldrig sager der ligger her.
+async function migrateNotPerformedStage() {
+  const name = 'stage_ikke_udfoert_20261030';
+  try {
+    if (await pgOne('SELECT 1 FROM app_migrations WHERE name=$1', [name])) return;
+    const fak = await pgOne("SELECT position FROM project_stages WHERE key='faktureret'");
+    const pos = fak ? Number(fak.position) + 1 : 99;
+    await pool.query("UPDATE project_stages SET position=position+1 WHERE position>=$1 AND key<>'ikke_udfoert'", [pos]);
+    await pool.query(`INSERT INTO project_stages (key,label,color,position,is_system,auto_rule) VALUES ('ikke_udfoert','Ikke udført',$1,$2,0,NULL)
+      ON CONFLICT (key) DO UPDATE SET position=EXCLUDED.position`, ['#6B7280', pos]);
+    await pool.query('INSERT INTO app_migrations (name, details) VALUES ($1, $2)', [name, '{}']);
+    console.log('Stadie "Ikke udført" oprettet.');
+  } catch (e) { console.error('migrateNotPerformedStage fejlede:', e.message); }
+}
 function copenhagenTodayIso() {
   const p = new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Copenhagen', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
   return p; // YYYY-MM-DD
@@ -28336,6 +28352,7 @@ async function start() {
   await sprog.initSchema();
   await migrateTimetrackPanelPage();
   await migrateAutoProjectStages();
+  await migrateNotPerformedStage();
   await recomputeProjectStatuses({ force: true }).then(r => console.log('Auto-stadier: ' + r.changed + ' sag(er) flyttet.')).catch(e => console.error('Auto-stadier fejlede:', e.message));
   await backfillProjectTaskMirrors().catch(error => console.error('Efterudfyldning af sags-opgaver fejlede:', error.message));
   await backfillCaseNumbers().catch(error => console.error('Efterudfyldning af sagsnumre fejlede:', error.message));
