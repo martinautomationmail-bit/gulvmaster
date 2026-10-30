@@ -1480,6 +1480,18 @@ body.plan-alt-dragging .prv-bar.dragging,body.plan-alt-dragging .pcv-card.draggi
 .qe-qtitle-in::placeholder{color:#9CA3AF;font-weight:500}
 .qe-qtitle-in:not(:placeholder-shown){border-style:solid;border-color:#C7D2FE;background:#EEF2FF}
 .qe-qtitle-in:focus{border-style:solid;border-color:#818CF8;box-shadow:0 0 0 3px #EEF2FF;background:#fff}
+.tt-range{position:relative}
+.tt-range-btn{display:inline-flex;align-items:center;gap:8px;height:38px;padding:0 14px;border:1px solid #E5E7EB;border-radius:10px;background:#fff;font:700 13px Inter,system-ui,sans-serif;color:#111318;cursor:pointer;white-space:nowrap}
+.tt-range-btn:hover{border-color:#CBD5E1}
+.tt-range.open .tt-range-btn{border-color:#818CF8;box-shadow:0 0 0 3px #EEF2FF}
+.tt-range-car{color:#9CA3AF;font-size:10px}
+.tt-range-menu{display:none;position:absolute;right:0;top:calc(100% + 6px);z-index:70;min-width:220px;background:#fff;border:1px solid #E5E7EB;border-radius:12px;box-shadow:0 16px 36px rgba(15,23,42,.16);padding:6px}
+.tt-range.open .tt-range-menu{display:block}
+.tt-range-menu button{display:flex;justify-content:space-between;align-items:center;gap:10px;width:100%;border:0;background:none;border-radius:8px;padding:9px 11px;font:600 13px Inter,system-ui,sans-serif;color:#111318;cursor:pointer;text-align:left}
+.tt-range-menu button small{font-weight:500;color:#9CA3AF;font-size:11.5px}
+.tt-range-menu button:hover{background:#F3F4F6}
+.tt-range-menu button.on{background:#EEF2FF;color:#3730A3}
+.tt-range-sep{height:1px;background:#F1F2F5;margin:4px 6px}
 /* ── RUNDE FT — top-forslag C: minimal top + Overblik-panel ── */
 .page-head.gmx-head{display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-bottom:14px}
 .gmx-tl{display:flex;align-items:center;gap:10px;flex-wrap:wrap;min-width:0;flex:1}
@@ -4848,7 +4860,7 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
        i browseren faktisk ER det nyeste deploy, eller om Render/GitHub bare
        ikke er nået at opdatere endnu — i stedet for at skulle gætte om en
        rettelse "stadig ikke virker" eller bare endnu ikke er live. -->
-  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build v2.48.2 · 2026-10-29</span></div>
+  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build v2.49.0 · 2026-10-30</span></div>
 </aside>
 <div class="app-content">
 <!-- RUNDE FB — AI-ASSISTENTEN (Martin: "en ai der er nede i venstre hjørne af
@@ -6723,10 +6735,27 @@ body.ai-has-reply #ai-fab{animation:ai-nudge 1.4s ease-in-out 3}
              stedet for at lave om på den delte komponent (bruges af Tilbud/Fakturaer
              m.fl.), lægges to hurtig-knapper her specifikt til Timetracking, der sætter
              periode-filterets datointerval direkte via dens nye setRange()-metode. -->
-        <button class="bly-ctl" id="tt-thisweek-btn" type="button">Denne uge</button>
-        <button class="bly-ctl" id="tt-lastweek-btn" type="button">Sidste uge</button>
+        <!-- RUNDE FZ (Martin: "start med gårsdagens tracking, og skift Alle/Sidste
+             uge/Denne uge i en moderne dropdown") — én periode-knap med menu;
+             "Vælg periode…" åbner den gamle periode-popover (skjult knap herunder). -->
+        <div class="tt-range" id="tt-range">
+          <button class="tt-range-btn" id="tt-range-btn" type="button"><span class="tt-range-ic">📅</span><span id="tt-range-label">I går</span><span class="tt-range-car">▾</span></button>
+          <div class="tt-range-menu" id="tt-range-menu">
+            <button type="button" data-tt-range="yesterday">I går<small id="tt-range-yd"></small></button>
+            <button type="button" data-tt-range="today">I dag</button>
+            <div class="tt-range-sep"></div>
+            <button type="button" data-tt-range="thisweek">Denne uge</button>
+            <button type="button" data-tt-range="lastweek">Sidste uge</button>
+            <div class="tt-range-sep"></div>
+            <button type="button" data-tt-range="thismonth">Denne måned</button>
+            <button type="button" data-tt-range="lastmonth">Sidste måned</button>
+            <div class="tt-range-sep"></div>
+            <button type="button" data-tt-range="all">Alle</button>
+            <button type="button" data-tt-range="custom">Vælg periode…</button>
+          </div>
+        </div>
         <div class="bly-period" style="position:relative">
-          <button class="bly-ctl" id="tt-period-btn" type="button">📅 <span id="tt-period-label">Alt tid</span></button>
+          <button class="bly-ctl" id="tt-period-btn" type="button" style="display:none">📅 <span id="tt-period-label">Alt tid</span></button>
           <div class="bly-period-pop" id="tt-period-pop" style="display:none"></div>
         </div>
       </div>
@@ -24610,6 +24639,30 @@ function ttSetView(mode){
 }
 // RUNDE H #29 — "Denne uge"/"Sidste uge"-genvejsknapperne. Mandag-søndag
 // (dansk uge-konvention), offsetWeeks=0 for indeværende uge, -1 for forrige.
+// ── RUNDE FZ — periode-dropdown på Timetracking ──
+var ttRangeKey='yesterday',ttRangeSilent=false,ttRangeSetting=false;
+function ttLastWorkday(){var d=add(new Date(),-1);while(d.getDay()===0||d.getDay()===6)d=add(d,-1);return d;}
+function ttApplyRange(key){
+  var now=new Date(),r=null;
+  if(key==='yesterday'){var y=iso(ttLastWorkday());r={from:y,to:y};}
+  else if(key==='today'){var t=iso(now);r={from:t,to:t};}
+  else if(key==='thisweek')r=ttWeekRange(0);
+  else if(key==='lastweek')r=ttWeekRange(-1);
+  else if(key==='thismonth')r={from:iso(new Date(now.getFullYear(),now.getMonth(),1)),to:iso(new Date(now.getFullYear(),now.getMonth()+1,0))};
+  else if(key==='lastmonth')r={from:iso(new Date(now.getFullYear(),now.getMonth()-1,1)),to:iso(new Date(now.getFullYear(),now.getMonth(),0))};
+  ttRangeKey=key;ttRangeSetting=true;
+  try{if(r)ttPeriodFilter.setRange(r.from,r.to);else ttPeriodFilter.setRange('','');}finally{ttRangeSetting=false;}
+  ttUpdateRangeBtn();
+}
+function ttUpdateRangeBtn(){
+  var lbl=document.getElementById('tt-range-label');if(!lbl)return;
+  var lw=ttLastWorkday(),isYest=iso(lw)===iso(add(new Date(),-1));
+  var yLabel=isYest?'I går':DAYS[lw.getDay()]+' '+lw.getDate()+'/'+(lw.getMonth()+1);
+  var yd=document.getElementById('tt-range-yd');if(yd)yd.textContent=isYest?lw.getDate()+'/'+(lw.getMonth()+1):'sidste arbejdsdag · '+lw.getDate()+'/'+(lw.getMonth()+1);
+  var names={yesterday:yLabel,today:'I dag',thisweek:'Denne uge',lastweek:'Sidste uge',thismonth:'Denne måned',lastmonth:'Sidste måned',all:'Alle'};
+  lbl.textContent=names[ttRangeKey]||((document.getElementById('tt-period-label')||{}).textContent||'Periode');
+  document.querySelectorAll('#tt-range-menu [data-tt-range]').forEach(function(b){b.classList.toggle('on',b.dataset.ttRange===ttRangeKey);});
+}
 function ttWeekRange(offsetWeeks){
   var now=new Date();
   var todayMidnight=new Date(now.getFullYear(),now.getMonth(),now.getDate());
@@ -39531,7 +39584,10 @@ function bindQuotesModuleEvents(){
     renderQzPendingInvoicing();
   });
   // RUNDE H #28/#29 — Timetracking-fanen.
-  ttPeriodFilter=makeBlyPeriodFilter('tt-period-btn','tt-period-pop','tt-period-label',function(){renderTimetrackReport();});
+  ttPeriodFilter=makeBlyPeriodFilter('tt-period-btn','tt-period-pop','tt-period-label',function(){if(ttRangeSilent)return;if(!ttRangeSetting)ttRangeKey='custom';ttUpdateRangeBtn();renderTimetrackReport();});
+  // RUNDE FZ — standard: gårsdagen (sidste arbejdsdag, hvis i går var weekend). Sættes
+  // "stille" så der ikke hentes timetracking-data før siden faktisk åbnes.
+  ttRangeSilent=true;ttApplyRange('yesterday');ttRangeSilent=false;
   document.getElementById('tt-search').addEventListener('input',renderTimetrackReport);
   document.getElementById('tt-filter-user').addEventListener('change',renderTimetrackReport);
   document.getElementById('tt-filter-trade').addEventListener('change',renderTimetrackReport);
@@ -39539,8 +39595,14 @@ function bindQuotesModuleEvents(){
   document.getElementById('tt-export-btn').addEventListener('click',ttExportCsv);
   // RUNDE H #29 — "Denne uge"/"Sidste uge"-genvejsknapperne sætter periode-
   // filterets datointerval direkte via setRange() (se makeBlyPeriodFilter).
-  document.getElementById('tt-thisweek-btn').addEventListener('click',function(){var w=ttWeekRange(0);ttPeriodFilter.setRange(w.from,w.to);});
-  document.getElementById('tt-lastweek-btn').addEventListener('click',function(){var w=ttWeekRange(-1);ttPeriodFilter.setRange(w.from,w.to);});
+  document.getElementById('tt-range-btn').addEventListener('click',function(e){e.stopPropagation();document.getElementById('tt-range').classList.toggle('open');});
+  document.getElementById('tt-range-menu').addEventListener('click',function(e){
+    var b=e.target.closest('[data-tt-range]');if(!b)return;
+    e.stopPropagation();document.getElementById('tt-range').classList.remove('open');
+    if(b.dataset.ttRange==='custom'){document.getElementById('tt-period-btn').click();return;}
+    ttApplyRange(b.dataset.ttRange);
+  });
+  document.addEventListener('click',function(e){if(!e.target.closest('#tt-range'))document.getElementById('tt-range').classList.remove('open');});
   // RUNDE H #29 — fotolysboksen: luk/‹/›-knapper + piletaster/Esc (samme
   // snævre mønster som crmpx-fillysboksen ovenfor — rører kun tastetryk når
   // netop DENNE lysboks er åben, og aldrig inde i et input/textarea).
