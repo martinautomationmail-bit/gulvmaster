@@ -4655,6 +4655,42 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
 
 
 
+
+/* v2.58.0 — Opfølgninger som tavle pr. person */
+.cptb{overflow-x:auto;padding-bottom:6px}
+.cptb-board{display:grid;gap:14px;align-items:start}
+.cptb-col{background:#EEF0F3;border-radius:16px;padding:10px;min-height:120px;transition:box-shadow .15s,background .15s}
+.cptb-col.drop-on{background:#E0E7FF;box-shadow:inset 0 0 0 2px #6366F1}
+.cptb-colh{display:flex;align-items:center;gap:9px;padding:4px 6px 10px}
+.cptb-colh b{font-size:14px;color:#111318;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.cptb-cnt{margin-left:auto;font-size:12px;color:#6B7280;font-weight:700;display:flex;gap:6px;align-items:center;white-space:nowrap}
+.cptb-cnt em{font-style:normal;background:#FEE2E2;color:#B91C1C;border-radius:999px;padding:1px 8px}
+.cptb-card{background:#fff;border-radius:12px;padding:10px 12px;margin-bottom:8px;box-shadow:0 1px 2px rgba(15,23,42,.06);cursor:grab;border:1px solid transparent}
+.cptb-card:hover{border-color:#E0E7FF}
+.cptb-card.prio{box-shadow:inset 3px 0 0 #F59E0B,0 1px 2px rgba(15,23,42,.06)}
+.cptb-card.done{opacity:.55}
+.cptb-card.done .cptb-t span{text-decoration:line-through}
+.cptb-card.dragging{opacity:.35}
+.cptb-t{display:flex;gap:9px;align-items:flex-start;font-weight:600;font-size:13.5px;color:#111318;line-height:1.35}
+.cptb-t input{margin-top:2px;width:16px;height:16px;flex-shrink:0;accent-color:#16A34A;cursor:pointer}
+.cptb-t span{flex:1;min-width:0;word-break:break-word}
+.cptb-t i{font-style:normal}
+.cptb-del{border:0;background:transparent;color:#CBD5E1;cursor:pointer;font-size:12px;padding:0 2px;opacity:0;transition:opacity .12s}
+.cptb-card:hover .cptb-del{opacity:1}
+.cptb-del:hover{color:#B91C1C}
+.cptb-m{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:8px;padding-left:25px}
+.cptb-m a{font-size:12.5px;font-weight:600;color:#4F46E5;text-decoration:none;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+.cptb-m a:hover{text-decoration:underline}
+.cptb-due{position:relative;flex-shrink:0;font:700 11.5px Inter,system-ui,sans-serif;border-radius:999px;padding:3px 9px;cursor:pointer;white-space:nowrap}
+.cptb-due input{position:absolute;inset:0;opacity:0;cursor:pointer;width:100%}
+.cptb-due.over{background:#FEE2E2;color:#B91C1C}
+.cptb-due.today{background:#FEF3C7;color:#92400E}
+.cptb-due.later{background:#EEF2FF;color:#4338CA}
+.cptb-due.none,.cptb-due.done{background:#F3F4F6;color:#6B7280}
+.cptb-empty{font-size:12.5px;color:#9CA3AF;text-align:center;padding:16px 8px;border:1.5px dashed #D1D5DB;border-radius:10px}
+.cptb-more{width:100%;border:1.5px dashed #CBD5E1;background:transparent;border-radius:10px;padding:8px;font:600 12.5px Inter,system-ui,sans-serif;color:#6B7280;cursor:pointer}
+.cptb-more:hover{color:#4338CA;border-color:#A5B4FC}
+.cptb.is-dragging .cptb-col:not(.drop-on){background:#F3F4F6}
 /* v2.57.0 — mødetid pr. dag */
 .prv-dt{color:#B45309;font-weight:700}
 .pdt-pop{position:fixed;z-index:100001;background:#fff;border-radius:14px;box-shadow:0 22px 55px rgba(15,23,42,.22);border:1px solid #E5E7EB;padding:14px;width:270px}
@@ -5105,7 +5141,7 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
        i browseren faktisk ER det nyeste deploy, eller om Render/GitHub bare
        ikke er nået at opdatere endnu — i stedet for at skulle gætte om en
        rettelse "stadig ikke virker" eller bare endnu ikke er live. -->
-  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build v2.57.0 · 2026-10-30</span></div>
+  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build v2.58.0 · 2026-10-30</span></div>
 </aside>
 <div class="app-content">
 <!-- RUNDE FB — AI-ASSISTENTEN (Martin: "en ai der er nede i venstre hjørne af
@@ -8226,7 +8262,8 @@ body.ai-has-reply #ai-fab{animation:ai-nudge 1.4s ease-in-out 3}
   <!-- RUNDE BQ (Martin: "lav nu følgende lister om til det gamle/nye design
        du lavede") — kort-liste (.bly-rowcard-list) i stedet for <table>, se
        cptRender() i scriptet. -->
-  <div class="bly-rowcard-list" id="cpt-body"></div>
+  <!-- v2.58.0 — tavle pr. ansvarlig (Martin valgte forslag A). -->
+  <div class="cptb" id="cpt-body"></div>
 </section>
 
 <!-- RETTELSE (okt. 2026, Martins ønske: "en moderne side hvor man kan se alle
@@ -32914,55 +32951,82 @@ function cptRender(){
   cptRenderFilterRow(assigneeRows);
   var rows=assigneeRows.filter(function(t){return cptBucketMatch(t,cptFilter);});
   document.getElementById('cpt-count').textContent=rows.length?rows.length+' opgave(r)':'';
-  document.getElementById('cpt-body').innerHTML=rows.length?rows.map(function(t){
-    var assigneeOptions='<option value="">— Ingen —</option>'+(users||[]).map(function(u){return '<option value="'+u.id+'"'+(String(u.id)===String(t.assigned_to)?' selected':'')+'>'+esc(u.name)+'</option>';}).join('');
-    // RUNDE M (Martins ønske: "Gør det muligt på siden at ændre Dato og hvis
-    // den er trykket færdig så untryk den og ændre datoen igen, hvis det nu
-    // har været en fejl") — datoen var før kun et skrivebeskyttet tekstlabel
-    // (crmpxTaskDueLabel), samme som på CRM-detaljesiden. Her på selve
-    // Opfølgnings-oversigten er den nu et rigtigt date-felt man kan rette
-    // direkte i listen, samme mønster som Ansvarlig-dropdownen ved siden af
-    // (data-action="cpt-due-date", PUT due_date med det samme ved ændring).
-    // Færdig-afkrydsningen herunder kunne godt afkrydses IGEN i forvejen
-    // (checkboksen sender bare done:false) — det nye er at man nu OGSÅ kan nå
-    // datoen bagefter, uanset om opgaven står som færdig eller ej, så en
-    // fejlagtig "færdig"-markering kan rettes helt: untryk, og sæt en ny dato.
-    var overdue=!t.done&&t.due_date&&t.due_date<iso(new Date());
-    // RUNDE BQ (Martin: "lav nu følgende lister om til det gamle/nye design
-    // du lavede") — .bly-rowcard i stedet for <tr>/<td>, samme data-action-
-    // attributter bevaret så delegeringen nedenfor virker uændret.
-    return '<div class="bly-rowcard" style="'+(t.done?'opacity:.55':'')+'">'
-      +'<div class="bly-rowcard-top">'
-      +'<div class="bly-rowcard-name" style="gap:8px">'
-      +'<input type="checkbox" data-task-id="'+t.id+'" data-action="cpt-toggle"'+(t.done?' checked':'')+'>'
-      +(t.priority?'<span title="Høj prioritet">⚡</span>':'')
-      +'<span style="'+(t.done?'text-decoration:line-through':'')+'">'+esc(t.title)+'</span>'
-      +'</div>'
-      +'<button type="button" class="qz-icon-btn" data-task-id="'+t.id+'" data-action="cpt-delete" title="Slet">🗑</button>'
-      +'</div>'
-      +'<div class="bly-rowcard-bottom">'
-      +'<a href="#crmp-detail/'+t.entity_type+'/'+t.entity_id+'" onclick="openCrmpDetail(\''+t.entity_type+'\','+t.entity_id+');return false;">'+esc(t.entity_name||'(slettet)')+'</a>'
-      +'<div class="bly-rowcard-controls">'
-      +'<select class="select" style="width:170px" data-task-id="'+t.id+'" data-action="cpt-assignee">'+assigneeOptions+'</select>'
-      +'<input type="date" class="input cpt-date-input'+(overdue?' overdue':'')+'" style="width:130px;padding:6px 7px;font-size:11.5px" data-task-id="'+t.id+'" data-action="cpt-due-date" value="'+(t.due_date||'')+'">'
-      +(t.due_time?'<span class="sub" style="font-size:10px;white-space:nowrap">'+esc(t.due_time)+'</span>':'')
-      +'</div>'
-      +'</div>'
-      +'</div>';
-  }).join(''):'<div class="bly-rowcard-empty">Ingen opfølgninger fundet</div>';
-  document.querySelectorAll('[data-action="cpt-toggle"]').forEach(function(cb){
-    cb.addEventListener('change',async function(){await api('/api/crm/tasks/'+cb.dataset.taskId,{method:'PUT',body:JSON.stringify({done:cb.checked})});cptLoad();});
-  });
-  document.querySelectorAll('[data-action="cpt-assignee"]').forEach(function(sel){
-    sel.addEventListener('change',async function(){await api('/api/crm/tasks/'+sel.dataset.taskId,{method:'PUT',body:JSON.stringify({assigned_to:sel.value||null})});cptLoad();});
-  });
-  document.querySelectorAll('[data-action="cpt-due-date"]').forEach(function(inp){
-    inp.addEventListener('change',async function(){await api('/api/crm/tasks/'+inp.dataset.taskId,{method:'PUT',body:JSON.stringify({due_date:inp.value||null})});cptLoad();});
-  });
-  document.querySelectorAll('[data-action="cpt-delete"]').forEach(function(btn){
-    btn.addEventListener('click',async function(){await api('/api/crm/tasks/'+btn.dataset.taskId,{method:'DELETE'});cptLoad();});
-  });
+  cptRenderBoard(rows,assigneeRows);
 }
+// v2.58.0 — Opfølgninger som tavle: én kolonne pr. ansvarlig. Træk et kort til
+// en anden kolonne for at give opgaven videre (PUT assigned_to).
+var cptExpanded={};
+function cptDueChip(t){
+  if(!t.due_date)return '<span class="cptb-due none">Ingen dato</span>';
+  var today=iso(new Date()),tm=iso(new Date(Date.now()+86400000)),ye=iso(new Date(Date.now()-86400000));
+  var d=date(t.due_date),lbl=t.due_date===today?'I dag':t.due_date===tm?'I morgen':t.due_date===ye?'I går':(DAYS[d.getDay()]+' '+d.getDate()+'/'+(d.getMonth()+1));
+  var cls=t.done?'done':t.due_date<today?'over':t.due_date===today?'today':'later';
+  return '<label class="cptb-due '+cls+'" title="Skift dato">'+lbl+(t.due_time?' · '+esc(t.due_time):'')+'<input type="date" data-task-id="'+t.id+'" data-action="cpt-due-date" value="'+esc(t.due_date||'')+'"></label>';
+}
+function cptRenderBoard(rows,assigneeRows){
+  var box=document.getElementById('cpt-body');
+  document.getElementById('cpt-count').textContent=rows.length?rows.length+' opgave(r)':'';
+  var filterId=document.getElementById('cpt-assignee-filter').value;
+  var today=iso(new Date());
+  // Kolonner: alle der har opgaver (også færdige), så man altid kan trække til dem.
+  var ids=[];
+  (filterId?assigneeRows:cptTasks).filter(function(t){return !t.done||rows.indexOf(t)>-1;}).forEach(function(t){var k=t.assigned_to?String(t.assigned_to):'';if(ids.indexOf(k)<0)ids.push(k);});
+  var cols=ids.map(function(k){
+    var u=k?(users||[]).find(function(x){return String(x.id)===k;}):null;
+    var list=rows.filter(function(t){return (t.assigned_to?String(t.assigned_to):'')===k;}).sort(function(a,b){
+      return (a.done-b.done)||String(a.due_date||'9999').localeCompare(String(b.due_date||'9999'))||String(a.due_time||'').localeCompare(String(b.due_time||''))||((b.priority?1:0)-(a.priority?1:0));
+    });
+    return {k:k,u:u||{name:k?'Ukendt':'Ingen ansvarlig',color:'#94A3B8',initials:k?'?':'–'},list:list,over:list.filter(function(t){return !t.done&&t.due_date&&t.due_date<today;}).length};
+  }).filter(function(c){return c.list.length||!filterId;});
+  cols.sort(function(a,b){return (!a.k)-(!b.k)||b.list.length-a.list.length||String(a.u.name).localeCompare(String(b.u.name),'da');});
+  if(!cols.length||!rows.length&&cols.every(function(c){return !c.list.length;})){box.innerHTML='<div class="bly-rowcard-empty">Ingen opfølgninger fundet</div>';return;}
+  var LIMIT=8;
+  box.innerHTML='<div class="cptb-board" style="grid-template-columns:repeat('+cols.length+',minmax(280px,1fr))">'+cols.map(function(c){
+    var shown=cptExpanded[c.k]?c.list:c.list.slice(0,LIMIT);
+    return '<div class="cptb-col" data-cpt-col="'+esc(c.k)+'">'
+      +'<div class="cptb-colh">'+planAltAvatar(c.u,30)+'<b>'+esc(c.u.name)+'</b><span class="cptb-cnt">'+(c.over?'<em>'+c.over+' bagud</em>':'')+c.list.length+'</span></div>'
+      +'<div class="cptb-cards">'
+      +(shown.length?shown.map(function(t){
+        return '<div class="cptb-card'+(t.done?' done':'')+(t.priority?' prio':'')+'" draggable="true" data-cpt-card="'+t.id+'">'
+          +'<div class="cptb-t"><input type="checkbox" data-task-id="'+t.id+'" data-action="cpt-toggle"'+(t.done?' checked':'')+'><span>'+(t.priority?'<i title="Høj prioritet">⚡</i> ':'')+esc(t.title)+'</span>'
+          +'<button type="button" class="cptb-del" data-task-id="'+t.id+'" data-action="cpt-delete" title="Slet">✕</button></div>'
+          +'<div class="cptb-m"><a href="#crmp-detail/'+t.entity_type+'/'+t.entity_id+'" onclick="openCrmpDetail(\''+t.entity_type+'\','+t.entity_id+');return false;">'+esc(t.entity_name||'(slettet)')+'</a>'+cptDueChip(t)+'</div></div>';
+      }).join(''):'<div class="cptb-empty">Intet her — træk en opgave hertil</div>')
+      +(c.list.length>LIMIT?'<button type="button" class="cptb-more" data-cpt-more="'+esc(c.k)+'">'+(cptExpanded[c.k]?'Vis færre':'+ '+(c.list.length-LIMIT)+' flere')+'</button>':'')
+      +'</div></div>';
+  }).join('')+'</div>';
+}
+(function(){
+  function init(){
+    var box=document.getElementById('cpt-body');if(!box)return;
+    box.addEventListener('change',async function(e){
+      var el=e.target;
+      if(el.dataset.action==='cpt-toggle'){await api('/api/crm/tasks/'+el.dataset.taskId,{method:'PUT',body:JSON.stringify({done:el.checked})});cptLoad();}
+      else if(el.dataset.action==='cpt-due-date'){await api('/api/crm/tasks/'+el.dataset.taskId,{method:'PUT',body:JSON.stringify({due_date:el.value||null})});cptLoad();}
+    });
+    box.addEventListener('click',async function(e){
+      var del=e.target.closest('[data-action="cpt-delete"]');
+      if(del){if(!await gmConfirm('Slet opfølgningen?','Slet'))return;await api('/api/crm/tasks/'+del.dataset.taskId,{method:'DELETE'});cptLoad();return;}
+      var more=e.target.closest('[data-cpt-more]');if(more){cptExpanded[more.dataset.cptMore]=!cptExpanded[more.dataset.cptMore];cptRender();return;}
+      var due=e.target.closest('.cptb-due input');if(due&&due.showPicker){try{due.showPicker();}catch(x){}}
+    });
+    var dragId=null;
+    box.addEventListener('dragstart',function(e){var c=e.target.closest('[data-cpt-card]');if(!c)return;dragId=c.dataset.cptCard;e.dataTransfer.effectAllowed='move';try{e.dataTransfer.setData('text/plain',dragId);}catch(x){}setTimeout(function(){c.classList.add('dragging');box.classList.add('is-dragging');},0);});
+    box.addEventListener('dragend',function(){box.classList.remove('is-dragging');box.querySelectorAll('.dragging,.drop-on').forEach(function(x){x.classList.remove('dragging','drop-on');});dragId=null;});
+    box.addEventListener('dragover',function(e){var col=e.target.closest('[data-cpt-col]');if(!col||!dragId)return;e.preventDefault();box.querySelectorAll('.drop-on').forEach(function(x){if(x!==col)x.classList.remove('drop-on');});col.classList.add('drop-on');});
+    box.addEventListener('drop',async function(e){
+      var col=e.target.closest('[data-cpt-col]');if(!col||!dragId)return;e.preventDefault();
+      var id=dragId,to=col.dataset.cptCol||null,t=cptTasks.find(function(x){return String(x.id)===String(id);});
+      if(!t||String(t.assigned_to||'')===String(to||''))return;
+      t.assigned_to=to?Number(to):null;cptRender();
+      var u=to?(users||[]).find(function(x){return String(x.id)===to;}):null;
+      var r=await api('/api/crm/tasks/'+id,{method:'PUT',body:JSON.stringify({assigned_to:to})});
+      if(r&&r.ok===false)toast(r.error||'Kunne ikke flytte','❌');else toast('Givet til '+(u?u.name:'ingen'),'✓');
+      cptLoad();
+    });
+  }
+  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',init);else init();
+})();
 
 // ── OPRET NYT LEAD/OPPORTUNITY (hurtig-modal) ─────────────────────
 // Standard-stagen for et NYT lead er den der hedder præcis "Nyt lead" (Martins
