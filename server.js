@@ -22365,6 +22365,13 @@ async function nextDocNumber(kind, prefix) {
 // Rækker/dokumenter uden discount_type (fx eksisterende tilbud fra før denne
 // funktion, eller fakturaer — som slet ikke har fået denne udvidelse) falder
 // automatisk tilbage til 'pct', så al tidligere opførsel er uændret.
+// Procent til PDF: maks. 1 decimal med dansk komma (fx 38,9 %). En fast
+// kr-rabat gemt som procent (3500/9000 = 38.888…%) gav ellers en lang
+// uafrundet streng, der ombrød og lagde sig oven i beløbslinjen.
+function pdfPctLabel(v) {
+  const n = Math.round((Number(v) || 0) * 10) / 10;
+  return n.toLocaleString('da-DK', { maximumFractionDigits: 1 }) + '%';
+}
 function lineDiscountAmount(l, gross) {
   const type = l && l.discount_type === 'fixed' ? 'fixed' : 'pct';
   const val = Number(l && l.discount_pct) || 0;
@@ -25069,7 +25076,7 @@ function drawDocumentPdf(doc, kind, record, company, attachments) {
     // på Antal-cellen — se kommentar ved kolonneoverskrifterne. Viser BÅDE
     // satsen ("-10%"/"-450 kr") OG selve rabatbeløbet i kr, som to stablede
     // linjer (for smalt til begge dele på én linje i kolonnens bredde).
-    const lineDiscRateLabel = lineDiscVal ? (lineDiscType === 'fixed' ? `-${Math.round(lineDiscVal).toLocaleString('da-DK')} kr` : `-${lineDiscVal}%`) : '';
+    const lineDiscRateLabel = lineDiscVal ? (lineDiscType === 'fixed' ? `-${Math.round(lineDiscVal).toLocaleString('da-DK')} kr` : `-${pdfPctLabel(lineDiscVal)}`) : '';
     const lineDiscAmtLabel = lineDiscVal ? `(-${Math.round(lineDiscAmt).toLocaleString('da-DK')} kr)` : '';
     // Overskrift/beskrivelse/note (sep. 2026) — se pdfLineDescHeight/drawPdfLineDesc
     // ovenfor drawDocumentPdf. Højden skal beregnes FØRST (PDFKit har intet automatisk
@@ -25083,9 +25090,9 @@ function drawDocumentPdf(doc, kind, record, company, attachments) {
     doc.text(String(l.quantity) + ' ' + (l.unit || ''), 278, y, { width: 42, align: 'right' });
     if (lineDiscRateLabel) {
       doc.font('DMSans-Bold').fontSize(8).fillColor('#C0392B');
-      doc.text(lineDiscRateLabel, 325, y + 1, { width: 60, align: 'right' });
+      doc.text(lineDiscRateLabel, 325, y + 1, { width: 60, align: 'right', lineBreak: false });
       doc.font('DMSans').fontSize(7).fillColor('#C0392B');
-      doc.text(lineDiscAmtLabel, 325, y + 11, { width: 60, align: 'right' });
+      doc.text(lineDiscAmtLabel, 325, y + 11, { width: 60, align: 'right', lineBreak: false });
       doc.font('DMSans').fontSize(9.5).fillColor('#111318');
     }
     doc.text(Math.round(Number(l.sell_price)).toLocaleString('da-DK') + ' kr', 390, y, { width: 70, align: 'right' });
@@ -25103,7 +25110,7 @@ function drawDocumentPdf(doc, kind, record, company, attachments) {
   const docDiscountType = record.discount_type === 'fixed' ? 'fixed' : 'pct';
   const docDiscountPct = Number(record.discount_pct) || 0;
   const docDiscountAmount = docDiscountType === 'fixed' ? Math.max(0, Math.min(docDiscountPct, rawSubtotal)) : (docDiscountPct ? rawSubtotal * docDiscountPct / 100 : 0);
-  const docDiscountLabel = docDiscountType === 'fixed' ? `${Math.round(docDiscountPct).toLocaleString('da-DK')} kr` : `${docDiscountPct}%`;
+  const docDiscountLabel = docDiscountType === 'fixed' ? `${Math.round(docDiscountPct).toLocaleString('da-DK')} kr` : pdfPctLabel(docDiscountPct);
   if (docDiscountAmount > 0) {
     doc.fontSize(9.5).fillColor('#6B7280').text(`Rabat (${docDiscountLabel})`, totalsX, y, { width: 80, align: 'right' });
     doc.fillColor('#DC2626').text('-' + Math.round(docDiscountAmount).toLocaleString('da-DK') + ' kr', 457, y, { width: 80, align: 'right' });
