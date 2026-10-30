@@ -5228,7 +5228,7 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
        i browseren faktisk ER det nyeste deploy, eller om Render/GitHub bare
        ikke er nået at opdatere endnu — i stedet for at skulle gætte om en
        rettelse "stadig ikke virker" eller bare endnu ikke er live. -->
-  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build v2.60.2 · 2026-10-30</span></div>
+  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build v2.60.3 · 2026-10-30</span></div>
 </aside>
 <div class="app-content">
 <!-- RUNDE FB — AI-ASSISTENTEN (Martin: "en ai der er nede i venstre hjørne af
@@ -12783,6 +12783,28 @@ async function mailLoadFolders(){
   }).join('');
   sel.value=cur;
 }
+// v2.60.3 — signaturen pakkes i en markeret blok, så en ny signatur ERSTATTER
+// den eksisterende i stedet for at blive indsat oveni (Martins ønske).
+function mailSigWrap(html){return '<div data-gm-sig="1">'+(html||'')+'</div>';}
+function mailReplaceSignature(ta,html){
+  var ed=ta.mailEditable;
+  if(!ed){ta.value=(ta.value||'')+mailSigWrap(html);return;}
+  var block=ed.querySelector('[data-gm-sig]');
+  if(block){block.outerHTML=mailSigWrap(html);}
+  else{
+    // Ældre/umarkeret signatur: find en af de gemte signaturer i teksten og skift den ud.
+    var cur=ed.innerHTML,done=false;
+    (mailState.signatures||[]).forEach(function(sg){
+      if(done||!sg.body_html)return;
+      var tmp=document.createElement('div');tmp.innerHTML=sg.body_html;var norm=tmp.innerHTML;
+      var i=cur.lastIndexOf(norm);
+      if(i>-1){ed.innerHTML=cur.slice(0,i)+mailSigWrap(html)+cur.slice(i+norm.length);done=true;}
+    });
+    if(!done)ed.innerHTML=cur.replace(/(<br\s*\/?>\s*)*$/i,'')+'<br><br>'+mailSigWrap(html);
+  }
+  ed.dispatchEvent(new Event('input',{bubbles:true}));
+  toast('Signatur indsat','✓');
+}
 async function mailLoadSignatures(){
   mailState.signatures=await api('/api/mail/signatures')||[];
   var sel=document.getElementById('mail-compose-signature-select');
@@ -12994,7 +13016,7 @@ async function mailOpenCompose(opts){
   var ta=document.getElementById('mail-compose-body');
   ta.value=opts.bodyHtml||'';
   var def=mailState.signatures.find(function(s){return s.is_default;});
-  if(!opts.bodyHtml&&def)ta.value=(ta.value?ta.value+'<br><br>':'')+def.body_html;
+  if(!opts.bodyHtml&&def)ta.value=(ta.value?ta.value+'<br><br>':'<div><br></div><div><br></div>')+mailSigWrap(def.body_html);
   document.getElementById('mail-compose-schedule-chk').checked=false;
   document.getElementById('mail-compose-schedule-at').style.display='none';
   document.getElementById('mail-compose-schedule-at').value='';
@@ -13022,7 +13044,7 @@ async function mailOpenComposeBulk(entityType,ids){
   var ta=document.getElementById('mail-compose-body');
   ta.value='';
   var def=mailState.signatures.find(function(s){return s.is_default;});
-  if(def)ta.value=def.body_html;
+  if(def)ta.value='<div><br></div><div><br></div>'+mailSigWrap(def.body_html);
   document.getElementById('mail-compose-schedule-chk').checked=false;
   document.getElementById('mail-compose-schedule-at').style.display='none';
   document.getElementById('mail-compose-status').textContent='';
@@ -13069,7 +13091,7 @@ function mailBindComposeModal(){
     var s=mailState.signatures.find(function(x){return x.id===id;});
     if(!s)return;
     var ta=document.getElementById('mail-compose-body');
-    if(ta.mailEditable)ta.mailEditable.mailInsertHtml(s.body_html||'');
+    mailReplaceSignature(ta,s.body_html||'');
   });
   document.getElementById('mail-compose-template-select').addEventListener('change',function(){
     var id=+this.value;this.value='';
