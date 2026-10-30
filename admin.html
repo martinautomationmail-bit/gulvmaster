@@ -1679,6 +1679,15 @@ body.plan-alt-dragging .prv-bar.dragging,body.plan-alt-dragging .pcv-card.draggi
 .capm-load .over{color:#DC2626;font-weight:700}
 .capm-load .bar{height:5px;border-radius:5px;background:#E5E7EB;overflow:hidden;margin-top:7px;display:flex}
 .capm-load .bar i{display:block;height:100%}
+.capm-case{display:inline-flex;align-items:center;gap:4px;margin-top:7px;font:600 12.5px Inter,system-ui,sans-serif;color:#4338CA;text-decoration:none;background:#EEF2FF;border-radius:8px;padding:4px 10px}
+.capm-case:hover{background:#E0E7FF}
+.capm-why{margin-top:8px}
+.capm-why summary{cursor:pointer;font-size:11.5px;font-weight:600;color:#6B7280;list-style:none}
+.capm-why summary::before{content:'▸ ';}
+.capm-why[open] summary::before{content:'▾ ';}
+.capm-why-r{display:flex;justify-content:space-between;gap:10px;font-size:12px;padding:3px 0;border-bottom:1px dashed #E5E7EB}
+.capm-why-r span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#374151}
+.capm-why-cap{font-size:11.5px;color:#6B7280;margin-top:6px}
 .capm-dates{border-radius:12px;background:#F5F3FF;border:1px solid #EDE9FE;padding:9px 12px;font-size:12.5px;color:#4C1D95}
 .capm-dates strong{color:#2E1065}
 .capm-dates .capacity-date-prominent{all:unset}
@@ -5074,7 +5083,7 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
        i browseren faktisk ER det nyeste deploy, eller om Render/GitHub bare
        ikke er nået at opdatere endnu — i stedet for at skulle gætte om en
        rettelse "stadig ikke virker" eller bare endnu ikke er live. -->
-  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build v2.56.0 · 2026-10-30</span></div>
+  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build v2.56.1 · 2026-10-30</span></div>
 </aside>
 <div class="app-content">
 <!-- RUNDE FB — AI-ASSISTENTEN (Martin: "en ai der er nede i venstre hjørne af
@@ -10343,6 +10352,7 @@ body.ai-has-reply #ai-fab{animation:ai-nudge 1.4s ease-in-out 3}
         <div class="capm-kicker" id="capacity-title">Reservér kapacitet</div>
         <div class="capm-name" id="capm-name">Kapacitetsreservation</div>
         <div class="capm-sub" id="capm-sub"></div>
+        <a class="capm-case" id="capm-case" href="#" style="display:none">Åbn sagen <span>↗</span></a>
       </div>
       <button type="button" class="capm-x" id="capm-x" title="Luk">×</button>
     </div>
@@ -15726,6 +15736,9 @@ function capmDecorate(b,t){
   document.getElementById('capm-sub').textContent=t?((t.name&&t.name!==t.job_name?t.name:(type?type.label:''))+(t.job_number?' · #'+t.job_number:'')):(lp&&lp.desc?lp.desc:'Fri reservation uden opgave');
   document.getElementById('capacity-context').innerHTML='Vises kun på Kapacitetsboardet — ikke i Daglig plan eller hos medarbejderen.';
   var more=document.getElementById('capm-more');if(more)more.open=!t;
+  // v2.56.1 — gå direkte til sagen opgaven hører til.
+  var pid=(t&&t.project_id)||(b&&b.task_project_id)||null,cl=document.getElementById('capm-case');
+  if(cl){if(pid){cl.style.display='';cl.href='#project-detail/'+pid;cl.onclick=function(){closeModal('capacity-modal');capacityCtx=null;};}else cl.style.display='none';}
   capmUpdateLoad();
 }
 function capmUpdateLoad(){
@@ -15745,7 +15758,23 @@ function capmUpdateLoad(){
   var pctA=Math.min(100,load/cap*100),pctB=Math.max(0,Math.min(100-pctA,inWeek/cap*100));
   el.innerHTML='<b>'+esc(u.name.split(' ')[0])+'</b> i uge '+weekNo(m)+': '+capFmt(load)+' d booket + <b>'+capFmt(inWeek)+' d</b> = <span class="'+(over?'over':'')+'">'+capFmt(after)+' / '+capFmt(cap)+' d</span>'+(over?' <span class="over">· overbooket</span>':'')
     +(inWeek<days-0.01?'<div style="margin-top:4px;font-size:11.5px;color:#6B7280">De sidste '+capFmt(days-inWeek)+' d fortsætter i de næste uger — træk i bjælkens kant for at fordele selv.</div>':'')
-    +'<div class="bar"><i style="width:'+pctA+'%;background:#94A3B8"></i><i style="width:'+pctB+'%;background:'+(over?'#EF4444':'#6366F1')+'"></i></div>';
+    +'<div class="bar"><i style="width:'+pctA+'%;background:#94A3B8"></i><i style="width:'+pctB+'%;background:'+(over?'#EF4444':'#6366F1')+'"></i></div>'
+    +capmBreakdownHTML(u,uid,m,cap);
+}
+// v2.56.1 — "hvor kommer tallene fra": hvad der er booket i ugen + hvordan kapaciteten er regnet.
+function capmBreakdownHTML(u,uid,m,cap){
+  var days=[];for(var i=0;i<5;i++)days.push(iso(add(m,i)));
+  var ownId=capacityCtx&&capacityCtx.bookingId?+capacityCtx.bookingId:null;
+  var rows=bookings.filter(function(b){return isCapacityBooking(b)&&+b.user_id===+uid&&+b.id!==ownId;}).map(function(b){
+    var wd=workDates(b),c=wd.filter(function(d){return days.indexOf(d)>-1;}).length;if(!c)return null;
+    var lp=capLabelParts(b);
+    return {name:lp.name+(lp.desc?' · '+lp.desc:''),d:capDaysOf(b)/Math.max(1,wd.length)*c};
+  }).filter(Boolean).sort(function(a,b){return b.d-a.d;});
+  var base=+u.weekly_capacity||5,off=capOffDaysInWeek(uid,m);
+  var capTxt='Kapacitet '+capFmt(base)+' d/uge (sat på '+esc(u.name.split(' ')[0])+' under Hold &amp; vendors)'+(off?' − '+off+' feriedag'+(off===1?'':'e')+' = '+capFmt(cap)+' d':'');
+  return '<details class="capm-why"><summary>Hvor kommer tallene fra?</summary>'
+    +(rows.length?rows.map(function(r){return '<div class="capm-why-r"><span>'+esc(r.name)+'</span><b>'+capFmt(r.d)+' d</b></div>';}).join(''):'<div class="capm-why-r"><span>Intet andet booket i ugen</span></div>')
+    +'<div class="capm-why-cap">'+capTxt+'</div></details>';
 }
 (function(){
   function init(){
