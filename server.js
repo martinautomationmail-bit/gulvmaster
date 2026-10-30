@@ -21437,6 +21437,121 @@ app.put('/api/finance/job-status-marks/:jobKey', auth, panelAccess('finance'), a
   `, [req.params.jobKey, status]);
   res.json({ ok: true });
 }));
+// ══════════════════════════════════════════════════════════════
+// v2.60.0 — OMSÆTNING SOM TIDSLINJE (Martin valgte forslag A; den gamle
+// "Omsætning pr. fag" bliver stående indtil han har testet den nye).
+// Hver sag = et accepteret/konverteret tilbud. Værdien = tilbudssum (eller et
+// manuelt rettet beløb). Den fordeles automatisk på månederne ud fra sagens
+// tidsplan: hver arbejdsdag (man–lør) i sagens opgaver får lige stor andel, så
+// en måned med flere arbejdsdage får mere. Har sagen en manuel opdeling
+// (finance_job_splits, "Fordel selv"), bruges den i stedet. Har sagen ingen
+// tidsplan, lægges hele beløbet i den måned den er placeret i (manuel placering
+// → ellers denne måned). Fakturaer uden tilbud tæller i den måned de er udstedt,
+// og manuelle linjer i deres måned.
+// ══════════════════════════════════════════════════════════════
+async function fetchFinanceTimeline(fromMk, toMk) {
+  const today = new Date();
+  const currentMk = today.toISOString().slice(0, 7);
+  const [overridesR, monthOvR, splitsR] = await Promise.all([
+    pool.query('SELECT * FROM finance_job_overrides'),
+    pool.query('SELECT * FROM finance_job_month_overrides'),
+    pool.query('SELECT * FROM finance_job_splits ORDER BY job_id, month_key')
+  ]);
+  const overrides = {}; overridesR.rows.forEach(r => { overrides[r.job_id] = r; });
+  const monthOv = {}; monthOvR.rows.forEach(r => { monthOv[r.job_id] = r.month_key; });
+  const splits = {}; splitsR.rows.forEach(r => { (splits[r.job_id] = splits[r.job_id] || []).push({ month_key: r.month_key, amount: Number(r.amount) || 0 }); });
+
+  const quotes = (await pool.query(`
+    SELECT q.id, q.job_number, q.job_name, q.total, q.status,
+           pr.id AS project_id, pr.name AS project_name, pr.project_type AS fag, pr.status AS project_status,
+           (SELECT COALESCE(SUM(i.total),0) FROM invoices i WHERE i.quote_id = q.id AND i.status NOT IN ('void','draft')) AS invoiced,
+           (SELECT json_agg(json_build_object('m', substr(i.created_at,1,7), 'a', i.total)) FROM invoices i WHERE i.quote_id = q.id AND i.status NOT IN ('void','draft')) AS inv_list
+    FROM quotes q LEFT JOIN projects pr ON pr.job_number = q.job_number
+    WHERE q.status IN ('accepted','converted')
+  `)).rows;
+  const projectIds = [...new Set(quotes.map(q => q.project_id).filter(Boolean))];
+  const tasksByProject = {};
+  if (projectIds.length) {
+    const tr = await pool.query(`SELECT project_id, start_date, end_date FROM gantt_tasks
+      WHERE project_id = ANY($1) AND COALESCE(is_group,0) = 0 AND start_date IS NOT NULL`, [projectIds]);
+    tr.rows.forEach(t => { (tasksByProject[t.project_id] = tasksByProject[t.project_id] || []).push(t); });
+  }
+  const jobs = [];
+  for (const q of quotes) {
+    const key = 'tilbud-' + q.id;
+    const ov = overrides[key];
+    if (ov && ov.excluded) continue;
+    if (q.project_status === 'ikke_udfoert') continue;
+    const value = ov && ov.amount !== null && ov.amount !== undefined ? Number(ov.amount) : (Number(q.total) || 0);
+    if (!(value > 0)) continue;
+    // Arbejdsdage fra sagens opgaver (en dag tæller én gang pr. opgave).
+    const days = [];
+    (tasksByProject[q.project_id] || []).forEach(t => { bookingWorkDatesServer(t.start_date, t.end_date || t.start_date).forEach(d => days.push(d)); });
+    days.sort();
+    const months = {};
+    let mode;
+    if (splits[key]) {
+      mode = 'manual';
+      splits[key].forEach(sp => { months[sp.month_key] = (months[sp.month_key] || 0) + sp.amount; });
+    } else if (days.length) {
+      mode = 'auto';
+      const per = value / days.length;
+      days.forEach(d => { const mk = d.slice(0, 7); months[mk] = (months[mk] || 0) + per; });
+    } else {
+      // Ingen tidsplan: fakturerede beløb i fakturaens måned, resten i sagens
+      // placering (manuel → ellers denne måned).
+      mode = 'single';
+      let rest = value;
+      const invs = Array.isArray(q.inv_list) ? q.inv_list : [];
+      invs.forEach(iv => { const a = Math.min(rest, Number(iv.a) || 0); if (a > 0 && iv.m) { months[iv.m] = (months[iv.m] || 0) + a; rest -= a; } });
+      if (rest >= 1) { const mk = monthOv[key] || currentMk; months[mk] = (months[mk] || 0) + rest; }
+    }
+    Object.keys(months).forEach(k => { months[k] = Math.round(months[k]); });
+    jobs.push({
+      key, kind: 'quote', quoteId: q.id, projectId: q.project_id || null,
+      name: q.project_name || q.job_name || q.job_number || ('Tilbud #' + q.id), jobNumber: q.job_number || '',
+      fag: q.fag || 'Ukendt', value, invoiced: Number(q.invoiced) || 0, amountEdited: !!(ov && ov.amount !== null && ov.amount !== undefined),
+      start: days[0] || null, end: days[days.length - 1] || null, workDays: days.length, mode, months
+    });
+  }
+  // Fakturaer uden tilbud (direkte fakturaer).
+  const direct = (await pool.query(`
+    SELECT i.id, i.invoice_number, i.job_name, i.job_number, i.total, substr(i.created_at,1,10) AS d,
+           pr.id AS project_id, pr.name AS project_name, pr.project_type AS fag
+    FROM invoices i LEFT JOIN projects pr ON pr.job_number = i.job_number
+    WHERE i.quote_id IS NULL AND i.status NOT IN ('void','draft')
+  `)).rows;
+  for (const i of direct) {
+    const key = 'faktura-' + i.id, ov = overrides[key];
+    if (ov && ov.excluded) continue;
+    const value = ov && ov.amount !== null && ov.amount !== undefined ? Number(ov.amount) : (Number(i.total) || 0);
+    const mk = monthOv[key] || String(i.d).slice(0, 7);
+    jobs.push({ key, kind: 'invoice', projectId: i.project_id || null, name: (i.project_name || i.job_name || i.invoice_number) , jobNumber: i.job_number || '',
+      fag: i.fag || 'Ukendt', value, invoiced: value, start: i.d, end: i.d, workDays: 0, mode: 'invoice', months: { [mk]: Math.round(value) } });
+  }
+  const manual = (await pool.query('SELECT * FROM finance_manual_revenue')).rows;
+  for (const m of manual) jobs.push({ key: 'manual-' + m.id, kind: 'manual', manualId: m.id, name: m.name, fag: m.fag || 'Ukendt', value: Number(m.amount) || 0, invoiced: 0, start: null, end: null, workDays: 0, mode: 'manual-line', months: { [m.month_key]: Math.round(Number(m.amount) || 0) } });
+
+  // Kun sager der rammer det valgte vindue.
+  const inWin = mk => mk >= fromMk && mk <= toMk;
+  const visible = jobs.filter(j => Object.keys(j.months).some(inWin));
+  const monthList = [];
+  { let [y, m] = fromMk.split('-').map(Number); for (let g = 0; g < 36; g++) { const mk = y + '-' + String(m).padStart(2, '0'); if (mk > toMk) break; monthList.push(mk); m++; if (m > 12) { m = 1; y++; } } }
+  const totals = {};
+  monthList.forEach(mk => { totals[mk] = { total: 0, byFag: {}, count: 0 }; });
+  visible.forEach(j => Object.entries(j.months).forEach(([mk, v]) => { if (!totals[mk]) return; totals[mk].total += v; totals[mk].count++; totals[mk].byFag[j.fag] = (totals[mk].byFag[j.fag] || 0) + v; }));
+  visible.sort((a, b) => String(a.start || Object.keys(a.months).sort()[0]).localeCompare(String(b.start || Object.keys(b.months).sort()[0])) || b.value - a.value);
+  return { months: monthList, currentMonth: currentMk, jobs: visible, totals };
+}
+app.get('/api/finance/timeline', auth, panelAccess('finance'), asyncRoute(async (req, res) => {
+  const re = /^\d{4}-\d{2}$/;
+  const now = new Date();
+  const mkOf = d => d.toISOString().slice(0, 7);
+  const from = re.test(String(req.query.from || '')) ? String(req.query.from) : mkOf(new Date(now.getFullYear(), now.getMonth() - 2, 15));
+  const to = re.test(String(req.query.to || '')) ? String(req.query.to) : mkOf(new Date(now.getFullYear(), now.getMonth() + 5, 15));
+  res.json(await fetchFinanceTimeline(from, to < from ? from : to));
+}));
+
 app.get('/api/finance/revenue', auth, panelAccess('finance'), asyncRoute(async (req, res) => {
   // RUNDE BL (Martin: "jeg bare i en filtre downdown knap kunne klikke de måneder af jeg
   // gerne vil se") — det er nu admin.html der selv skjuler/viser måneder via flueben-
