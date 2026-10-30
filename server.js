@@ -16903,6 +16903,47 @@ async function syncTaskPipelineFromBookings(taskId) {
     if (task.project_id && typeof recomputeProjectStatuses === 'function') await recomputeProjectStatuses({ projectId: task.project_id });
   } catch (e) { console.error('syncTaskPipelineFromBookings fejlede:', e.message); }
 }
+// RUNDE GC (Martin valgte "Ja, men næste morgen") — kl. 08:00 hver morgen:
+// sager hvor ALLE arbejdsdage blev markeret færdige senest i går (og ingen
+// opgave står ubooket/ufærdig) sættes til "Afsluttet", og kunden får færdig-
+// mailen med pleje-/vedligeholdelses-PDF'en — præcis som når man selv vælger
+// "Afsluttet". Ventetiden giver tid til at rette en forkert afkrydsning.
+// Sager I selv har lagt i På hold / Ikke udført / Faktureret røres ikke.
+async function runAutoCloseCompletedProjects() {
+  const today = copenhagenTodayIso();
+  const rows = await pool.query(`
+    SELECT p.* FROM projects p
+    WHERE p.status NOT IN ('done','faktureret','ikke_udfoert','on_hold','archived')
+      AND EXISTS (SELECT 1 FROM jt_tasks t JOIN planning_bookings b ON b.task_id=t.id
+                  WHERE t.project_id=p.id AND COALESCE(b.planning_mode,'daily') <> 'capacity')
+      AND NOT EXISTS (SELECT 1 FROM jt_tasks t JOIN planning_bookings b ON b.task_id=t.id
+                  WHERE t.project_id=p.id AND COALESCE(b.planning_mode,'daily') <> 'capacity'
+                    AND (b.completed_at IS NULL OR LEFT(b.completed_at,10) >= $1))
+      AND NOT EXISTS (SELECT 1 FROM jt_tasks t WHERE t.project_id=p.id AND COALESCE(t.is_visit,0)=0
+                  AND t.manually_completed_at IS NULL
+                  AND NOT EXISTS (SELECT 1 FROM planning_bookings b WHERE b.task_id=t.id AND COALESCE(b.planning_mode,'daily') <> 'capacity'))
+  `, [today]);
+  let closed = 0;
+  for (const current of rows.rows) {
+    try {
+      await pool.query(`UPDATE projects SET status='done', updated_at=${nowTextSQL()} WHERE id=$1`, [current.id]);
+      await pool.query(`UPDATE jt_tasks SET manually_completed_at=${nowTextSQL()} WHERE project_id=$1 AND manually_completed_at IS NULL`, [current.id]);
+      const st = (await getProjectPipelineStages(current)).map(x => x.key);
+      const doneKey = st.includes('done') ? 'done' : st[st.length - 1];
+      if (doneKey) await pool.query('UPDATE gantt_tasks SET status=$1, progress=100 WHERE project_id=$2', [doneKey, current.id]);
+      closed++;
+      logSystemEvent('auto_close_project', 'info', 'Sag ' + (current.job_number || current.id) + ' (' + (current.name || '') + ') afsluttet automatisk — alle dage markeret færdige.');
+      if (!current.completion_email_sent_at) {
+        await pool.query(`UPDATE projects SET completion_email_sent_at=${nowTextSQL()} WHERE id=$1`, [current.id]);
+        const updated = { ...current, status: 'done' };
+        if (process.env.ZAPIER_WEBHOOK_URL) await sendProjectCompletionWebhook(updated);
+        else await sendProjectCompletionEmail(updated);
+      }
+    } catch (e) { console.error('Auto-afslutning af sag ' + current.id + ' fejlede:', e.message); }
+  }
+  if (closed) await recomputeProjectStatuses({ force: true }).catch(() => {});
+  return { closed };
+}
 async function backfillTaskPipelineFromBookings() {
   const name = 'task_pipeline_from_bookings_20261030';
   try {
@@ -28533,6 +28574,7 @@ async function start() {
   // formentlig UTC — klokke), fordi Martin bad om et PRÆCIST klokkeslæt for en
   // morgen-rapport han læser med kaffen, hvor "et par timer forskudt" reelt
   // ville gøre den ubrugelig.
+  cron.schedule('0 8 * * *', () => runAutoCloseCompletedProjects().then(r => { if (r.closed) console.log('Auto-afsluttede sager:', r.closed); }).catch(e => { console.error('Auto-afslutning fejlede:', e.message); logSystemEvent('auto_close_project', 'error', 'Auto-afslutning fejlede: ' + e.message); }), { timezone: 'Europe/Copenhagen' });
   cron.schedule('0 7 * * *', () => runDailyStatusEmail().catch(e => { console.error('Daglig status-mail fejlede:', e.message); logSystemEvent('daily_status_email', 'error', 'Daglig status-mail fejlede: ' + e.message); }), { timezone: 'Europe/Copenhagen' });
   // RETTELSE (okt. 2026, Martins ønske) — kundebesøg-påmindelsen sendes 06:30,
   // altså FØR dagsstatus-mailen (07:00), så den ligger øverst i indbakken når
