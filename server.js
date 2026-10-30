@@ -20526,12 +20526,13 @@ async function fetchFinanceJobsByMonth(monthsBack, monthsForward) {
   // udstedt. RUNDE H #306 — 'draft' udelukket her ligesom 'void': en kladde-faktura er
   // ikke rigtig omsætning endnu (se fetchFinanceInvoices for samme regel).
   const invRows = (await pool.query(`
-    SELECT i.id, i.job_number, i.job_name, i.total, i.created_at,
+    SELECT i.id, i.job_number, i.job_name, i.total, i.created_at, i.quote_id,
            pr.id AS project_id, pr.name AS project_name, pr.project_type AS fag
     FROM invoices i
     LEFT JOIN projects pr ON pr.job_number = i.job_number
     WHERE i.status NOT IN ('void','draft')
   `)).rows;
+  const invShownByQuote = {}, invCurrentByQuote = {};
   for (const r of invRows) {
     const naturalMk = String(r.created_at).slice(0, 7);
     const key = 'faktura-' + r.id;
@@ -20548,12 +20549,11 @@ async function fetchFinanceJobsByMonth(monthsBack, monthsForward) {
     }
     const manualMk = monthOverrides[key];
     const mk = manualMk || naturalMk;
-    // v2.59.1 — fakturaer udstedt i INDEVÆRENDE måned tæller nu med (før forsvandt
-    // de helt: måneden var "forecast" og tilbuddet var blevet 'converted', så hverken
-    // faktura eller tilbud kom med — fx ~30 oktober-fakturaer). Kun fremtidige
-    // måneder er stadig lukket for fakturaer. Dobbelttælling undgås ved at tilbuddet
-    // nedenfor kun tæller med sin ikke-fakturerede rest.
-    if (mk > currentMonthKey) continue;
+    // RUNDE H #317 — fakturaer tæller ALDRIG i indeværende eller fremtidige måneder
+    // (Martin: "den skal jo ikke vise faktura") — dér er det sagens tilbud der tæller.
+    // v2.59.2 — husk hvilke fakturaer der FAKTISK er vist (overståede måneder), så
+    // tilbuddet nedenfor kun tæller med det der ikke allerede står som faktura.
+    if (mk >= currentMonthKey) { if (r.quote_id) invCurrentByQuote[r.quote_id] = (invCurrentByQuote[r.quote_id] || 0) + (Number(r.total) || 0); continue; }
     if (!buckets[mk]) continue;
     const override = overrides[key];
     let value = Number(r.total) || 0, excluded = false;
@@ -20569,6 +20569,7 @@ async function fetchFinanceJobsByMonth(monthsBack, monthsForward) {
       valueSource: 'invoice', priceMismatch: false, projectId: r.project_id || null,
       placementReason: manualMk ? ('Manuelt flyttet hertil af dig. (Ville ellers ligge i ' + naturalMk + ': ' + baseReason.charAt(0).toLowerCase() + baseReason.slice(1) + ')') : baseReason
     };
+    if (r.quote_id && !excluded) invShownByQuote[r.quote_id] = (invShownByQuote[r.quote_id] || 0) + (Number(r.total) || 0);
   }
 
   // 2) FORVENTET OMSÆTNING — accepterede, men endnu ikke fakturerede tilbud. Placeres i
@@ -20601,16 +20602,21 @@ async function fetchFinanceJobsByMonth(monthsBack, monthsForward) {
       });
       continue;
     }
-    // v2.59.1 — et tilbud der er (delvist) faktureret tæller kun med sin REST.
-    // Fuldt fakturerede tilbud ('converted' uden rest) springes over — de står
-    // allerede som fakturaer. Fx Isabella: tilbud 1.174.350, faktureret 235.692 →
-    // resten 938.658 vises stadig som forventet omsætning.
-    const invoiced = Number(r.invoiced) || 0;
+    // v2.59.2 — sagen tæller med HELE tilbudsværdien, også når tilbuddet er lavet
+    // om til (del)faktura ('converted'). Kun det der allerede står som faktura i
+    // en overstået måned trækkes fra, så intet tælles to gange. Fx Isabella:
+    // tilbud 1.174.350, faktura 235.692 udstedt i oktober (indeværende måned, vises
+    // ikke som faktura) → hele 1.174.350 tæller. Når oktober er overstået, står
+    // fakturaen i oktober og resten 938.658 bliver liggende i november.
+    const invoiced = invShownByQuote[r.id] || 0;
+    const invoicedNow = invCurrentByQuote[r.id] || 0;
     const remaining = Math.max(0, (Number(r.total) || 0) - invoiced);
     if (invoiced > 0 && remaining < 1) continue;
-    if (r.status === 'converted' && invoiced <= 0 && !monthOverrides[key] && !overrides[key]) continue;
     r.total = remaining;
-    const restNote = invoiced > 0 ? ' Rest efter fakturering (' + krFmtServer(invoiced) + ' er allerede faktureret).' : '';
+    const restNote = invoiced > 0 ? ' Rest efter fakturering (' + krFmtServer(invoiced) + ' står allerede som faktura).' : (invoicedNow > 0 ? ' Der er faktureret ' + krFmtServer(invoicedNow) + ' i denne måned — hele sagen tæller med her.' : '');
+    // Faktureret i denne måned og endnu ikke placeret → læg den i denne måned.
+    const autoNow = invoicedNow > 0 && !monthOverrides[key] && invoiced <= 0;
+    if (autoNow) monthOverrides[key] = currentMonthKey;
     const hasGanttDate = r.gantt_end_date && /^\d{4}-\d{2}/.test(r.gantt_end_date);
     let naturalMk = hasGanttDate ? String(r.gantt_end_date).slice(0, 7) : currentMonthKey;
     // En overstået måned må aldrig få forecast-tal som FORSLAG — klem forslaget ind i
@@ -20652,7 +20658,7 @@ async function fetchFinanceJobsByMonth(monthsBack, monthsForward) {
       pulledFromPool: true,
       startDate: hasGanttDate ? r.gantt_end_date : null, monthMoved: mk !== naturalMk, naturalMonth: naturalMk,
       valueSource: 'quote', priceMismatch: false, projectId: r.project_id || null,
-      placementReason: 'Trukket ind i denne måned af dig.' + (hasGanttDate ? ' (Forslået måned ud fra Gantt-slutdato: ' + naturalMk + '.)' : '') + restNote,
+      placementReason: (autoNow ? 'Lagt i denne måned automatisk, fordi der er faktureret på sagen nu.' : 'Trukket ind i denne måned af dig.') + (hasGanttDate ? ' (Forslået måned ud fra Gantt-slutdato: ' + naturalMk + '.)' : '') + restNote,
       partiallyInvoiced: invoiced > 0, invoicedAmount: invoiced
     };
   }

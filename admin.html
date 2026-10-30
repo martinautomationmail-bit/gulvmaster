@@ -5143,7 +5143,7 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
        i browseren faktisk ER det nyeste deploy, eller om Render/GitHub bare
        ikke er nået at opdatere endnu — i stedet for at skulle gætte om en
        rettelse "stadig ikke virker" eller bare endnu ikke er live. -->
-  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build v2.59.1 · 2026-10-30</span></div>
+  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build v2.59.2 · 2026-10-30</span></div>
 </aside>
 <div class="app-content">
 <!-- RUNDE FB — AI-ASSISTENTEN (Martin: "en ai der er nede i venstre hjørne af
@@ -22284,10 +22284,8 @@ function renderFinRevenueKpis(){
     if(finRevenueDateTo&&(!j.startDate||j.startDate>finRevenueDateTo))return false;
     return true;
   });
-  // v2.59.1 — fakturaer (også dem udstedt i indeværende måned) er faktisk omsætning;
-  // tilbud/rest og manuelle linjer er forventet.
-  var totalActual=allJobs.filter(function(j){return j.valueSource==='invoice';}).reduce(function(s,j){return s+(j.value||0);},0);
-  var totalForecast=allJobs.filter(function(j){return j.valueSource!=='invoice';}).reduce(function(s,j){return s+(j.value||0);},0);
+  var totalActual=allJobs.filter(function(j){return j._bucketMonth<thisMonthKey;}).reduce(function(s,j){return s+(j.value||0);},0);
+  var totalForecast=allJobs.filter(function(j){return j._bucketMonth>=thisMonthKey;}).reduce(function(s,j){return s+(j.value||0);},0);
   var missing=allJobs.filter(function(j){return j.value===null;}).length;
   var manual=allJobs.filter(function(j){return j.manual;}).length;
   function card(label,value,sub){
@@ -22295,8 +22293,8 @@ function renderFinRevenueKpis(){
   }
   el.innerHTML=
     card('Sager i alt',allJobs.length,'på tværs af den valgte periode')+
-    card('Faktisk omsætning',krFmt(totalActual),'udstedte fakturaer')+
-    card('Forventet omsætning',krFmt(totalForecast),'accepterede tilbud · rest der ikke er faktureret endnu')+
+    card('Faktisk omsætning',krFmt(totalActual),'bagudgående måneder · sendte fakturaer')+
+    card('Forventet omsætning',krFmt(totalForecast),'indeværende + fremtid · sagernes tilbudsværdi')+
     card('Uden budget',missing,missing?'ret dem under "Noter"':'alle har en pris ✓')+
     card('Manuelle linjer',manual,'tilføjet direkte her');
 }
@@ -22502,7 +22500,7 @@ function renderFinRevenue(){
       // for et retvisende cashflow-billede.
       var otherMonths=finYearMonthOptions().filter(function(x){
         if(x===mk)return false;
-        if(j.valueSource==='invoice')return x<=thisMonthKey;
+        if(j.valueSource==='invoice')return x<thisMonthKey;
         return true;
       });
       // RUNDE (okt. 2026, Martin: "Og så kan jeg under Økonomien Omsætning pr
