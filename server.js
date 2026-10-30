@@ -2389,6 +2389,11 @@ async function initSchema() {
     ALTER TABLE quotes ADD COLUMN IF NOT EXISTS job_number TEXT;
     CREATE INDEX IF NOT EXISTS idx_quotes_job_number ON quotes(job_number);
     ALTER TABLE invoices ADD COLUMN IF NOT EXISTS job_number TEXT;
+    -- RUNDE GE (Martin: "se den handel og det projekt fakturaen tilhører, og tilføje
+    -- dem hvis de mangler") — eksplicit kobling; ellers findes de via tilbuddet/sagsnr.
+    ALTER TABLE invoices ADD COLUMN IF NOT EXISTS project_id INTEGER;
+    ALTER TABLE invoices ADD COLUMN IF NOT EXISTS crm_lead_id INTEGER;
+    ALTER TABLE invoices ADD COLUMN IF NOT EXISTS crm_opportunity_id INTEGER;
     CREATE INDEX IF NOT EXISTS idx_invoices_job_number ON invoices(job_number);
 
     -- RUNDE (okt. 2026, Martins ønske: "sikre mig ... at de modeller den
@@ -24001,6 +24006,72 @@ app.get('/api/invoices/:id', auth, panelAccess('quotes'), asyncRoute(async (req,
   const invoice = await loadInvoiceFull(req.params.id);
   if (!invoice) return res.status(404).json({ error: 'Fakturaen blev ikke fundet' });
   res.json(invoice);
+}));
+
+// RUNDE GE — hvad hører fakturaen til? Sag: eksplicit project_id → sagen med
+// samme tilbud → sagen med samme sagsnr. Handel: eksplicit → tilbuddets → sagens tilbud.
+async function invoiceLinks(inv) {
+  const out = { project: null, deal: null, quote: null, customer: null, suggestions: { projects: [], deals: [] } };
+  const quote = inv.quote_id ? await pgOne('SELECT id, quote_number, quote_title, status, total, crm_lead_id, crm_opportunity_id, signed_at FROM quotes WHERE id=$1', [inv.quote_id]) : null;
+  if (quote) out.quote = quote;
+  let project = null;
+  if (inv.project_id) project = await pgOne('SELECT id, name, job_number, status, quote_id FROM projects WHERE id=$1', [inv.project_id]);
+  if (!project) project = await pgOne('SELECT id, name, job_number, status, quote_id FROM projects WHERE invoice_id=$1 ORDER BY id LIMIT 1', [inv.id]);
+  if (!project && inv.quote_id) project = await pgOne('SELECT id, name, job_number, status, quote_id FROM projects WHERE quote_id=$1 ORDER BY id LIMIT 1', [inv.quote_id]);
+  if (!project && inv.job_number) project = await pgOne('SELECT id, name, job_number, status, quote_id FROM projects WHERE job_number=$1 ORDER BY id LIMIT 1', [inv.job_number]);
+  if (project) {
+    const st = await pgOne('SELECT label, color FROM project_stages WHERE key=$1', [project.status]);
+    out.project = Object.assign({}, project, { status_label: st ? st.label : project.status, status_color: st ? st.color : '#94A3B8', explicit: !!inv.project_id });
+  }
+  let leadId = inv.crm_lead_id, oppId = inv.crm_opportunity_id, explicitDeal = !!(leadId || oppId);
+  if (!leadId && !oppId && quote) { leadId = quote.crm_lead_id; oppId = quote.crm_opportunity_id; }
+  if (!leadId && !oppId && project && project.quote_id) {
+    const pq = await pgOne('SELECT crm_lead_id, crm_opportunity_id FROM quotes WHERE id=$1', [project.quote_id]);
+    if (pq) { leadId = pq.crm_lead_id; oppId = pq.crm_opportunity_id; }
+  }
+  if (oppId) {
+    const d = await pgOne(`SELECT o.id, o.name, s.name AS stage_name, s.is_won, s.is_lost, u.name AS owner_name FROM crm_opportunities o LEFT JOIN crm_stages s ON s.id=o.stage_id LEFT JOIN users u ON u.id=o.owner_id WHERE o.id=$1`, [oppId]).catch(() => null);
+    if (d) out.deal = Object.assign({ type: 'opportunity', explicit: explicitDeal }, d);
+  } else if (leadId) {
+    const d = await pgOne(`SELECT l.id, l.name, s.name AS stage_name, s.is_won, s.is_lost, u.name AS owner_name FROM crm_leads l LEFT JOIN crm_stages s ON s.id=l.stage_id LEFT JOIN users u ON u.id=l.owner_id WHERE l.id=$1`, [leadId]).catch(() => null);
+    if (d) out.deal = Object.assign({ type: 'lead', explicit: explicitDeal }, d);
+  }
+  if (inv.customer_id) out.customer = await pgOne('SELECT id, name, phone, email FROM customers WHERE id=$1', [inv.customer_id]).catch(() => null);
+  // Forslag på samme kunde (navn eller telefon), når noget mangler.
+  const name = String(inv.job_name || '').trim(), phone = String(inv.customer_phone || '').replace(/\s+/g, '');
+  if (!out.project && (name || phone)) {
+    const r = await pool.query(`SELECT id, name, job_number, status FROM projects WHERE status <> 'archived' AND (($1<>'' AND name ILIKE $1) OR ($2<>'' AND REPLACE(COALESCE(customer_phone,''),' ','')=$2)) ORDER BY id DESC LIMIT 5`, [name ? '%' + name.replace(/\s*\(kopi\)\s*$/i, '') + '%' : '', phone]);
+    out.suggestions.projects = r.rows;
+  }
+  if (!out.deal && name) {
+    const r1 = await pool.query(`SELECT 'opportunity' AS type, o.id, o.name, s.name AS stage_name FROM crm_opportunities o LEFT JOIN crm_stages s ON s.id=o.stage_id WHERE o.name ILIKE $1 ORDER BY o.id DESC LIMIT 3`, ['%' + name + '%']).catch(() => ({ rows: [] }));
+    const r2 = await pool.query(`SELECT 'lead' AS type, l.id, l.name, s.name AS stage_name FROM crm_leads l LEFT JOIN crm_stages s ON s.id=l.stage_id WHERE l.name ILIKE $1 ORDER BY l.id DESC LIMIT 3`, ['%' + name + '%']).catch(() => ({ rows: [] }));
+    out.suggestions.deals = r1.rows.concat(r2.rows).slice(0, 4);
+  }
+  return out;
+}
+app.get('/api/invoices/:id/links', auth, panelAccess('quotes'), asyncRoute(async (req, res) => {
+  const inv = await pgOne('SELECT * FROM invoices WHERE id=$1', [req.params.id]);
+  if (!inv) return res.status(404).json({ error: 'Fakturaen blev ikke fundet' });
+  res.json(await invoiceLinks(inv));
+}));
+app.put('/api/invoices/:id/links', auth, panelAccess('quotes'), asyncRoute(async (req, res) => {
+  const inv = await pgOne('SELECT * FROM invoices WHERE id=$1', [req.params.id]);
+  if (!inv) return res.status(404).json({ error: 'Fakturaen blev ikke fundet' });
+  const b = req.body || {};
+  if (b.project_id !== undefined) {
+    if (b.project_id) {
+      const p = await pgOne('SELECT id, job_number FROM projects WHERE id=$1', [Number(b.project_id)]);
+      if (!p) return res.status(404).json({ error: 'Sagen blev ikke fundet' });
+      await pool.query('UPDATE invoices SET project_id=$1, job_number=COALESCE($2, job_number) WHERE id=$3', [p.id, p.job_number || null, inv.id]);
+    } else await pool.query('UPDATE invoices SET project_id=NULL WHERE id=$1', [inv.id]);
+  }
+  if (b.deal_type !== undefined) {
+    const id = b.deal_id ? Number(b.deal_id) : null;
+    await pool.query('UPDATE invoices SET crm_lead_id=$1, crm_opportunity_id=$2 WHERE id=$3', [b.deal_type === 'lead' ? id : null, b.deal_type === 'opportunity' ? id : null, inv.id]);
+  }
+  const fresh = await pgOne('SELECT * FROM invoices WHERE id=$1', [inv.id]);
+  res.json(Object.assign({ ok: true }, await invoiceLinks(fresh)));
 }));
 
 app.put('/api/invoices/:id', auth, panelAccess('quotes'), asyncRoute(async (req, res) => {
