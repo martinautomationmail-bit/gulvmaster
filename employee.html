@@ -216,6 +216,7 @@
 .rules-link-sub{font-size:11.5px;color:#64748B}
 .rules-link-arrow{margin-left:auto;font-size:16px;color:#94A3B8;flex-shrink:0}
 .action.undone-btn{background:#F1F5F9;color:#64748B}
+.action.day-done-btn{background:#fff;color:#15803D;border-color:#86EFAC;font-weight:800}.action.day-done-btn:hover{background:#F0FDF4;color:#15803D;border-color:#22C55E}
 @media(max-width:560px){.main{padding:12px}.user-name{display:none}.week-buttons{gap:4px}.week-buttons .small-btn{padding:7px}.task{padding:12px}.topbar{padding:8px 12px}.actions{grid-template-columns:1fr 1fr}.action{font-size:10px;padding:9px 6px}.week-nav{align-items:flex-start}.week-buttons{flex-wrap:wrap;justify-content:flex-end}.week-title{font-size:17px}}
 .task.done{background:linear-gradient(135deg,#F0FDF4,#fff)}.task{box-shadow:0 1px 2px rgba(17,19,24,.05),0 8px 20px rgba(17,19,24,.035)}.task:hover{transform:translateY(-1px)}
 </style>
@@ -313,16 +314,16 @@
 </div>
 <div id="doc-modal" class="modal-backdrop" onclick="closeDocOnBackdrop(event)">
   <div class="modal doc-modal">
-    <div class="modal-head req-head"><div class="modal-title"><span class="req-icon">📋</span> Bekræft opgaven er færdig</div><button class="modal-close" onclick="closeDocModal()">Luk</button></div>
+    <div class="modal-head req-head"><div class="modal-title"><span class="req-icon">🏁</span> Opgaven er løst og slut</div><button class="modal-close" onclick="closeDocModal()">Luk</button></div>
     <div class="modal-body">
-      <p class="req-intro">Før opgaven markeres som færdig, skal du bekræfte at følgende er dokumenteret — det er vigtigt for sagen og for kunden.</p>
+      <p class="req-intro">Hele opgaven markeres som færdig — også eventuelle resterende dage. Bekræft først at følgende er dokumenteret. (Er du bare færdig for i dag, så luk og brug "✓ Færdig for i dag".)</p>
       <label class="doc-check"><input type="checkbox" id="doc-moisture"><span><strong>Fugtmålinger</strong><br>Fugtprocent i underlag/gulv er målt og noteret</span></label>
       <label class="doc-check"><input type="checkbox" id="doc-level"><span><strong>Niveau af gulvet</strong><br>Gulvets niveau/planhed er tjekket og dokumenteret</span></label>
       <label class="doc-check"><input type="checkbox" id="doc-other"><span><strong>Andre forhold</strong><br>Evt. skader, afvigelser eller særlige forhold er noteret</span></label>
       <label class="req-label" style="margin-top:14px">Kort note <span style="opacity:.6;font-weight:500">(valgfrit)</span></label>
       <textarea id="doc-note" class="req-textarea" rows="2" placeholder="Fx alt som forventet, ingen bemærkninger"></textarea>
       <div id="doc-feedback" class="req-feedback"></div>
-      <button type="button" class="req-submit" id="doc-confirm-btn" onclick="confirmDocumentationAndComplete()"><span class="req-submit-label">Bekræft & markér som færdig →</span></button>
+      <button type="button" class="req-submit" id="doc-confirm-btn" onclick="confirmDocumentationAndComplete()"><span class="req-submit-label">Bekræft — opgaven er løst og slut →</span></button>
       <p style="font-size:11px;color:var(--muted);text-align:center;margin:10px 0 0">Billeder og dokumenter lægges på sagen under 🏗️ Projekter — brug "⏱ Registrér tid" eller "📷 Tilføj billede" der.</p>
     </div>
   </div>
@@ -1341,6 +1342,33 @@ async function submitTimeOffRequest(){
   }
 }
 
+// RUNDE GD — "✓ Færdig for i dag": kun den viste dag.
+async function markDayDone(id,date,done){
+  const a=assignments.find(x=>+x.id===+id);if(!a)return;
+  const prevDates=a.done_dates,prevCompleted=a.completed_at;
+  let list=[];try{list=JSON.parse(a.done_dates||'[]')||[]}catch(_){}
+  if(done&&!list.includes(date))list.push(date);
+  if(!done){list=list.filter(x=>x!==date);a.completed_at=null;}
+  a.done_dates=JSON.stringify(list);render();
+  toast(done?'Færdig for i dag ✓':'Fortrudt ↩');
+  try{
+    const r=await api('/api/assignments/'+id+'/day-done',{method:'PUT',body:JSON.stringify({date,done})});
+    if(!r||!r.ok){a.done_dates=prevDates;a.completed_at=prevCompleted;render();toast((r&&r.data&&r.data.error)||'Kunne ikke gemme — ændringen er rullet tilbage');return;}
+    a.done_dates=JSON.stringify(r.data.done_dates||list);
+    a.completed_at=r.data.completed?(a.completed_at||new Date().toISOString()):null;render();
+  }catch(e){a.done_dates=prevDates;a.completed_at=prevCompleted;render();toast('Ingen forbindelse — ændringen blev ikke gemt');}
+}
+// RUNDE GD — "🏁 Opgaven er løst og slut": hele opgaven (alle dage).
+async function finishWholeTask(id,docNote){
+  const a=assignments.find(x=>+x.id===+id);if(!a)return;
+  const touched=assignments.filter(x=>x.task_id===a.task_id).map(x=>({x,c:x.completed_at}));
+  touched.forEach(t=>{t.x.completed_at=t.x.completed_at||new Date().toISOString();});render();
+  toast('Opgaven er markeret som løst og slut 🏁');
+  try{
+    const r=await api('/api/tasks/'+encodeURIComponent(a.task_id)+'/finish',{method:'PUT',body:JSON.stringify({doc_note:docNote||null})});
+    if(!r||!r.ok){touched.forEach(t=>{t.x.completed_at=t.c;});render();toast((r&&r.data&&r.data.error)||'Kunne ikke gemme — ændringen er rullet tilbage');}
+  }catch(e){touched.forEach(t=>{t.x.completed_at=t.c;});render();toast('Ingen forbindelse — ændringen blev ikke gemt');}
+}
 async function toggleTaskDone(id,done,documented,docNote){
   const a=assignments.find(x=>+x.id===+id);
   if(!a)return;
@@ -1700,7 +1728,7 @@ async function confirmDocumentationAndComplete(){
   // Alt ligger nu i Martins eget program: der er intet eksternt vindue at åbne
   // bagefter. Bekræftelsen markerer opgaven som færdig — punktum. Billeder og
   // dokumenter lægges på sagen under 🏗️ Projekter.
-  await toggleTaskDone(id,true,true,note);
+  await finishWholeTask(id,note);
 }
 
 function weekKeyOf(d){const x=new Date(d);x.setHours(12,0,0,0);const day=x.getDay()||7;x.setDate(x.getDate()+4-day);const yearStart=new Date(x.getFullYear(),0,1);const weekNo=Math.ceil((((x-yearStart)/86400000)+1)/7);const m=monday(d);return 'w'+m.getFullYear()+'-'+String(weekNo).padStart(2,'0')}
@@ -1771,7 +1799,10 @@ function render(){
       const phoneMarkup=phone?`<a href="${esc(phoneHref(phone))}">${esc(phone)}</a>`:'<span>No customer phone number</span>';
       const noteId=Number(a.id)||0;
       const timeChip=hasTime?`<span class="time-chip">⏰ ${esc(a.start_time)}</span>`:`<span class="time-chip untimed">🕓 Self-scheduled</span>`;
-      const isDone=!!a.completed_at;
+      // RUNDE GD — en dag kan være meldt færdig uden at hele bookingen er det.
+      const doneDates=(()=>{try{const v=JSON.parse(a.done_dates||'[]');return Array.isArray(v)?v:[]}catch(_){return []}})();
+      const dayDone=!!a.completed_at||doneDates.includes(date);
+      const isDone=dayDone;
       // En "hel dag" bookes som 1.0 i planlægningen, og regnes her som 9 timers arbejde
       // (i stedet for at vise et abstrakt "dage"-tal, som ikke sagde medarbejderne noget).
       const hoursNum=Math.round(Number(a.days||1)*9*4)/4;
@@ -1780,7 +1811,15 @@ function render(){
       // besøgsrapporten (spørgsmål + billeder) FØR det kan markeres færdigt, i
       // stedet for den almindelige dokumentations-tjekliste (fugtmålinger mv.),
       // som ikke giver mening for et salgsbesøg. Se openVisitReportModal().
-      const doneBtn=isDone?`<button class="action undone-btn" type="button" style="grid-column:1/-1" onclick="toggleTaskDone(${noteId},false)">↩ Undo (done)</button>`:(a.is_visit?`<button class="action done-btn" type="button" style="grid-column:1/-1" onclick="openVisitReportModal(${noteId},'${esc(a.task_id)}')">✅ Mark as done</button>`:`<button class="action done-btn" type="button" style="grid-column:1/-1" onclick="openDocModal(${noteId})">✅ Mark as done</button>`);
+      // RUNDE GD (Martin: "lav Done-knappen om til 2") — "Færdig for i dag"
+      // melder kun DENNE dag færdig; "Opgaven er løst og slut" afslutter hele
+      // opgaven (alle dage) efter dokumentations-tjeklisten. Kundebesøg beholder
+      // ét flow med besøgsrapporten.
+      const doneBtn=isDone
+        ?`<button class="action undone-btn" type="button" style="grid-column:1/-1" onclick="${a.completed_at&&!doneDates.length?`toggleTaskDone(${noteId},false)`:`markDayDone(${noteId},'${date}',false)`}">↩ Fortryd (${a.completed_at?'opgaven er markeret færdig':'færdig for i dag'})</button>`
+        :(a.is_visit
+          ?`<button class="action done-btn" type="button" style="grid-column:1/-1" onclick="openVisitReportModal(${noteId},'${esc(a.task_id)}')">✅ Mark as done</button>`
+          :`<button class="action day-done-btn" type="button" onclick="markDayDone(${noteId},'${date}',true)">✓ Færdig for i dag</button><button class="action done-btn" type="button" onclick="openDocModal(${noteId})">🏁 Opgaven er løst og slut</button>`);
       const descBlock=a.task_description&&String(a.task_description).trim()?`<div class="task-description"><div class="task-description-label">📝 ${a.task_project_id?'Note på opgaven':'Beskrivelse'}</div><div class="task-description-body">${esc(a.task_description).replace(/\n/g,'<br>')}</div></div>`:'';
       // SAGS-HANDLINGER: alle opgaver styres nu fra Martins eget program, så
       // "Se sagen"/"Registrér tid"/"Udfyld KS-formular"/"Materialer" åbner en

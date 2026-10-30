@@ -1033,6 +1033,13 @@ async function initSchema() {
     );
 
     ALTER TABLE planning_bookings ADD COLUMN IF NOT EXISTS completed_at TEXT;
+    -- RUNDE GD (Martin: "Færdig for i dag" vs. "Opgaven er løst og slut") —
+    -- de enkelte dage af en flerdages booking der er meldt færdige (JSON-liste
+    -- af ISO-datoer). Når alle bookingens dage er med, sættes completed_at også.
+    ALTER TABLE planning_bookings ADD COLUMN IF NOT EXISTS done_dates TEXT;
+    -- RUNDE GD — sættes KUN af "🏁 Opgaven er løst og slut" (PUT /api/tasks/:id/finish).
+    -- Den automatiske sags-afslutning + kunde-mail kræver at ALLE sagens opgaver har den.
+    ALTER TABLE jt_tasks ADD COLUMN IF NOT EXISTS finished_at TEXT;
     ALTER TABLE planning_bookings ADD COLUMN IF NOT EXISTS invoiced INTEGER DEFAULT 0;
     ALTER TABLE planning_bookings ADD COLUMN IF NOT EXISTS status_flag TEXT;
     -- KUNDEPORTAL: unik, uigætteligt token pr. booking — giver adgang til en
@@ -10328,6 +10335,52 @@ app.put('/api/assignments/:id/complete', auth, asyncRoute(async (req, res) => {
   // automatisk når sagen sættes til "Afsluttet".
 }));
 
+// RUNDE GD — "✓ Færdig for i dag": melder ÉN dag af en booking færdig (eller
+// fortryder den). Er det bookingens sidste/eneste manglende dag, sættes
+// completed_at også, så resten af systemet ser den som færdig.
+app.put('/api/assignments/:id/day-done', auth, asyncRoute(async (req, res) => {
+  const current = await pgOne('SELECT * FROM planning_bookings WHERE id=$1', [req.params.id]);
+  if (!current) return res.status(404).json({ error: 'Bookingen blev ikke fundet' });
+  if (req.user.role !== 'admin' && +current.user_id !== +req.user.id) return res.status(403).json({ error: 'Du kan kun markere dine egne opgaver' });
+  if (String(current.planning_mode || 'daily') === 'capacity') return res.status(400).json({ error: 'En kapacitetsreservation kan ikke markeres som færdig' });
+  const date = String((req.body || {}).date || '').slice(0, 10);
+  const wd = bookingWorkDatesServer(current.start_date, current.end_date);
+  if (!wd.includes(date)) return res.status(400).json({ error: 'Datoen ligger ikke i bookingen' });
+  const done = !!(req.body || {}).done;
+  let dates = bookingDoneDates(current).filter(x => wd.includes(x));
+  if (done && !dates.includes(date)) dates.push(date);
+  if (!done) dates = dates.filter(x => x !== date);
+  dates.sort();
+  const all = wd.every(x => dates.includes(x));
+  const docNote = (req.body || {}).doc_note ? String(req.body.doc_note).slice(0, 500) : null;
+  await pool.query(`UPDATE planning_bookings SET done_dates=$1, completed_at=${all ? `COALESCE(completed_at, ${nowTextSQL()})` : 'NULL'}${done ? ', status_flag=NULL' : ''} WHERE id=$2`, [JSON.stringify(dates), current.id]);
+  if (done && docNote) await pool.query(`UPDATE planning_bookings SET notes=TRIM(BOTH E'\n' FROM COALESCE(notes,'') || E'\n\n' || $1 || ': ' || $2) WHERE id=$3`, [date, docNote, current.id]);
+  res.json({ ok: true, done_dates: dates, completed: all });
+  syncTaskPipelineFromBookings(current.task_id);
+}));
+
+// RUNDE GD — "🏁 Opgaven er løst og slut": hele opgaven er færdig. Alle
+// opgavens daglige bookinger (alle dage, alle medarbejdere) markeres færdige,
+// opgaven sættes til Færdig i sagens Pipeline, og sagen afsluttes automatisk
+// kl. 08 næste morgen, når alle dens opgaver er færdige (se runAutoCloseCompletedProjects).
+app.put('/api/tasks/:id/finish', auth, asyncRoute(async (req, res) => {
+  const taskId = req.params.id;
+  const own = await pgOne(`SELECT 1 FROM planning_bookings WHERE task_id=$1 AND user_id=$2 AND COALESCE(planning_mode,'daily') <> 'capacity' LIMIT 1`, [taskId, req.user.id]);
+  if (req.user.role !== 'admin' && !own) return res.status(403).json({ error: 'Du kan kun afslutte opgaver du selv er booket på' });
+  const docNote = (req.body || {}).doc_note ? String(req.body.doc_note).slice(0, 500) : null;
+  const bks = await pool.query(`SELECT id, start_date, end_date FROM planning_bookings WHERE task_id=$1 AND COALESCE(planning_mode,'daily') <> 'capacity'`, [taskId]);
+  for (const b of bks.rows) {
+    await pool.query(`UPDATE planning_bookings SET done_dates=$1, completed_at=COALESCE(completed_at, ${nowTextSQL()}), documented_at=COALESCE(documented_at, ${nowTextSQL()}), status_flag=NULL WHERE id=$2`, [JSON.stringify(bookingWorkDatesServer(b.start_date, b.end_date)), b.id]);
+  }
+  await pool.query(`UPDATE jt_tasks SET manually_completed_at=COALESCE(manually_completed_at, ${nowTextSQL()}), finished_at=COALESCE(finished_at, ${nowTextSQL()}) WHERE id=$1`, [taskId]);
+  if (docNote && bks.rows.length) {
+    const mine = bks.rows.find(b => true);
+    await pool.query(`UPDATE planning_bookings SET notes=TRIM(BOTH E'\n' FROM COALESCE(notes,'') || E'\n\nOpgaven afsluttet: ' || $1) WHERE id=$2`, [docNote, mine.id]);
+  }
+  res.json({ ok: true, bookings: bks.rows.length });
+  syncTaskPipelineFromBookings(taskId);
+}));
+
 // Manuel færdig-markering for en UPLANLAGT opgave (ingen booking findes endnu at
 // sætte completed_at på). Bruges af ✓-knappen i Opgavepool for opgaver der aldrig
 // er blevet booket.
@@ -16882,11 +16935,27 @@ async function getProjectPipelineStages(project) {
 // alle dage færdige → "Færdig" (100 %), nogle færdige → "I gang" (x %),
 // ingen færdige igen → tilbage til første fase. Herefter genberegnes sagens
 // Kanban-kolonne. Kunde-mailen sendes stadig først når SAGEN afsluttes.
+// Bookingens arbejdsdage — samme regel som planWorkDates() i admin.html:
+// lørdag tæller med, søndag kun når bookingen er netop den ene dag.
+function bookingWorkDatesServer(start, end) {
+  const s0 = String(start || '').slice(0, 10), e0 = String(end || start || '').slice(0, 10);
+  if (!s0) return [];
+  if (s0 === e0) return [s0];
+  const out = []; const d = new Date(s0 + 'T12:00:00Z'); const last = new Date(e0 + 'T12:00:00Z');
+  for (let g = 0; d <= last && g < 400; g++, d.setUTCDate(d.getUTCDate() + 1)) { if (d.getUTCDay() !== 0) out.push(d.toISOString().slice(0, 10)); }
+  return out.length ? out : [s0];
+}
+function bookingDoneDates(b) { const v = safeJsonParse(b && b.done_dates, []); return Array.isArray(v) ? v.filter(x => typeof x === 'string') : []; }
 async function syncTaskPipelineFromBookings(taskId) {
   try {
-    const cnt = await pgOne(`SELECT COUNT(*)::int AS total, COUNT(completed_at)::int AS done FROM planning_bookings
+    // Fremdrift tælles i DAGE (en flerdages booking kan være delvist meldt færdig).
+    const bks = await pool.query(`SELECT start_date, end_date, completed_at, done_dates FROM planning_bookings
       WHERE task_id=$1 AND COALESCE(planning_mode,'daily') <> 'capacity'`, [taskId]);
-    if (!cnt || !cnt.total) return;
+    if (!bks.rows.length) return;
+    let totalDays = 0, doneDays = 0;
+    bks.rows.forEach(b => { const wd = bookingWorkDatesServer(b.start_date, b.end_date); totalDays += wd.length; doneDays += b.completed_at ? wd.length : bookingDoneDates(b).filter(x => wd.includes(x)).length; });
+    const cnt = { total: totalDays, done: Math.min(doneDays, totalDays) };
+    if (!cnt.total) return;
     const task = await pgOne('SELECT id, status, project_id FROM gantt_tasks WHERE id=$1', [taskId]);
     if (!task) return;
     const project = task.project_id ? await pgOne('SELECT id, pipeline_stages FROM projects WHERE id=$1', [task.project_id]) : null;
@@ -16911,17 +16980,17 @@ async function syncTaskPipelineFromBookings(taskId) {
 // Sager I selv har lagt i På hold / Ikke udført / Faktureret røres ikke.
 async function runAutoCloseCompletedProjects() {
   const today = copenhagenTodayIso();
+  // RUNDE GD (Martin: "kun ved projekter, kun ved sidste opgave i sagen, og kun
+  // med knappen 'Opgaven er løst og slut'") — kræver at ALLE sagens rigtige
+  // opgaver (ikke kundebesøg) er afsluttet med den knap (jt_tasks.finished_at),
+  // og at den sidste blev det senest i går. Daglige "færdig"-afkrydsninger,
+  // kundebesøg og manuelle opgaver uden sag udløser aldrig noget.
   const rows = await pool.query(`
     SELECT p.* FROM projects p
     WHERE p.status NOT IN ('done','faktureret','ikke_udfoert','on_hold','archived')
-      AND EXISTS (SELECT 1 FROM jt_tasks t JOIN planning_bookings b ON b.task_id=t.id
-                  WHERE t.project_id=p.id AND COALESCE(b.planning_mode,'daily') <> 'capacity')
-      AND NOT EXISTS (SELECT 1 FROM jt_tasks t JOIN planning_bookings b ON b.task_id=t.id
-                  WHERE t.project_id=p.id AND COALESCE(b.planning_mode,'daily') <> 'capacity'
-                    AND (b.completed_at IS NULL OR LEFT(b.completed_at,10) >= $1))
+      AND EXISTS (SELECT 1 FROM jt_tasks t WHERE t.project_id=p.id AND COALESCE(t.is_visit,0)=0)
       AND NOT EXISTS (SELECT 1 FROM jt_tasks t WHERE t.project_id=p.id AND COALESCE(t.is_visit,0)=0
-                  AND t.manually_completed_at IS NULL
-                  AND NOT EXISTS (SELECT 1 FROM planning_bookings b WHERE b.task_id=t.id AND COALESCE(b.planning_mode,'daily') <> 'capacity'))
+                      AND (t.finished_at IS NULL OR LEFT(t.finished_at,10) >= $1))
   `, [today]);
   let closed = 0;
   for (const current of rows.rows) {
@@ -16932,7 +17001,7 @@ async function runAutoCloseCompletedProjects() {
       const doneKey = st.includes('done') ? 'done' : st[st.length - 1];
       if (doneKey) await pool.query('UPDATE gantt_tasks SET status=$1, progress=100 WHERE project_id=$2', [doneKey, current.id]);
       closed++;
-      logSystemEvent('auto_close_project', 'info', 'Sag ' + (current.job_number || current.id) + ' (' + (current.name || '') + ') afsluttet automatisk — alle dage markeret færdige.');
+      logSystemEvent('auto_close_project', 'info', 'Sag ' + (current.job_number || current.id) + ' (' + (current.name || '') + ') afsluttet automatisk — sidste opgave meldt "løst og slut".');
       if (!current.completion_email_sent_at) {
         await pool.query(`UPDATE projects SET completion_email_sent_at=${nowTextSQL()} WHERE id=$1`, [current.id]);
         const updated = { ...current, status: 'done' };
