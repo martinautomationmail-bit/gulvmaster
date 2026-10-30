@@ -5141,7 +5141,7 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
        i browseren faktisk ER det nyeste deploy, eller om Render/GitHub bare
        ikke er nået at opdatere endnu — i stedet for at skulle gætte om en
        rettelse "stadig ikke virker" eller bare endnu ikke er live. -->
-  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build v2.58.0 · 2026-10-30</span></div>
+  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build v2.58.1 · 2026-10-30</span></div>
 </aside>
 <div class="app-content">
 <!-- RUNDE FB — AI-ASSISTENTEN (Martin: "en ai der er nede i venstre hjørne af
@@ -30250,7 +30250,7 @@ async function crmpLoadPipelines(){
   if(crmpState.currentPipelineId)sel.value=crmpState.currentPipelineId;
   await crmpReloadCustomFieldDefs();
   var ownerSel=document.getElementById('crmp-owner-filter');
-  ownerSel.innerHTML='<option value="">Alle ansvarlige</option>'+(users||[]).map(function(u){return '<option value="'+u.id+'">'+esc(u.name)+'</option>';}).join('');
+  ownerSel.innerHTML='<option value="">Alle ansvarlige</option>'+crmUsers().map(function(u){return '<option value="'+u.id+'">'+esc(u.name)+'</option>';}).join('');
 }
 async function crmGetCustomFieldDefsCache(entityType){
   var r=await api('/api/crm/custom-fields?entity_type='+entityType);
@@ -30735,7 +30735,7 @@ function crmpSyncBulkValueControl(){
   valSel.style.display='none';valTxt.style.display='none';
   if(!sel||!p)return;
   if(sel==='core:owner_id'){
-    valSel.innerHTML='<option value="">— Ingen ansvarlig —</option>'+(users||[]).map(function(u){return '<option value="'+u.id+'">'+esc(u.name)+'</option>';}).join('');
+    valSel.innerHTML='<option value="">— Ingen ansvarlig —</option>'+crmUsers().map(function(u){return '<option value="'+u.id+'">'+esc(u.name)+'</option>';}).join('');
     valSel.style.display='';
     return;
   }
@@ -31578,7 +31578,7 @@ async function openCrmpDetail(entityType,id){
     document.getElementById('crmpx-source').value=d.source||'';
   }
   var ownerSel=document.getElementById('crmpx-owner');
-  ownerSel.innerHTML='<option value="">— Ingen —</option>'+(users||[]).map(function(u){return '<option value="'+u.id+'"'+(u.id===d.owner_id?' selected':'')+'>'+esc(u.name)+'</option>';}).join('');
+  ownerSel.innerHTML='<option value="">— Ingen —</option>'+crmUsers(d.owner_id).map(function(u){return '<option value="'+u.id+'"'+(u.id===d.owner_id?' selected':'')+'>'+esc(u.name)+'</option>';}).join('');
   var pipeline=crmpState.pipelines.find(function(p){return p.id===d.pipeline_id;});
   var stageSel=document.getElementById('crmpx-stage');
   stageSel.innerHTML=(pipeline?pipeline.stages:[]).slice().sort(function(a,b){return a.position-b.position;}).map(function(s){return '<option value="'+s.id+'" data-color="'+esc(s.color||'#94A3B8')+'"'+(s.id===d.stage_id?' selected':'')+'>'+esc(s.name)+'</option>';}).join('');
@@ -32248,10 +32248,14 @@ function crmpxTaskDueLabel(t){
 // gangen. crmpxTasksCache gemmer sidste hentede liste, så vi kan skifte
 // ind/ud af redigeringstilstand med et rent gentegn (crmpxRenderTasksList)
 // uden at skulle ramme API'et igen hver gang.
+// v2.58.1 — CRM bruges kun af kontoret: ansvarlig-valg viser kun admin + brugere
+// med adgang til admin-panelet (panel-rolle/økonomi-adgang). Den nuværende
+// ansvarlige vises altid, så en gammel tildeling ikke forsvinder.
+function crmUsers(keepId){return (users||[]).filter(function(u){return String(u.id)===String(keepId)||(u.active!==0&&u.active!==false&&(u.role==='admin'||u.panel_role_id||u.is_finance_admin));});}
 var crmpxEditingTaskId=null,crmpxTasksCache=[];
 function crmpxTaskRowHtml(t){
   if(String(t.id)===String(crmpxEditingTaskId)){
-    var opts=(users||[]).map(function(u){return '<option value="'+u.id+'"'+(String(u.id)===String(t.assigned_to)?' selected':'')+'>'+esc(u.name)+'</option>';}).join('');
+    var opts=crmUsers(t.assigned_to).map(function(u){return '<option value="'+u.id+'"'+(String(u.id)===String(t.assigned_to)?' selected':'')+'>'+esc(u.name)+'</option>';}).join('');
     return '<div class="crmpx-task-row crmpx-task-row-editing">'
       +'<input id="crmpx-task-edit-title-'+t.id+'" class="tld-input" value="'+esc(t.title)+'" style="margin-bottom:6px">'
       +'<div class="tld-row">'
@@ -32369,7 +32373,7 @@ async function crmpxLoadTasks(){
   var assigneeSel=document.getElementById('crmpx-task-assignee');
   if(assigneeSel){
     var keepVal=assigneeSel.dataset.userTouched?assigneeSel.value:null;
-    assigneeSel.innerHTML=(users||[]).map(function(u){return '<option value="'+u.id+'">'+esc(u.name)+'</option>';}).join('');
+    assigneeSel.innerHTML=crmUsers(me&&me.id).map(function(u){return '<option value="'+u.id+'">'+esc(u.name)+'</option>';}).join('');
     assigneeSel.value=keepVal||(me&&me.id)||'';
   }
 }
@@ -32911,7 +32915,7 @@ async function cptLoad(){
   await usersReadyPromise;
   var filterSel=document.getElementById('cpt-assignee-filter');
   var prevFilter=filterSel.value;
-  filterSel.innerHTML='<option value="">Vælg ansvarlig — alle</option>'+(users||[]).map(function(u){return '<option value="'+u.id+'">'+esc(u.name)+'</option>';}).join('');
+  filterSel.innerHTML='<option value="">Vælg ansvarlig — alle</option>'+crmUsers().map(function(u){return '<option value="'+u.id+'">'+esc(u.name)+'</option>';}).join('');
   filterSel.value=prevFilter;
   cptTasks=await api('/api/crm/tasks/overview?include_done=1')||[];
   cptRender();
