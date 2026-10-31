@@ -17162,6 +17162,83 @@ app.put('/api/projects/:id/pipeline-stages', auth, panelAccess('projects'), asyn
   }
   res.json({ ok: true, stages, moved_tasks: moved.rowCount || 0 });
 }));
+// v2.62.0 — Sagens dashboard (Projekter → 📊 Dashboard): nøgletal, hold og et
+// samlet forløb over alt der er sket på sagen. Kun læsning, samler data fra
+// tilbud, fakturaer/betalinger, bookinger, billeder, timer, KS og kundemails.
+app.get('/api/projects/:id/dashboard', auth, asyncRoute(async (req, res) => {
+  const p = await pgOne('SELECT * FROM projects WHERE id=$1', [req.params.id]);
+  if (!p) return res.status(404).json({ error: 'Sagen blev ikke fundet' });
+  const quote = p.quote_id ? await pgOne('SELECT id, quote_number, total, tax_amount, status, signed_at, signed_name AS signer_name, created_at FROM quotes WHERE id=$1', [p.quote_id]).catch(() => null) : null;
+  const invoices = (await pool.query(`SELECT i.id, i.invoice_number, i.total, i.status, i.created_at, i.due_date,
+      COALESCE((SELECT SUM(amount) FROM invoice_payments ip WHERE ip.invoice_id=i.id),0) AS paid,
+      COALESCE((SELECT SUM(amount) FROM credit_notes c WHERE c.invoice_id=i.id),0) AS credited
+    FROM invoices i WHERE i.status NOT IN ('void','draft') AND (i.project_id=$1 OR ($2::int IS NOT NULL AND i.quote_id=$2) OR ($3::text IS NOT NULL AND i.job_number=$3) OR i.id=$4)
+    ORDER BY i.created_at`, [p.id, p.quote_id || null, p.job_number || null, p.invoice_id || -1])).rows;
+  const taskIds = (await pool.query('SELECT id, name FROM gantt_tasks WHERE project_id=$1 AND COALESCE(is_group,0)=0', [p.id])).rows;
+  const ids = taskIds.map(t => String(t.id));
+  const taskName = {}; taskIds.forEach(t => { taskName[String(t.id)] = t.name; });
+  const bookings = ids.length ? (await pool.query(`SELECT b.id, b.task_id, b.user_id, b.start_date, b.end_date, b.completed_at, b.done_dates, b.created_at, b.planning_mode,
+      u.name AS user_name, u.color, u.initials, u.avatar_url
+    FROM planning_bookings b LEFT JOIN users u ON u.id=b.user_id WHERE b.task_id = ANY($1)`, [ids])).rows : [];
+  const finished = ids.length ? (await pool.query('SELECT id, name, finished_at FROM jt_tasks WHERE id = ANY($1) AND finished_at IS NOT NULL', [ids])).rows : [];
+  const photos = (await pool.query(`SELECT pp.url, pp.created_at, u.name AS user_name FROM project_photos pp LEFT JOIN users u ON u.id=pp.uploaded_by WHERE pp.project_id=$1 ORDER BY pp.created_at DESC LIMIT 200`, [p.id])).rows;
+  const time = (await pool.query(`SELECT te.minutes, te.entry_date, te.note, te.created_at, u.name AS user_name FROM time_entries te LEFT JOIN users u ON u.id=te.user_id WHERE te.project_id=$1 ORDER BY te.entry_date DESC`, [p.id])).rows;
+  const qa = (await pool.query('SELECT submitted_at FROM qa_submissions WHERE project_id=$1', [p.id]).catch(() => ({ rows: [] }))).rows;
+  const docAct = (await pool.query(`SELECT doc_type, doc_id, event_type, actor, detail, created_at FROM document_activity
+     WHERE (doc_type='quote' AND doc_id=$1) OR (doc_type='invoice' AND doc_id = ANY($2)) ORDER BY created_at DESC LIMIT 80`, [p.quote_id || -1, invoices.map(i => i.id)])).rows;
+  const payments = invoices.length ? (await pool.query('SELECT ip.amount, ip.paid_at, ip.method, i.invoice_number FROM invoice_payments ip JOIN invoices i ON i.id=ip.invoice_id WHERE ip.invoice_id = ANY($1)', [invoices.map(i => i.id)])).rows : [];
+  const mails = p.customer_id ? (await pool.query(`SELECT subject, direction, internal_date, from_name FROM customer_emails WHERE customer_id=$1 ORDER BY internal_date DESC LIMIT 15`, [p.customer_id]).catch(() => ({ rows: [] }))).rows : [];
+
+  // Holdet (alle der er booket på sagens opgaver, ekskl. rene kapacitetsreservationer)
+  const team = {};
+  bookings.forEach(b => {
+    if (!b.user_id) return;
+    const t = team[b.user_id] = team[b.user_id] || { id: b.user_id, name: b.user_name, color: b.color, initials: b.initials, avatar_url: b.avatar_url, days: 0, done: 0, first: null, last: null };
+    const days = bookingWorkDatesServer(b.start_date, b.end_date);
+    if (String(b.planning_mode || 'daily') !== 'capacity') { t.days += days.length; t.done += b.completed_at ? days.length : bookingDoneDates(b).filter(d => days.includes(d)).length; }
+    const s0 = String(b.start_date).slice(0, 10), e0 = String(b.end_date || b.start_date).slice(0, 10);
+    if (!t.first || s0 < t.first) t.first = s0; if (!t.last || e0 > t.last) t.last = e0;
+  });
+
+  const ev = [];
+  const DOC_LBL = { created: 'oprettet', sent: 'sendt til kunden', viewed: 'åbnet af kunden', accepted: 'accepteret af kunden', signed: 'underskrevet', reminder: 'rykker sendt', paid: 'markeret betalt', converted: 'lavet til faktura' };
+  docAct.forEach(a => {
+    const isQ = a.doc_type === 'quote';
+    const inv = isQ ? null : invoices.find(i => i.id === a.doc_id);
+    const name = isQ ? ('Tilbud ' + (quote && quote.quote_number || '')) : ('Faktura ' + (inv && inv.invoice_number || ''));
+    ev.push({ at: a.created_at, kind: isQ ? 'quote' : 'invoice', title: name.trim() + ' ' + (DOC_LBL[a.event_type] || a.event_type), sub: a.actor ? 'af ' + a.actor : (a.detail || '') });
+  });
+  if (quote && quote.signed_at && !docAct.some(a => a.doc_type === 'quote' && a.event_type === 'accepted')) ev.push({ at: quote.signed_at, kind: 'quote', title: 'Tilbud accepteret', sub: (quote.signer_name ? 'Underskrevet af ' + quote.signer_name + ' · ' : '') + krFmtServer(quote.total) });
+  invoices.forEach(i => { if (!docAct.some(a => a.doc_type === 'invoice' && a.doc_id === i.id && a.event_type === 'created')) ev.push({ at: i.created_at, kind: 'invoice', title: 'Faktura ' + (i.invoice_number || '') + ' oprettet', sub: krFmtServer(i.total) }); });
+  payments.forEach(x => ev.push({ at: x.paid_at, kind: 'payment', title: 'Betaling modtaget ' + krFmtServer(x.amount), sub: 'Faktura ' + (x.invoice_number || '') + (x.method ? ' · ' + x.method : '') }));
+  bookings.forEach(b => {
+    if (String(b.planning_mode || 'daily') === 'capacity') return;
+    if (b.created_at) ev.push({ at: b.created_at, kind: 'booking', title: (b.user_name || 'Medarbejder') + ' booket på "' + (taskName[String(b.task_id)] || 'opgave') + '"', sub: String(b.start_date).slice(0, 10) + (b.end_date && b.end_date !== b.start_date ? ' → ' + String(b.end_date).slice(0, 10) : '') });
+    bookingDoneDates(b).forEach(d => ev.push({ at: d, dateOnly: true, kind: 'done', title: (b.user_name || 'Medarbejder') + ' færdig for dagen', sub: taskName[String(b.task_id)] || '' }));
+  });
+  finished.forEach(t => ev.push({ at: t.finished_at, kind: 'finished', title: 'Opgaven er løst og slut: ' + (t.name || ''), sub: '' }));
+  const photoDays = {};
+  photos.forEach(ph => { const k = String(ph.created_at).slice(0, 10) + '|' + (ph.user_name || ''); (photoDays[k] = photoDays[k] || { at: ph.created_at, user: ph.user_name, urls: [] }).urls.push(ph.url); });
+  Object.values(photoDays).forEach(g => ev.push({ at: g.at, kind: 'photo', title: (g.user || 'Nogen') + ' uploadede ' + g.urls.length + ' billede' + (g.urls.length === 1 ? '' : 'r'), sub: '', photos: g.urls.slice(0, 6) }));
+  time.forEach(t => ev.push({ at: t.entry_date, dateOnly: true, kind: 'time', title: (t.user_name || 'Medarbejder') + ' registrerede ' + (Math.round((Number(t.minutes) || 0) / 6) / 10).toString().replace('.', ',') + ' t', sub: t.note || '' }));
+  qa.forEach(q => ev.push({ at: q.submitted_at, kind: 'qa', title: 'Kvalitetssikring udfyldt', sub: '' }));
+  mails.forEach(m => { if (!m.internal_date) return; ev.push({ at: new Date(Number(m.internal_date)).toISOString().replace('T', ' ').slice(0, 19), kind: 'mail', title: (m.direction === 'in' || m.direction === 'inbound' ? 'Mail fra kunden: ' : 'Mail til kunden: ') + (m.subject || '(uden emne)'), sub: '' }); });
+  if (p.completion_email_sent_at) ev.push({ at: p.completion_email_sent_at, kind: 'mail', title: 'Afslutningsmail med plejevejledning sendt', sub: '' });
+  if (p.created_at) ev.push({ at: p.created_at, kind: 'created', title: 'Sagen oprettet', sub: '' });
+  ev.sort((a, b) => String(b.at || '').localeCompare(String(a.at || '')));
+
+  const invoiced = invoices.reduce((s, i) => s + (Number(i.total) || 0) - (Number(i.credited) || 0), 0);
+  const paid = invoices.reduce((s, i) => s + (Number(i.paid) || 0), 0);
+  res.json({
+    quote: quote ? { id: quote.id, number: quote.quote_number, total: Number(quote.total) || 0, tax: Number(quote.tax_amount) || 0, status: quote.status, signed_at: quote.signed_at } : null,
+    invoices: invoices.map(i => ({ id: i.id, number: i.invoice_number, total: Number(i.total) || 0, paid: Number(i.paid) || 0, status: i.status, created_at: i.created_at, due_date: i.due_date })),
+    invoiced, paid, minutes: time.reduce((s, t) => s + (Number(t.minutes) || 0), 0),
+    photo_count: photos.length, photos: photos.slice(0, 8).map(x => x.url), qa_count: qa.length,
+    team: Object.values(team), completion_email_sent_at: p.completion_email_sent_at || null,
+    events: ev.slice(0, 80)
+  });
+}));
+
 app.get('/api/projects/:id', auth, asyncRoute(async (req, res) => {
   const project = await pgOne('SELECT * FROM projects WHERE id=$1', [req.params.id]);
   if (!project) return res.status(404).json({ error: 'Projektet blev ikke fundet' });
