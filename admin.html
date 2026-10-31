@@ -4659,6 +4659,39 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
 
 
 /* v2.62.0 — sagsside: kundekort i siden + dashboard */
+/* v2.62.2 — sagsside: knapper flyttet til kundekortet, opgaver i design B */
+#page-project-detail .pd-head-bar{display:none}
+.pdx-selects{display:flex;flex-direction:column;gap:6px}
+.pdx-selects select{width:100%!important;border:1px solid #E5E7EB;border-radius:10px;padding:8px 10px;font:600 13px Inter,system-ui,sans-serif;background:#fff}
+.pdx-dd-row{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:8px}
+.pdx-dd .pdx-btn{width:100%}
+.pdx-dd .pdx-btn span{color:#9CA3AF;font-size:10px}
+.pdx-dd-menu{position:fixed;z-index:100001;background:#fff;border:1px solid #E5E7EB;border-radius:12px;box-shadow:0 22px 55px rgba(15,23,42,.18);padding:6px;min-width:220px}
+.pdx-dd-menu button{display:block;width:100%;text-align:left;border:0;background:transparent;border-radius:8px;padding:9px 12px;font:600 13px Inter,system-ui,sans-serif;color:#111318;cursor:pointer}
+.pdx-dd-menu button:hover{background:#F3F4F6}
+.pdx-dd-menu button.danger{color:#B91C1C}.pdx-dd-menu button.danger:hover{background:#FEF2F2}
+#pd-gantt-strip .gantt-list-row,#pd-gantt-strip .gantt-row{height:56px}
+#pd-gantt-strip .gantt-list-row.pdx-gl{flex-direction:column;align-items:stretch;justify-content:center;gap:2px;padding:0 12px;position:relative}
+.pdx-gl .glr-line1{display:flex;align-items:center;gap:7px;min-width:0}
+.pdx-gl .glr-line1 .gantt-inline-name{flex:1;min-width:0;border:0;background:transparent;font:700 13px Inter,system-ui,sans-serif;color:#111318;padding:2px 0;text-overflow:ellipsis}
+.pdx-gl .glr-line1 .gantt-inline-name:focus{background:#F9FAFB;outline:1px solid #E5E7EB;border-radius:6px;padding:2px 4px}
+.pdx-gdot{width:9px;height:9px;border-radius:50%;flex-shrink:0;background:#CBD5E1}
+.st-done .pdx-gdot{background:#16A34A}.st-prog .pdx-gdot{background:#3B82F6}.st-wait .pdx-gdot{background:#F59E0B}
+.pdx-glmeta{font-size:11.5px;color:#9CA3AF;padding-left:16px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pdx-glmeta i{color:#B45309;font-style:normal}
+#pd-gantt-strip .pdx-gl .glr-line2{display:none!important;padding-left:16px}
+#pd-gantt-strip .pdx-gl .pdx-glmeta{display:block}
+#pd-gantt-strip .pdx-gl:hover .pdx-glmeta,#pd-gantt-strip .pdx-gl:focus-within .pdx-glmeta{display:none}
+#pd-gantt-strip .pdx-gl:hover .glr-line2,#pd-gantt-strip .pdx-gl:focus-within .glr-line2{display:flex!important}
+.pdx-gl .glr-drag{opacity:0;transition:opacity .12s}.pdx-gl:hover .glr-drag{opacity:1}
+#pd-gantt-strip .gantt-bar.pdx-gb{top:12px;height:32px;border-radius:9px;background:#CBD5E1;color:#334155;box-shadow:none;font:700 11.5px Inter,system-ui,sans-serif}
+#pd-gantt-strip .gantt-bar.pdx-gb.st-done{background:#16A34A;color:#fff}
+#pd-gantt-strip .gantt-bar.pdx-gb.st-prog{background:#3B82F6;color:#fff}
+#pd-gantt-strip .gantt-bar.pdx-gb.st-wait{background:#F59E0B;color:#fff}
+#pd-gantt-strip .gantt-bar.pdx-gb .gantt-bar-progress{background:rgba(255,255,255,.18)}
+.pdx-gb-label{position:relative;z-index:1;padding:0 9px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:block;line-height:32px;pointer-events:none}
+#pd-gantt-strip .gantt-bar.pdx-gb.selected{box-shadow:0 0 0 2.5px #F59E0B}
+
 #page-project-detail.active{display:grid;grid-template-columns:300px minmax(0,1fr);gap:16px;align-items:start}
 #page-project-detail>.page-head{grid-column:1/-1}
 @media(max-width:1100px){#page-project-detail.active{grid-template-columns:minmax(0,1fr)}}
@@ -5316,7 +5349,7 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
        i browseren faktisk ER det nyeste deploy, eller om Render/GitHub bare
        ikke er nået at opdatere endnu — i stedet for at skulle gætte om en
        rettelse "stadig ikke virker" eller bare endnu ikke er live. -->
-  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build v2.62.1 · 2026-10-30</span></div>
+  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build v2.62.2 · 2026-10-30</span></div>
 </aside>
 <div class="app-content">
 <!-- RUNDE FB — AI-ASSISTENTEN (Martin: "en ai der er nede i venstre hjørne af
@@ -34709,6 +34742,21 @@ function pdxTaskDone(t){return t.status==='done'||Number(t.progress)>=1||!!t.man
 function pdxKr(n){return krFmt(Math.round(Number(n)||0));}
 function pdxDate(s){if(!s)return '';var x=String(s);var d=x.length<=10?date(x):new Date(x.replace(' ','T')+(x.indexOf('Z')<0&&x.length>10?'Z':''));if(isNaN(d))return '';return d.getDate()+'/'+(d.getMonth()+1)+(d.getFullYear()!==new Date().getFullYear()?'-'+d.getFullYear():'');}
 function pdxWhen(e){if(!e.at)return '';var x=String(e.at);if(e.dateOnly||x.length<=10)return pdxDate(x);var d=new Date(x.replace(' ','T')+(x.indexOf('Z')<0?'Z':''));if(isNaN(d))return pdxDate(x);var t=String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0');var today=iso(new Date()),y=iso(new Date(Date.now()-86400000)),di=iso(d);return (di===today?'I dag':di===y?'I går':pdxDate(x))+' '+t;}
+function pdxCloseDd(){var m=document.getElementById('pdx-dd-menu');if(m)m.remove();}
+function pdxOpenDd(btn){
+  var was=document.getElementById('pdx-dd-menu');pdxCloseDd();if(was&&was.dataset.for===btn.dataset.pdxDd)return;
+  function vis(id){var x=document.getElementById(id);return x&&x.style.display!=='none';}
+  function lbl(id,fb){var x=document.getElementById(id);return x?(x.textContent.trim()||fb):fb;}
+  var items=btn.dataset.pdxDd==='docs'
+    ?[['pd-quote-link','📄 Se tilbud (PDF)'],['pd-quote-edit-btn','✎ Rediger tilbud / lav faktura'],['pd-attach-quote-btn','🔗 Tilknyt tilbud'],['pd-invoice-link','🧾 Se faktura']]
+    :[['pd-crm-link-btn',lbl('pd-crm-link-btn','Åbn handel')],['pd-send-portal-btn','🔗 Send kundeportal'],['pd-delete-btn','🗑 Slet sagen']];
+  items=items.filter(function(it){return vis(it[0]);});
+  var m=document.createElement('div');m.id='pdx-dd-menu';m.className='pdx-dd-menu';m.dataset.for=btn.dataset.pdxDd;
+  m.innerHTML=items.length?items.map(function(it){return '<button type="button" data-pdx-proxy="'+it[0]+'"'+(it[0]==='pd-delete-btn'?' class="danger"':'')+'>'+esc(it[1])+'</button>';}).join(''):'<div class="pdx-empty" style="padding:8px 10px">Intet at vise</div>';
+  document.body.appendChild(m);
+  var r=btn.getBoundingClientRect();m.style.left=Math.min(r.left,window.innerWidth-m.offsetWidth-8)+'px';m.style.top=(r.bottom+6)+'px';
+  setTimeout(function(){document.addEventListener('mousedown',function h(ev){if(!m.contains(ev.target)&&!btn.contains(ev.target)){pdxCloseDd();document.removeEventListener('mousedown',h,true);}},true);},0);
+}
 function renderPdSide(){
   var el=document.getElementById('pdx-side');if(!el||!pjCurrent)return;
   var d=pjCurrent,tasks=(d.tasks||[]).filter(function(t){return !t.is_group;});
@@ -34734,7 +34782,13 @@ function renderPdSide(){
       +'<div id="pdx-kv-quote"><span>Tilbud</span><b>…</b></div>'
       +'<div id="pdx-kv-inv"><span>Faktureret</span><b>…</b></div>'
       +'<div id="pdx-kv-profit" style="display:none"><span>Fortjeneste</span><b>…</b></div>'
-    +'</div></div>';
+    +'</div></div>'
+    +'<div class="pdx-card"><div class="pdx-k">Sagen</div><div class="pdx-selects" id="pdx-selects"></div>'
+    +'<div class="pdx-dd-row"><div class="pdx-dd"><button type="button" class="pdx-btn" data-pdx-dd="docs">📄 Tilbud & faktura <span>▾</span></button></div>'
+    +'<div class="pdx-dd"><button type="button" class="pdx-btn" data-pdx-dd="more">⋯ Mere <span>▾</span></button></div></div></div>';
+  // Flyt fag-/status-vælgerne fra den gamle top-bjælke ind i kortet (beholder deres lyttere).
+  var selBox=document.getElementById('pdx-selects');
+  ['pd-type-select','pd-status-select'].forEach(function(id){var x=document.getElementById(id);if(x&&selBox)selBox.appendChild(x);});
   var c1=document.getElementById('pdx-cnt-tasks');if(c1)c1.textContent=tasks.length||'';
   var c2=document.getElementById('pdx-cnt-photos');if(c2)c2.textContent=((d.photos||[]).length)||'';
   var c3=document.getElementById('pdx-cnt-time');if(c3)c3.textContent=mins?(Math.round(mins/60))+' t':'';
@@ -34783,7 +34837,7 @@ function renderPdDashboard(){
   var lastDone=tasks.filter(pdxTaskDone).sort(function(a,c){return String(c.end_date||'').localeCompare(String(a.end_date||''));}).slice(0,Math.max(0,4-open.length));
   var list=open.slice(0,4).concat(lastDone);
   document.getElementById('pdx-next').innerHTML='<div class="pdx-k">Næste opgaver</div>'+(list.length?'<div class="pdx-list">'+list.map(function(t){
-      var dn=pdxTaskDone(t),who=(t.bookings||[]).map(function(bk){return String(bk.user_name||'').split(' ')[0];}).filter(Boolean);
+      var dn=pdxTaskDone(t),who=(t.bookings||[]).map(function(bk){return String(bk.user_name||'').split(' ')[0];}).filter(function(v,i,a){return v&&a.indexOf(v)===i;});
       return '<div data-pdx-task="'+esc(t.id)+'"><span><b>'+esc(t.name||'Opgave')+'</b><small>'+(who.length?esc(who.join(', ')):'<i>Ikke booket</i>')+'</small></span><em class="'+(dn?'ok':(t.start_date&&t.start_date.slice(0,10)<iso(new Date())?'late':''))+'">'+(dn?'✓ Færdig':(t.start_date?pdxDate(t.start_date):'Ingen dato'))+'</em></div>';
     }).join('')+'</div>':'<div class="pdx-empty">Ingen opgaver på sagen endnu</div>')+'<button type="button" class="pdx-link" data-pdx-tab="tasks">Se alle '+tasks.length+' opgaver →</button>';
   // Holdet + billeder
@@ -34822,6 +34876,8 @@ function renderPdDashboard(){
   }
   document.addEventListener('click',function(e){
     var page=document.getElementById('page-project-detail');if(!page||!page.contains(e.target))return;
+    var dd=e.target.closest('[data-pdx-dd]');if(dd){e.preventDefault();pdxOpenDd(dd);return;}
+    var mi=e.target.closest('[data-pdx-proxy]');if(mi){var o=document.getElementById(mi.dataset.pdxProxy);pdxCloseDd();if(o)o.click();return;}
     var b=e.target.closest('[data-pdx]');if(b){e.preventDefault();act(b.dataset.pdx);return;}
     var t=e.target.closest('[data-pdx-act]');if(t){act(t.dataset.pdxAct);return;}
     var tab=e.target.closest('[data-pdx-tab]');if(tab){switchPdTab(tab.dataset.pdxTab);return;}
@@ -35594,6 +35650,8 @@ function makePdGanttDragHandler(container){
     container.querySelectorAll('.glr-dragging,.glr-dragover').forEach(function(el){el.classList.remove('glr-dragging','glr-dragover');});
   });
 }
+function pdxGanttStatus(t){if(t.status==='done'||Number(t.progress)>=1)return 'done';if(t.status==='in_progress')return 'prog';if(t.status==='waiting')return 'wait';return 'todo';}
+function pdxGanttWho(t){var names=[],ini=[];(t.bookings||[]).forEach(function(b){var n=String(b.user_name||'').trim();if(!n||names.indexOf(n.split(' ')[0])>-1)return;names.push(n.split(' ')[0]);var u=(users||[]).find(function(x){return x.name===n;});ini.push((u&&u.initials)||n.split(/\s+/).map(function(x){return x[0]||'';}).join('').slice(0,2).toUpperCase());});return {names:names,ini:ini};}
 function renderPdGanttStrip(){
   var el=document.getElementById('pd-gantt-strip');
   // RETTET (RUNDE P, Martins ønske) — listen blev FØR sorteret efter startdato,
@@ -35630,8 +35688,10 @@ function renderPdGanttStrip(){
     // RUNDE P — linje 2 tilføjet: hurtig-dato-felt (Martins ønske "skal jeg hurtig
     // kunne sætte en dato") + kæde-vælger ("en tråd mellem hver task").
     var depId=(t.depends_on&&t.depends_on[0])||'';
-    listRows+='<div class="gantt-list-row" data-task-id="'+t.id+'">'
-      +'<div class="glr-line1">'
+    // v2.62.2 — design B: statusprik + navn, og hvem der er booket (detaljer ved hover).
+    var stCls=pdxGanttStatus(t),who=pdxGanttWho(t);
+    listRows+='<div class="gantt-list-row pdx-gl st-'+stCls+'" data-task-id="'+t.id+'">'
+      +'<div class="glr-line1"><span class="pdx-gdot" title="'+esc({done:'Færdig',prog:'I gang',wait:'Afventer',todo:'Ikke startet'}[stCls])+'"></span>'
       +'<span class="glr-drag" data-action="glr-drag" draggable="true" title="Træk for at ændre rækkefølgen">⠿</span>'
       // RUNDE BU (Martin: "Hvis man har booket alt i kapacitetsbordet engang
       // på et projekt. Burde der være et flueben, så man kan se det. Man skal
@@ -35647,6 +35707,7 @@ function renderPdGanttStrip(){
       +(t.has_booking?'<span class="glr-booked-badge" title="Allerede booket (Kapacitetsbordet eller Daglig plan) — pas på ikke at booke den igen">✓</span>':'')
       +'<input class="gantt-inline-name" data-action="glr-name" value="'+esc(t.name||'')+'" title="'+esc(t.name||'')+'">'
       +'</div>'
+      +'<div class="pdx-glmeta">'+(who.names.length?esc(who.names.join(', ')):'<i>Ikke booket</i>')+(t.start_date?' · '+esc(pdxDate(t.start_date))+(t.end_date&&t.end_date!==t.start_date?'–'+esc(pdxDate(t.end_date)):''):'')+'</div>'
       +'<div class="glr-line2">'
       +'<input type="date" class="gantt-inline-date" data-action="glr-date" value="'+esc((t.start_date||'').slice(0,10))+'" title="Sæt/ret startdato hurtigt">'
       +'<select class="gantt-link-select'+(depId?' linked':'')+'" data-action="glr-link" title="Kæd sammen med en anden opgave — når den kædede opgave flytter dato, flytter denne med (og omvendt)">'+pdGanttLinkOptionsHtml(tasks,t.id,depId)+'</select>'
@@ -35658,9 +35719,9 @@ function renderPdGanttStrip(){
     var offset=Math.round((s-range.start)/86400000),span=Math.max(1,Math.round((e-s)/86400000)+1);
     timelineRows+='<div class="gantt-row">'+
       '<div class="gantt-row-bg">'+bgCols+'</div>'+
-      '<div class="gantt-bar'+(pdGanttSelected.has(String(t.id))?' selected':'')+'" data-pd-task-id="'+t.id+'" style="left:'+(offset*dw)+'px;width:'+(span*dw-4)+'px" title="'+esc(t.name)+' ('+(t.start_date||'?')+' – '+(t.end_date||'?')+') — træk for at flytte, træk i kanten for at ændre varighed">'+
+      '<div class="gantt-bar pdx-gb st-'+stCls+(pdGanttSelected.has(String(t.id))?' selected':'')+'" data-pd-task-id="'+t.id+'" style="left:'+(offset*dw)+'px;width:'+(span*dw-4)+'px" title="'+esc(t.name)+' ('+(t.start_date||'?')+' – '+(t.end_date||'?')+') — træk for at flytte, træk i kanten for at ændre varighed">'+
         '<div class="gantt-bar-progress" style="width:'+Math.round((t.progress||0)*100)+'%"></div>'+
-        '<span class="gantt-bar-label">'+esc(t.name||'')+'</span>'+
+        '<span class="pdx-gb-label">'+(stCls==='done'?'✓ ':'')+esc(who.ini.length?who.ini.join(' '):(t.name||''))+'</span>'+
         '<div class="gantt-bar-handle left" data-handle="left"></div>'+
         '<div class="gantt-bar-handle right" data-handle="right"></div>'+
         '<div class="gantt-bar-link-handle" data-link-handle="1" title="Træk herfra til en anden opgave for at kæde dem sammen (som en tråd) — så flytter de dato med hinanden"></div>'+
@@ -35671,7 +35732,7 @@ function renderPdGanttStrip(){
   // (se renderGantt() længere oppe), bare med #pd-gantt-strip's egne
   // rækkehøjde/bjælke-mål (72px/centrum 36px, ikke hovedGanttets 64px/32px) og
   // et andet marker-id, så de to SVG'er ikke kolliderer i samme DOM.
-  var PD_ROW_H=72,PD_BAR_CENTER=36;
+  var PD_ROW_H=56,PD_BAR_CENTER=28;
   var svgW=range.days*dw,svgH=tasks.length*PD_ROW_H;
   var deps='';
   tasks.forEach(function(t,idx){
