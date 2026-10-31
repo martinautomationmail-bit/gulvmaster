@@ -960,6 +960,8 @@ async function initSchema() {
     -- krydset af (fx en mester) kan åbne kortet og se hvor kollegerne er booket,
     -- og hvad de er tilknyttet resten af ugen. Admin har altid adgang uanset dette flag.
     ALTER TABLE users ADD COLUMN IF NOT EXISTS can_view_team_overview INTEGER DEFAULT 0;
+    -- v2.61.0 — en admin kan også være med i planlægningen (kan bookes på opgaver).
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS bookable INTEGER DEFAULT 0;
 
     -- LØN & AKKORD (sep. 2026, Martins ønske): pay_type styrer om en medarbejder aflønnes
     -- pr. time (hourly_wage, kr/time) eller pr. akkord (stykpris fra akkord_items, se
@@ -6089,7 +6091,7 @@ app.get('/api/users', auth, panelAccess('dashboard'), asyncRoute(async (req, res
   // brugers rigtige rollenavn — kun det generiske "Medarbejder". Ikke følsomt at vise
   // bredt (kun hvilken RAD/panel-rolle en bruger har, ikke selve rollens rettigheder).
   const result = await pool.query(`
-    SELECT id,name,email,role,color,initials,jobtread_name,active,worker_type,vendor_group,trade,weekly_capacity,avatar_url,COALESCE(can_login,1) AS can_login,personal_email,phone,COALESCE(notify_schedule_changes,0) AS notify_schedule_changes,COALESCE(is_finance_admin,0) AS is_finance_admin,COALESCE(can_view_team_overview,0) AS can_view_team_overview,COALESCE(pay_type,'hourly') AS pay_type,panel_role_id
+    SELECT id,name,email,role,color,initials,jobtread_name,active,worker_type,vendor_group,trade,weekly_capacity,avatar_url,COALESCE(can_login,1) AS can_login,personal_email,phone,COALESCE(notify_schedule_changes,0) AS notify_schedule_changes,COALESCE(is_finance_admin,0) AS is_finance_admin,COALESCE(can_view_team_overview,0) AS can_view_team_overview,COALESCE(pay_type,'hourly') AS pay_type,panel_role_id,COALESCE(bookable,0) AS bookable
     FROM users
     ORDER BY CASE WHEN role='admin' THEN 0 ELSE 1 END,
              CASE WHEN worker_type='vendor' THEN 1 ELSE 0 END,
@@ -6206,6 +6208,7 @@ app.post('/api/users', auth, adminOnly, asyncRoute(async (req, res) => {
       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21)
       RETURNING id
     `, [String(body.name).trim(), email, bcrypt.hashSync(password, 10), role, body.color || '#2563EB', initials, body.jobtread_name || null, body.active === 0 ? 0 : 1, workerType, body.vendor_group || null, body.trade || null, weeklyCapacity, canLogin ? 1 : 0, body.avatar_url || null, body.personal_email || null, body.notify_schedule_changes ? 1 : 0, body.phone ? String(body.phone).trim().slice(0, 30) : null, body.can_view_team_overview ? 1 : 0, panelRoleId, payType, hourlyWage]);
+    if (body.bookable !== undefined) await pool.query('UPDATE users SET bookable=$1 WHERE id=$2', [body.bookable ? 1 : 0, result.rows[0].id]);
     res.json({ ok: true, id: result.rows[0].id });
     // Send login-vejledning, så medarbejderen selv kan sætte sin adgangskode —
     // kun relevant for brugere der faktisk kan logge ind.
@@ -6337,6 +6340,7 @@ app.put('/api/users/:id', auth, adminOnly, asyncRoute(async (req, res) => {
       UPDATE users SET name=$1,email=$2,password_hash=$3,role=$4,color=$5,initials=$6,jobtread_name=$7,active=$8,worker_type=$9,vendor_group=$10,trade=$11,weekly_capacity=$12,can_login=$13,avatar_url=$14,personal_email=$15,notify_schedule_changes=$16,phone=$17,can_view_team_overview=$18,panel_role_id=$19,pay_type=$20,hourly_wage=$21
       WHERE id=$22
     `, [next.name, next.email, next.password_hash, next.role, next.color, next.initials, next.jobtread_name, next.active, next.worker_type, next.vendor_group, next.trade, next.weekly_capacity, next.can_login, next.avatar_url, next.personal_email, next.notify_schedule_changes, next.phone, next.can_view_team_overview, next.panel_role_id, next.pay_type, next.hourly_wage, id]);
+    if (body.bookable !== undefined) await pool.query('UPDATE users SET bookable=$1 WHERE id=$2', [body.bookable ? 1 : 0, id]);
     res.json({ ok: true });
   } catch (error) {
     if (error.code === '23505') return res.status(400).json({ error: 'Email er allerede i brug' });
@@ -8901,7 +8905,7 @@ app.post('/api/tasks/manual-and-book', auth, panelAccess('plan'), asyncRoute(asy
       // Booker som kapacitetsreservation (blokerer dage, ingen bestemt mødetid) i
       // stedet for en almindelig dags-booking — matcher at skabelonen blev trukket
       // ind i Kapacitet, ikke Daglig plan.
-      const user = await pgOne("SELECT id,weekly_capacity FROM users WHERE id=$1 AND active=1 AND role='employee'", [Number(body.user_id)]);
+      const user = await pgOne("SELECT id,weekly_capacity FROM users WHERE id=$1 AND active=1 AND (role='employee' OR COALESCE(bookable,0)=1)", [Number(body.user_id)]);
       if (!user) throw new Error('Medarbejderen blev ikke fundet');
       // FEJL RETTET (okt. 2026, Martin: "hvis jeg prøver at booke Melissa manuelt
       // så deler den over 1,5 dage i uge 41 og 1,5 dage i uge 42 ... det har jeg
@@ -8993,7 +8997,7 @@ app.post('/api/capacity-reservations', auth, panelAccess('capacity'), asyncRoute
   const body = req.body || {};
   const startDate = validDate(String(body.week_start || '')) ? String(body.week_start) : null;
   if (!startDate) return res.status(400).json({ error: 'Vælg en gyldig startdato' });
-  const user = await pgOne("SELECT id,weekly_capacity FROM users WHERE id=$1 AND active=1 AND role='employee'", [Number(body.user_id)]);
+  const user = await pgOne("SELECT id,weekly_capacity FROM users WHERE id=$1 AND active=1 AND (role='employee' OR COALESCE(bookable,0)=1)", [Number(body.user_id)]);
   if (!user) return res.status(400).json({ error: 'Medarbejderen eller holdet blev ikke fundet' });
   const capacityDays = Math.max(0.25, Math.min(60, Number(body.capacity_days) || 1));
   const weeklyCapacity = Number(user.weekly_capacity) || 5;
@@ -9090,7 +9094,7 @@ app.put('/api/capacity-reservations/:id', auth, panelAccess('capacity'), asyncRo
   // Kapacitet planlægges pr. uge, aldrig en bestemt ugedag — snap altid til ugens
   // mandag her, uanset hvad klienten sender, ligesom oprettelsen (splitCapacityAcrossWeeks) gør.
   const startDate = mondayOfDate(rawStartDate) || rawStartDate;
-  const user = await pgOne("SELECT id FROM users WHERE id=$1 AND active=1 AND role='employee'", [Number(body.user_id || current.user_id)]);
+  const user = await pgOne("SELECT id FROM users WHERE id=$1 AND active=1 AND (role='employee' OR COALESCE(bookable,0)=1)", [Number(body.user_id || current.user_id)]);
   if (!user) return res.status(400).json({ error: 'Medarbejderen eller holdet blev ikke fundet' });
   const capacityDays = Math.max(0.25, Math.min(60, Number(body.capacity_days) || current.capacity_days || 1));
   const endDate = addWorkingDays(startDate, capacityDays);
@@ -9129,7 +9133,7 @@ app.put('/api/capacity-reservations/:id/spread', auth, panelAccess('capacity'), 
   if (clean.length > 26) return res.status(400).json({ error: 'Højst 26 uger ad gangen' });
   clean.sort((a, b) => a.monday.localeCompare(b.monday));
   const userId = Number(req.body.user_id || current.user_id);
-  const user = await pgOne("SELECT id FROM users WHERE id=$1 AND active=1 AND role='employee'", [userId]);
+  const user = await pgOne("SELECT id FROM users WHERE id=$1 AND active=1 AND (role='employee' OR COALESCE(bookable,0)=1)", [userId]);
   if (!user) return res.status(400).json({ error: 'Medarbejderen eller holdet blev ikke fundet' });
   const endOf = (monday, days) => addWorkingDays(monday, Math.min(5, Math.max(1, Math.ceil(days))));
   const client = await pool.connect();
@@ -10736,7 +10740,7 @@ app.get('/api/team/overview', auth, asyncRoute(async (req, res) => {
   // intet) viser almindelige medarbejdere som før.
   const wantVendors = String(req.query.group || '') === 'vendor';
   const employeesRes = await pool.query(
-    `SELECT id,name,color,initials,avatar_url,trade FROM users WHERE active=1 AND role='employee' AND COALESCE(worker_type,'employee') ${wantVendors ? '=' : '!='} 'vendor' ORDER BY name`
+    `SELECT id,name,color,initials,avatar_url,trade FROM users WHERE active=1 AND (role='employee' OR COALESCE(bookable,0)=1) AND COALESCE(worker_type,'employee') ${wantVendors ? '=' : '!='} 'vendor' ORDER BY name`
   );
   const byUser = {};
   employeesRes.rows.forEach(u => { byUser[u.id] = { ...u, today: [], week: {} }; });
@@ -17814,7 +17818,7 @@ app.post('/api/projects/:id/bulk-book-capacity', auth, panelAccess('capacity'), 
   // medarbejder som før.
   const userIds = [...new Set(taskInputs.map(t => Number(t.user_id)).filter(Boolean))];
   const userRows = userIds.length
-    ? (await pool.query("SELECT id,weekly_capacity FROM users WHERE id = ANY($1::int[]) AND active=1 AND role='employee'", [userIds])).rows
+    ? (await pool.query("SELECT id,weekly_capacity FROM users WHERE id = ANY($1::int[]) AND active=1 AND (role='employee' OR COALESCE(bookable,0)=1)", [userIds])).rows
     : [];
   const capacityByUser = new Map(userRows.map(u => [u.id, Number(u.weekly_capacity) || 5]));
 
@@ -18935,7 +18939,7 @@ app.get('/api/dashboard/capacity-forecast', auth, panelAccess('dashboard'), asyn
   }
   const capByTrade = await pool.query(`
     SELECT COALESCE(NULLIF(trade,''),'Ukendt fag') AS trade, SUM(COALESCE(weekly_capacity,5)) AS capacity
-    FROM users WHERE active=1 AND role='employee' GROUP BY trade
+    FROM users WHERE active=1 AND (role='employee' OR COALESCE(bookable,0)=1) GROUP BY trade
   `);
   const bookedByTradeWeek = await pool.query(`
     SELECT COALESCE(NULLIF(u.trade,''),'Ukendt fag') AS trade, b.week_key, SUM(b.days) AS booked
@@ -18951,7 +18955,7 @@ app.get('/api/dashboard/kpis', auth, panelAccess('dashboard'), asyncRoute(async 
     SELECT u.id,u.name,u.color,COALESCE(u.weekly_capacity,5) AS capacity,
            COALESCE(SUM(b.days) FILTER (WHERE b.week_key = TO_CHAR(CURRENT_DATE,'IYYY-"W"IW')),0) AS booked_this_week
     FROM users u LEFT JOIN planning_bookings b ON b.user_id=u.id AND COALESCE(b.planning_mode,'daily')='daily'
-    WHERE u.active=1 AND u.role='employee'
+    WHERE u.active=1 AND (u.role='employee' OR COALESCE(u.bookable,0)=1)
     GROUP BY u.id,u.name,u.color,u.weekly_capacity ORDER BY u.name ASC
   `);
   const avgTurnaround = await pool.query(`
