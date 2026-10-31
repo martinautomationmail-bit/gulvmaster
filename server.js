@@ -10663,6 +10663,8 @@ function bookingSelect(where = '') {
            -- igangværende/på hold/afsluttede sager. NULL når bookingen hænger på en
            -- opgave uden sag (manuel/kapacitet) — den skjules aldrig af filteret.
            p.status AS task_project_status,
+           -- v2.63.0 — sagens projekttype, så bookinger farves efter Enterprise/Gulvlægning osv.
+           p.project_type AS task_project_type,
            -- RUNDE DM (Martin: "medarbejden kan se hvad tilbuddet uden priser når
            -- jeg fx har booket en task på dem") — sat når sagen opgaven hører til
            -- HAR et tilbud hæftet på sig. employee.html bruger den til at vise et

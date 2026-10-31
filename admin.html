@@ -5349,7 +5349,7 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
        i browseren faktisk ER det nyeste deploy, eller om Render/GitHub bare
        ikke er nået at opdatere endnu — i stedet for at skulle gætte om en
        rettelse "stadig ikke virker" eller bare endnu ikke er live. -->
-  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build v2.62.2 · 2026-10-30</span></div>
+  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build v2.63.0 · 2026-10-30</span></div>
 </aside>
 <div class="app-content">
 <!-- RUNDE FB — AI-ASSISTENTEN (Martin: "en ai der er nede i venstre hjørne af
@@ -12341,6 +12341,25 @@ var DAYS=['Søn','Man','Tir','Ons','Tor','Fre','Lør'];
 // og hvis serveren af en eller anden grund ikke har nogen fag registreret.
 var TYPE={lay:{label:'Gulvlægning',bar:'#5B8DEF'},sand:{label:'Gulvslibning',bar:'#4CAF7D'},paint:{label:'Malerservice',bar:'#E0A731'},sub:{label:'Underlev.',bar:'#9B7FE0'},other:{label:'Andet',bar:'#9AA3B2'}};
 var taskTypesList=Object.keys(TYPE).map(function(k){return {key:k,label:TYPE[k].label,color:TYPE[k].bar};});
+// v2.63.0 — bookinger/opgaver farves efter SAGENS projekttype (Enterprise,
+// Gulvlægning, Gulvslibning, Maler …) når de hører til en sag, så man i
+// Dagligplan/Kapacitet kan se hvilken slags sag en opgave er del af. Farven
+// tages fra Fag-listen (samme navn), ellers en fast farve pr. projekttype.
+var PT_FALLBACK={enterprise:'#8B5CF6',gulvlægning:'#3B82F6',gulvslibning:'#16A34A',maler:'#F59E0B',malerservice:'#F59E0B',tømrer:'#B45309',underleverandør:'#9B7FE0'};
+var ptColorCache={};
+function projectTypeColor(pt){
+  var k=String(pt||'').trim().toLowerCase();if(!k)return null;
+  if(ptColorCache[k])return ptColorCache[k];
+  var tt=(taskTypesList||[]).find(function(y){var l=String(y.label||'').toLowerCase();return l===k;})||(taskTypesList||[]).find(function(y){var l=String(y.label||'').toLowerCase();return l&&(l.indexOf(k)===0||k.indexOf(l)===0);});
+  var c=(tt&&tt.color)||PT_FALLBACK[k];
+  if(!c){var pal=['#0EA5E9','#EC4899','#14B8A6','#F97316','#6366F1','#84CC16'],h=0;for(var i=0;i<k.length;i++)h=(h*31+k.charCodeAt(i))>>>0;c=pal[h%pal.length];}
+  return ptColorCache[k]=c;
+}
+function bType(x){
+  var pt=x&&(x.task_project_type||x.project_type);
+  if(pt){var c=projectTypeColor(pt);if(c)return {label:pt,bar:c,projectType:true};}
+  return TYPE[(x&&x.type_guess)||'other']||TYPE.other;
+}
 async function loadTaskTypes(){
   var list=await api('/api/task-types');
   if(!list||!list.length)return;
@@ -12348,7 +12367,7 @@ async function loadTaskTypes(){
   var next={};
   list.forEach(function(t){next[t.key]={label:t.label,bar:t.color};});
   if(!next.other)next.other={label:'Andet',bar:'#94A3B8'};
-  TYPE=next;
+  TYPE=next;ptColorCache={};
 }
 function renderTaskTypesAdmin(){
   var el=document.getElementById('task-types-list');if(!el)return;
@@ -13979,7 +13998,7 @@ function teamFilterHTML(scope){
 }
 
 function taskCard(t,scope){
-  var type=TYPE[t.type_guess]||TYPE.other,planned=+t.assignment_count>0,completed=taskIsCompleted(t);
+  var type=bType(t),planned=+t.assignment_count>0,completed=taskIsCompleted(t);
   var overdue=!planned&&!completed&&t.start_date&&String(t.start_date).slice(0,10)<iso(new Date());
   var capacityHint=scope==='capacity'&&!completed?'<div class="task-drag-hint">⠿ Træk direkte til den ønskede uge</div>':'';
   var contact=phoneMarkup(t.customer_phone,true);
@@ -14124,7 +14143,7 @@ function poolSummaryHTML(list){
 function taskCardSmart(t,scope,ctx){
   // RUNDE FQ — rolig udgave: ét kort med farvet venstrekant, to linjer tekst,
   // forslaget som én diskret linje og små knapper. Ingen ikon-bokse/gradienter.
-  var type=TYPE[t.type_guess]||TYPE.other,planned=+t.assignment_count>0;
+  var type=bType(t),planned=+t.assignment_count>0;
   var sd=t.start_date?String(t.start_date).slice(0,10):'',overdue=!planned&&sd&&sd<iso(new Date());
   var c=type.bar||'#94A3B8',need=suggestedCapacityDays(t),addr=poolShortAddr(t.job_address);
   var name=String(t.job_name||'Uden kunde').replace(/\s+-\s*$/,'');
@@ -14358,7 +14377,7 @@ function bookingStatusIcon(b){
 }
 // ASSIGNMENT PILL spanning multiple visible days
 function assignPillSpan(b,spanDays,ds,canUp,canDown){
-  var type=TYPE[b.type_guess||'other']||TYPE.other;
+  var type=bType(b);
   var daysLabel=+b.days>1?' <span style="font-size:8px;opacity:.75;background:rgba(0,0,0,.1);padding:1px 4px;border-radius:3px">'+b.days+'d</span>':'';
   var isDone=!!b.completed_at;
   var extraStyle=bookingColorStyle(b,type)+(spanDays>1?'position:relative;z-index:2;margin-right:calc('+(spanDays-1)+'*(180px + 8px) - 10px);width:calc('+spanDays+'*(180px) + '+(spanDays-1)+'*8px - 10px);min-width:0':'');
@@ -14398,7 +14417,7 @@ function assignPillSpan(b,spanDays,ds,canUp,canDown){
 }
 // Pill for bookings continuing from a previous week
 function assignPillContinue(b){
-  var type=TYPE[b.type_guess||'other']||TYPE.other;
+  var type=bType(b);
   return '<div class="assignment draggable-assignment '+esc(b.type_guess||'other')+(b.completed_at?' is-done':'')+'" draggable="true" data-booking-id="'+b.id+'" style="opacity:.75;'+bookingColorStyle(b,type)+'">'+
     '<div class="assign-top"><span class="assign-name">↩ '+esc(b.job_name||b.task_name||'Opgave')+'</span>'+
     '<button class="assign-x" data-action="remove-booking" data-booking-id="'+b.id+'">×</button></div>'+
@@ -14688,7 +14707,7 @@ function planAltPeople(){
 function planAltBookingVisible(b){
   return !isCapacityBooking(b)&&matchesPoolProjectStatus(b.task_project_status);
 }
-function planAltType(b){return TYPE[b.type_guess||'other']||TYPE.other;}
+function planAltType(b){return bType(b);}
 function planAltColor(b){return bookingBarColor(b,planAltType(b));}
 function planAltAvatar(u,size){
   var c=u.color||u.user_color||'#2563EB',s=size||32;
@@ -14699,6 +14718,9 @@ function planAltDayHead(d){
   return '<span class="pa-dow">'+DAYS[d.getDay()]+'</span><span class="pa-dnum">'+d.getDate()+'/'+(d.getMonth()+1)+'</span>';
 }
 function planAltLegend(){
+  // v2.63.0 — farverne følger nu sagens projekttype.
+  var pts=(typeof pjProjectTypes!=='undefined'&&pjProjectTypes&&pjProjectTypes.length)?pjProjectTypes:null;
+  if(pts)return '<div class="pa-legend">'+pts.map(function(pt){return '<span><i style="background:'+projectTypeColor(pt)+'"></i>'+esc(pt)+'</span>';}).join('')+'<span><i style="background:'+TYPE.other.bar+'"></i>Uden sag</span><span><i style="background:'+DONE_COLOR+'"></i>Færdig</span></div>';
   return '<div class="pa-legend">'+Object.keys(TYPE).filter(function(k){return k!=='other';}).map(function(k){
     return '<span><i style="background:'+TYPE[k].bar+'"></i>'+esc(TYPE[k].label||k)+'</span>';
   }).join('')+'<span><i style="background:'+DONE_COLOR+'"></i>Færdig</span></div>';
@@ -16081,7 +16103,7 @@ function openCapacityModal(opts){
 }
 // ── RUNDE FS — moderne popup: overskrift, dage-stepper og live belastning ──
 function capmDecorate(b,t){
-  var type=t?(TYPE[t.type_guess]||TYPE.other):null,c=(type&&type.bar)||'#6366F1';
+  var type=t?(bType(t)):null,c=(type&&type.bar)||'#6366F1';
   var ic=document.getElementById('capm-ic');
   ic.style.background=c+'22';ic.style.color=c;
   ic.textContent=t?String((t.job_name||'?').trim()[0]||'?').toUpperCase():'📊';
@@ -16406,7 +16428,7 @@ function renderCapTimeline(){
     else{s=daysBetween(rangeStart,date(b._capTlStart));span=Math.max(1,daysBetween(date(b._capTlStart),date(b._capTlEnd))+1);}
     var left=s*DAY_W+1,width=Math.max(DAY_W-2,span*DAY_W-2);
     var top=6+b._lane*32;
-    var type=TYPE[b.type_guess||'other']||TYPE.other;
+    var type=bType(b);
     // RETTET (okt. 2026, Martin: "navnet på kunden ikke ses før opgave
     // beskrivelsen" — samme princip genbrugt her for Tidslinjens bjælker) —
     // genbruger NØJAGTIGT samme live opslag+formatering som Kapacitetsbordets
@@ -17010,7 +17032,7 @@ function openTimelineDrawer(bookingId){
   if(!b)return;
   tlDrawerBookingId=bookingId;
   tlDrawerTaskId=b.task_id;
-  var type=TYPE[b.type_guess||'other']||TYPE.other;
+  var type=bType(b);
   document.getElementById('tld-type-dot').style.background=type.bar;
   document.getElementById('tld-title').textContent=b.job_name||b.task_name||'Opgave';
   document.getElementById('tld-sub').textContent=(b.task_name||'')+' · '+type.label;
@@ -18819,7 +18841,7 @@ function renderTimeline(){
       var e=Math.min(TL_DAYS-1,eRaw);
       var left=s*TL_COLW+2,width=Math.max(TL_COLW-4,(e-s+1)*TL_COLW-4);
       var top=6+b._lane*32;
-      var type=TYPE[b.type_guess||'other']||TYPE.other;
+      var type=bType(b);
       var who=timelineGroupBy==='type'?(b.user_name||''):'';
       var label=(b.job_name||b.task_name||'Opgave')+(who?' · '+who:'');
       var handles=interactive?'<span class="tl-handle tl-handle-left" data-edge="left"></span><span class="tl-handle tl-handle-right" data-edge="right"></span>':'';
@@ -18931,7 +18953,7 @@ function renderTaskList(){
     return !q||text.indexOf(q)>-1;
   });
   body.innerHTML=list.map(function(t){
-    var type=TYPE[t.type_guess]||TYPE.other,info=taskAssignedInfo(t);
+    var type=bType(t),info=taskAssignedInfo(t);
     return '<tr>'+
       '<td><input type="checkbox" data-action="task-check" data-task-id="'+esc(t.id)+'" '+(selectedTaskIds[t.id]?'checked':'')+'></td>'+
       '<td><strong>'+esc(t.job_name||'Uden kunde')+'</strong><div class="muted-sm">'+esc(t.name||'')+'</div></td>'+
@@ -19283,7 +19305,7 @@ function renderCompleted(){
     return true;
   }).sort(function(a,b){return String(b.completed_at).localeCompare(String(a.completed_at));});
   body.innerHTML=list.map(function(b){
-    var type=TYPE[b.type_guess||'other']||TYPE.other;
+    var type=bType(b);
     var docBadge=b.documented_at?'<span class="tag" style="background:#DCFCE7;color:#15803D" title="Fugtmåling, gulvniveau og andre forhold bekræftet dokumenteret">✓ Dokumenteret</span>':'<span class="tag" style="background:#FEF3C7;color:#92400E" title="Medarbejderen bekræftede ikke dokumentationstjeklisten ved afslutning">⚠ Ikke bekræftet</span>';
     return '<tr class="completed-row'+(b.invoiced?' invoiced':'')+'">'+
       '<td><strong>'+esc(b.job_name||'')+'</strong></td>'+
@@ -34765,6 +34787,8 @@ function renderPdSide(){
   var mins=(d.time_entries||[]).reduce(function(s,t){return s+(Number(t.minutes)||0);},0);
   var done=tasks.filter(pdxTaskDone).length;
   var stage=(pjAllStagesSorted().find(function(s){return s.key===d.status;})||{}).label||d.status||'';
+  // Fag-/status-vælgerne ligger i kortet — tag dem ud FØR kortet tegnes om, ellers slettes de.
+  var keepSel=['pd-type-select','pd-status-select'].map(function(id){var x=document.getElementById(id);if(x&&x.parentNode)x.parentNode.removeChild(x);return x;});
   el.innerHTML='<div class="pdx-card pdx-cust">'
     +'<div class="pdx-cust-top"><span class="pdx-av">'+esc(ini)+'</span><div><b>'+esc(name)+'</b><div>'+esc([d.job_number,d.project_type].filter(Boolean).join(' · ')||'Sag')+'</div></div></div>'
     +(addr?'<a class="pdx-map" href="https://maps.google.com/?q='+encodeURIComponent(addr)+'" target="_blank" rel="noopener"><iframe loading="lazy" tabindex="-1" src="https://maps.google.com/maps?q='+encodeURIComponent(addr)+'&z=15&output=embed"></iframe><span>📍 '+esc(addr)+'</span></a>':'<div class="pdx-noaddr">Ingen adresse på sagen</div>')
@@ -34788,7 +34812,7 @@ function renderPdSide(){
     +'<div class="pdx-dd"><button type="button" class="pdx-btn" data-pdx-dd="more">⋯ Mere <span>▾</span></button></div></div></div>';
   // Flyt fag-/status-vælgerne fra den gamle top-bjælke ind i kortet (beholder deres lyttere).
   var selBox=document.getElementById('pdx-selects');
-  ['pd-type-select','pd-status-select'].forEach(function(id){var x=document.getElementById(id);if(x&&selBox)selBox.appendChild(x);});
+  keepSel.forEach(function(x){if(x&&selBox)selBox.appendChild(x);});
   var c1=document.getElementById('pdx-cnt-tasks');if(c1)c1.textContent=tasks.length||'';
   var c2=document.getElementById('pdx-cnt-photos');if(c2)c2.textContent=((d.photos||[]).length)||'';
   var c3=document.getElementById('pdx-cnt-time');if(c3)c3.textContent=mins?(Math.round(mins/60))+' t':'';
