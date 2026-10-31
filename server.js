@@ -16893,6 +16893,16 @@ async function migrateAutoProjectStages() {
 // RUNDE GA (Martin: "mangler kun en kolonne for dem der siger at det alligevel
 // ikke blev udført") — manuel kolonne efter Faktureret. Ingen auto_rule, så
 // recomputeProjectStatuses() rører aldrig sager der ligger her.
+// v2.62.1 — retter opgaver hvor poolens spejlrække (jt_tasks) har andre datoer
+// end sagens tidsplan (gantt_tasks). Køres ved hver opstart (billig, idempotent).
+async function syncProjectTaskMirrorDates() {
+  try {
+    const r = await pool.query(`UPDATE jt_tasks t SET start_date=g.start_date, end_date=g.end_date
+      FROM gantt_tasks g WHERE g.id=t.id AND t.project_id IS NOT NULL
+        AND (t.start_date IS DISTINCT FROM g.start_date OR t.end_date IS DISTINCT FROM g.end_date)`);
+    if (r.rowCount) console.log('Opgavepool: datoer synkroniseret med sagernes tidsplan for ' + r.rowCount + ' opgave(r).');
+  } catch (e) { console.error('syncProjectTaskMirrorDates fejlede:', e.message); }
+}
 async function migrateSubcontractorCosts() {
   try {
     const name = 'subcontractor_costs_to_project_20261030';
@@ -18133,6 +18143,10 @@ app.put('/api/projects/:id/tasks/:taskId', auth, panelAccess('projects'), asyncR
         const shiftedStart = addCalendarDays(t.start_date, deltaDays);
         const shiftedEnd = validDate(t.end_date) ? addCalendarDays(t.end_date, deltaDays) : shiftedStart;
         await pool.query(`UPDATE gantt_tasks SET start_date=$1, end_date=$2, synced_at=${nowTextSQL()} WHERE id=$3`, [shiftedStart, shiftedEnd, tid]);
+        // v2.62.1 — spejlrækken i opgavepoolen (jt_tasks) skal følge med, ellers
+        // viser Kapacitet/Dagligplan de gamle datoer ("reservationen står til en
+        // anden uge" selvom den passer med sagens tidsplan).
+        await pool.query('UPDATE jt_tasks SET start_date=$1, end_date=$2 WHERE id=$3 AND project_id IS NOT NULL', [shiftedStart, shiftedEnd, tid]);
         // RUNDE DO — kædede opgaver rykker med, og deres EGNE bookinger (hvis
         // de allerede er booket i Kapacitetsbordet/Daglig plan) følger nu med
         // på samme måde som selve den redigerede opgaves egen booking ovenfor.
@@ -29267,6 +29281,7 @@ async function start() {
   await migrateAutoProjectStages();
   await migrateNotPerformedStage();
   await migrateSubcontractorCosts();
+  await syncProjectTaskMirrorDates();
   await backfillTaskPipelineFromBookings();
   await recomputeProjectStatuses({ force: true }).then(r => console.log('Auto-stadier: ' + r.changed + ' sag(er) flyttet.')).catch(e => console.error('Auto-stadier fejlede:', e.message));
   await backfillProjectTaskMirrors().catch(error => console.error('Efterudfyldning af sags-opgaver fejlede:', error.message));
