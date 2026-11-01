@@ -5349,7 +5349,7 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
        i browseren faktisk ER det nyeste deploy, eller om Render/GitHub bare
        ikke er nået at opdatere endnu — i stedet for at skulle gætte om en
        rettelse "stadig ikke virker" eller bare endnu ikke er live. -->
-  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build v2.63.0 · 2026-10-30</span></div>
+  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build v2.63.1 · 2026-10-30</span></div>
 </aside>
 <div class="app-content">
 <!-- RUNDE FB — AI-ASSISTENTEN (Martin: "en ai der er nede i venstre hjørne af
@@ -34808,7 +34808,7 @@ function renderPdSide(){
       +'<div id="pdx-kv-profit" style="display:none"><span>Fortjeneste</span><b>…</b></div>'
     +'</div></div>'
     +'<div class="pdx-card"><div class="pdx-k">Sagen</div><div class="pdx-selects" id="pdx-selects"></div>'
-    +'<div class="pdx-dd-row"><div class="pdx-dd"><button type="button" class="pdx-btn" data-pdx-dd="docs">📄 Tilbud & faktura <span>▾</span></button></div>'
+    +'<div class="pdx-dd-row">'+(d.quote_id?'<a class="pdx-btn" href="/admin#quotes/tilbud/'+d.quote_id+'" target="_blank" rel="noopener" title="Åbner tilbuddet i en ny fane, hvor du kan rette det og lave faktura">📄 Se tilbud ↗</a>':'<button type="button" class="pdx-btn" data-pdx="attach">🔗 Tilknyt tilbud</button>')
     +'<div class="pdx-dd"><button type="button" class="pdx-btn" data-pdx-dd="more">⋯ Mere <span>▾</span></button></div></div></div>';
   // Flyt fag-/status-vælgerne fra den gamle top-bjælke ind i kortet (beholder deres lyttere).
   var selBox=document.getElementById('pdx-selects');
@@ -34851,7 +34851,7 @@ function renderPdDashboard(){
     +'<div class="pdx-bar"><i style="width:'+paidPct+'%;background:#16A34A"></i><i style="width:'+Math.max(0,invPct-paidPct)+'%;background:#F59E0B"></i></div>'
     +'<div class="pdx-leg"><span style="--c:#16A34A">Betalt '+pdxKr(paid)+'</span><span style="--c:#F59E0B">Faktureret, ikke betalt '+pdxKr(Math.max(0,inv-paid))+'</span><span style="--c:#E5E7EB">Mangler '+pdxKr(Math.max(0,total-inv))+'</span></div>'
     +((x&&x.invoices.length)?'<div class="pdx-invs">'+x.invoices.map(function(i){return '<a href="#" data-pdx-inv="'+i.id+'">'+esc(i.number||'Faktura')+' · '+pdxKr(i.total)+' <em class="'+(i.status==='paid'?'ok':'')+'">'+(i.status==='paid'?'Betalt':i.status==='partial'?'Delvist':'Ubetalt')+'</em></a>';}).join('')+'</div>':'')
-    +'<div class="pdx-row">'+(d.quote_id?'<button type="button" class="pdx-btn pri" data-pdx="invoice">🧾 Lav faktura</button><button type="button" class="pdx-btn" data-pdx="quote">Se tilbud</button>':'<button type="button" class="pdx-btn" data-pdx="attach">🔗 Tilknyt tilbud</button>')+'</div>';
+    +'<div class="pdx-row">'+(d.quote_id?'<button type="button" class="pdx-btn pri" data-pdx="invoice">🧾 Lav faktura</button><a class="pdx-btn" href="/admin#quotes/tilbud/'+d.quote_id+'" target="_blank" rel="noopener">Se tilbud ↗</a>':'<button type="button" class="pdx-btn" data-pdx="attach">🔗 Tilknyt tilbud</button>')+'</div>';
   // Sidekort-tal
   var kq=document.getElementById('pdx-kv-quote');if(kq)kq.innerHTML='<span>Tilbud</span><b>'+(q?pdxKr(total):'—')+'</b>';
   var ki=document.getElementById('pdx-kv-inv');if(ki)ki.innerHTML='<span>Faktureret</span><b>'+pdxKr(inv)+(total?' <em>('+Math.round(invPct)+' %)</em>':'')+'</b>';
@@ -34899,7 +34899,7 @@ function renderPdDashboard(){
     else if(a==='tasks'||a==='qa')switchPdTab(a);
   }
   document.addEventListener('click',function(e){
-    var page=document.getElementById('page-project-detail');if(!page||!page.contains(e.target))return;
+    var page=document.getElementById('page-project-detail');if(!page||(!page.contains(e.target)&&!e.target.closest('#pdx-dd-menu')))return;
     var dd=e.target.closest('[data-pdx-dd]');if(dd){e.preventDefault();pdxOpenDd(dd);return;}
     var mi=e.target.closest('[data-pdx-proxy]');if(mi){var o=document.getElementById(mi.dataset.pdxProxy);pdxCloseDd();if(o)o.click();return;}
     var b=e.target.closest('[data-pdx]');if(b){e.preventDefault();act(b.dataset.pdx);return;}

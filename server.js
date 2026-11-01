@@ -17213,7 +17213,10 @@ app.get('/api/projects/:id/dashboard', auth, asyncRoute(async (req, res) => {
   });
 
   const ev = [];
-  const DOC_LBL = { created: 'oprettet', sent: 'sendt til kunden', viewed: 'åbnet af kunden', accepted: 'accepteret af kunden', signed: 'underskrevet', reminder: 'rykker sendt', paid: 'markeret betalt', converted: 'lavet til faktura' };
+  const DOC_LBL = { created: 'oprettet', sent: 'sendt til kunden', viewed: 'åbnet af kunden', accepted: 'accepteret af kunden', signed: 'underskrevet', reminder: 'rykker sendt', paid: 'markeret betalt', converted: 'lavet til faktura',
+    accepted_email_sent: '— bekræftelsesmail sendt til kunden', edited: 'rettet', status_changed: 'status ændret', void: 'annulleret', payment_added: '— betaling registreret', payment_removed: '— betaling fjernet',
+    credit_note_added: '— kreditnota oprettet', credit_note_removed: '— kreditnota fjernet', credit_note_sent: '— kreditnota sendt', materials_list_sent: '— materialeliste sendt',
+    mail_delivered: '— mail leveret', mail_delayed: '— mail forsinket', mail_bounced: '— mail kunne ikke leveres', mail_complained: '— markeret som spam', mail_opened: '— mail åbnet', mail_clicked: '— link i mail klikket' };
   docAct.forEach(a => {
     const isQ = a.doc_type === 'quote';
     const inv = isQ ? null : invoices.find(i => i.id === a.doc_id);
