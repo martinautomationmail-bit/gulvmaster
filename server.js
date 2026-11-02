@@ -11422,16 +11422,80 @@ app.get('/api/crm/customers', auth, panelAccess('customers'), asyncRoute(async (
   // RUNDE R — "Skyldigt" (balance_due) tilføjet på hver række, se
   // CUSTOMER_BALANCE_DUE_SUBQUERY-kommentaren ovenfor. Sat ind som en ekstra
   // kolonne i SELECT'en (ikke et separat kald pr. kunde) i BEGGE grene.
+  // v2.66.0 — hurtigere "Skyldigt": i stedet for at gennemløbe ALLE fakturaer
+  // pr. kunde (det gjorde listen langsom med mange kunder) beregnes først kun de
+  // fakturaer der faktisk har et udestående (rem>0, typisk ganske få), og så
+  // matches de mod kunden med PRÆCIS samme tre-trins regel som
+  // CUSTOMER_BALANCE_DUE_SUBQUERY (customer_id / tilbuddets kunde / email / tlf).
+  const FAST_BAL = `COALESCE((SELECT SUM(ob.rem) FROM open_bal ob WHERE ob.cid=c.id OR ob.qcid=c.id
+      OR (ob.em IS NOT NULL AND ob.em<>'' AND ob.em=lower(c.email))
+      OR (ob.ph IS NOT NULL AND ob.ph<>'' AND ob.ph=c.phone)),0)`;
+  const OPEN_BAL_CTE = `WITH open_bal AS MATERIALIZED (
+      SELECT i.customer_id AS cid, q.customer_id AS qcid, lower(i.customer_email) AS em, i.customer_phone AS ph,
+             GREATEST(i.total - COALESCE(pay.paid,0) - COALESCE(cred.credited,0), 0) AS rem
+      FROM invoices i
+      LEFT JOIN quotes q ON q.id = i.quote_id
+      LEFT JOIN (SELECT invoice_id, SUM(amount) AS paid FROM invoice_payments GROUP BY invoice_id) pay ON pay.invoice_id = i.id
+      LEFT JOIN (SELECT invoice_id, SUM(amount) AS credited FROM credit_notes GROUP BY invoice_id) cred ON cred.invoice_id = i.id
+      WHERE i.status NOT IN ('draft','void') AND i.total - COALESCE(pay.paid,0) - COALESCE(cred.credited,0) > 0
+    )`;
   const rows = q
-    ? await pool.query(`
-        SELECT c.*, ${CUSTOMER_BALANCE_DUE_SUBQUERY} AS balance_due FROM customers c WHERE
+    ? await pool.query(`${OPEN_BAL_CTE}
+        SELECT c.*, ${FAST_BAL} AS balance_due FROM customers c WHERE
           c.name ILIKE $1 OR c.email ILIKE $1 OR c.phone ILIKE $1
           OR EXISTS (SELECT 1 FROM quotes qq WHERE qq.customer_id=c.id AND qq.total::text ILIKE $1)
           OR EXISTS (SELECT 1 FROM invoices ii JOIN quotes qq2 ON qq2.id=ii.quote_id WHERE qq2.customer_id=c.id AND ii.total::text ILIKE $1)
         ORDER BY c.id DESC
       `, [`%${q}%`])
-    : await pool.query(`SELECT c.*, ${CUSTOMER_BALANCE_DUE_SUBQUERY} AS balance_due FROM customers c ORDER BY c.id DESC`);
+    : await pool.query(`${OPEN_BAL_CTE} SELECT c.*, ${FAST_BAL} AS balance_due FROM customers c ORDER BY c.id DESC`);
   res.json(rows.rows);
+}));
+// v2.66.0 — Kundelisten, design A: ekstra overblik pr. kunde (handlens stage,
+// ansvarlig, tilbudt, åbne tilbud, sag i gang, seneste aktivitet). Hentes som
+// ét samlet, mængde-baseret opslag (ingen forespørgsel pr. kunde), så listen
+// stadig loader hurtigt. Returnerer {customerId: {...}}.
+app.get('/api/crm/customers-overview', auth, panelAccess('customers'), asyncRoute(async (req, res) => {
+  const [q, pr, opp, lead, notes, mails, inv] = await Promise.all([
+    pool.query(`SELECT customer_id, COALESCE(SUM(total),0)::float AS quoted,
+        COUNT(*) FILTER (WHERE status='sent')::int AS open_quotes,
+        COALESCE(SUM(total) FILTER (WHERE status='sent'),0)::float AS open_value,
+        MAX(created_at) AS last_quote_at,
+        (ARRAY_AGG(quote_number ORDER BY created_at DESC))[1] AS last_quote_no
+      FROM quotes WHERE customer_id IS NOT NULL GROUP BY customer_id`),
+    pool.query(`SELECT customer_id,
+        COUNT(*) FILTER (WHERE status IN ('active','over_slutdato'))::int AS running,
+        COUNT(*) FILTER (WHERE status IN ('denne_uge','naeste_uge','kommende_sag','kommende_naeste_aar'))::int AS planned,
+        MAX(created_at) AS last_project_at
+      FROM projects WHERE customer_id IS NOT NULL GROUP BY customer_id`),
+    pool.query(`SELECT DISTINCT ON (c.customer_id) c.customer_id, s.name AS stage_name, s.color AS stage_color, o.owner_id, o.created_at
+      FROM crm_opportunities o JOIN crm_contacts c ON c.id=o.contact_id JOIN crm_stages s ON s.id=o.stage_id
+      WHERE c.customer_id IS NOT NULL ORDER BY c.customer_id, o.created_at DESC`),
+    pool.query(`SELECT DISTINCT ON (c.customer_id) c.customer_id, s.name AS stage_name, s.color AS stage_color, l.owner_id, l.created_at
+      FROM crm_leads l JOIN crm_contacts c ON c.id=l.contact_id JOIN crm_stages s ON s.id=l.stage_id
+      WHERE c.customer_id IS NOT NULL ORDER BY c.customer_id, l.created_at DESC`),
+    pool.query(`SELECT customer_id, MAX(created_at) AS at FROM customer_notes GROUP BY customer_id`),
+    pool.query(`SELECT DISTINCT ON (customer_id) customer_id, internal_date, direction, subject FROM customer_emails
+      WHERE customer_id IS NOT NULL AND internal_date IS NOT NULL ORDER BY customer_id, internal_date DESC`),
+    pool.query(`SELECT i.customer_id, MAX(i.created_at) AS at FROM invoices i WHERE i.customer_id IS NOT NULL GROUP BY i.customer_id`)
+  ]);
+  const out = {};
+  const get = id => out[id] || (out[id] = { quoted: 0, open_quotes: 0, open_value: 0, running: 0, planned: 0, stage_name: null, stage_color: null, owner_id: null, last: null });
+  // Seneste aktivitet: den nyeste af note/mail/tilbud/faktura/sag/handel. Alle
+  // tidsstempler er UTC-tekst ('YYYY-MM-DD HH:MM:SS'), mails er ms-epoch.
+  const bump = (id, at, kind, label) => {
+    if (!at) return;
+    const iso = typeof at === 'number' || /^\d{10,}$/.test(String(at)) ? new Date(Number(at)).toISOString().replace('T', ' ').slice(0, 19) : String(at).replace('T', ' ').slice(0, 19);
+    const o = get(id);
+    if (!o.last || iso > o.last.at) o.last = { at: iso, kind, label };
+  };
+  q.rows.forEach(r => { Object.assign(get(r.customer_id), { quoted: r.quoted, open_quotes: r.open_quotes, open_value: r.open_value }); bump(r.customer_id, r.last_quote_at, 'quote', 'Tilbud ' + (r.last_quote_no || '')); });
+  pr.rows.forEach(r => { Object.assign(get(r.customer_id), { running: r.running, planned: r.planned }); bump(r.customer_id, r.last_project_at, 'project', 'Sag oprettet'); });
+  lead.rows.forEach(r => { Object.assign(get(r.customer_id), { stage_name: r.stage_name, stage_color: r.stage_color, owner_id: r.owner_id }); bump(r.customer_id, r.created_at, 'lead', 'Lead modtaget'); });
+  opp.rows.forEach(r => { Object.assign(get(r.customer_id), { stage_name: r.stage_name, stage_color: r.stage_color }, r.owner_id ? { owner_id: r.owner_id } : {}); bump(r.customer_id, r.created_at, 'deal', 'Handel oprettet'); });
+  notes.rows.forEach(r => bump(r.customer_id, r.at, 'note', 'Note'));
+  mails.rows.forEach(r => bump(r.customer_id, r.internal_date, 'mail', (r.direction === 'out' ? 'Mail sendt' : 'Mail modtaget')));
+  inv.rows.forEach(r => bump(r.customer_id, r.at, 'invoice', 'Faktura oprettet'));
+  res.json(out);
 }));
 // Kundedetalje — alt data på én kunde samlet: sager (projekter), tilbud og
 // fakturaer. RUNDE R RETTELSE: fakturaer har FÅET en customer_id-kolonne siden
@@ -23917,7 +23981,18 @@ async function loadQuoteFull(id) {
   // SAG (projekt) blev tilbuddet til, hvis det er accepteret. Ingen sag endnu
   // (tilbuddet er stadig draft/sendt) = project_id null, helt normalt.
   const project = await pgOne('SELECT id, job_number FROM projects WHERE quote_id=$1', [id]);
-  return { ...quote, lines: lines.rows, attachments: attachments.rows, crm_entity_note: crmEntityNote, crm_entity_name: crmEntityName, crm_entity_type: crmEntityType, project_id: project ? project.id : null, project_job_number: project ? project.job_number : null };
+  // v2.66.0 — Martin: "man kan se om det kunden eller os der har accepteret?"
+  // Kunden = underskrevet via tilbudslinket (signed_at/signed_name). Os = status
+  // sat til "Godkendt" manuelt i admin (document_activity 'status_changed').
+  let acceptedInfo = null;
+  if (quote.status === 'accepted' || quote.status === 'converted') {
+    if (quote.signed_at) acceptedInfo = { by: 'customer', name: quote.signed_name || null, at: quote.signed_at };
+    else {
+      const a = await pgOne(`SELECT actor, created_at FROM document_activity WHERE doc_type='quote' AND doc_id=$1 AND event_type='status_changed' AND detail='accepted' ORDER BY id DESC LIMIT 1`, [id]).catch(() => null);
+      acceptedInfo = a ? { by: 'staff', name: a.actor || null, at: a.created_at } : { by: 'staff', name: null, at: null };
+    }
+  }
+  return { ...quote, accepted_info: acceptedInfo, lines: lines.rows, attachments: attachments.rows, crm_entity_note: crmEntityNote, crm_entity_name: crmEntityName, crm_entity_type: crmEntityType, project_id: project ? project.id : null, project_job_number: project ? project.job_number : null };
 }
 
 app.get('/api/quotes', auth, panelAccess('quotes'), asyncRoute(async (req, res) => {
