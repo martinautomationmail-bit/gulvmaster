@@ -2370,7 +2370,13 @@ body.plan-alt-dragging .ctl-add{display:none}
 .pjc-tab.on{color:#18181B;box-shadow:inset 0 -2px 0 #18181B}
 .pjc-tab.warn{color:#B45309}.pjc-tab.warn em{color:#D97706}
 .pjc-ctrls{display:flex;align-items:center;gap:6px;padding:6px 0}
-.pjc-sum{display:flex;gap:40px;padding:18px 2px 8px;flex-wrap:wrap}
+.pjc-sum{display:flex;gap:10px;align-items:center;padding:14px 2px 4px;flex-wrap:wrap}
+.pjc-s1{font-size:13.5px;color:#71717A;margin-right:6px}.pjc-sum .pjc-s1 b{display:inline;font-size:inherit;margin:0;color:#18181B;font-weight:700;letter-spacing:0}
+.pjc-pill{border:1px solid;border-radius:999px;padding:5px 12px;font:650 12.5px inherit;font-family:inherit;cursor:pointer;white-space:nowrap}
+.pjc-pill.warn{background:#FFFBEB;border-color:#FDE68A;color:#92400E}.pjc-pill.warn:hover{background:#FEF3C7}
+.pjc-pill.red{background:#FEF2F2;border-color:#FECACA;color:#B91C1C}.pjc-pill.red:hover{background:#FEE2E2}
+.pjc-stagepick{field-sizing:content;-webkit-appearance:none;appearance:none;border:0;background:transparent;font:600 13.5px inherit;font-family:inherit;color:#71717A;cursor:pointer;padding:12px 14px 12px 0;outline:none;background-image:linear-gradient(45deg,transparent 50%,#A1A1AA 50%),linear-gradient(135deg,#A1A1AA 50%,transparent 50%);background-position:calc(100% - 6px) 55%,calc(100% - 2px) 55%;background-size:4px 4px,4px 4px;background-repeat:no-repeat}
+.pjc-stagepick.on{color:#18181B;box-shadow:inset 0 -2px 0 #18181B}
 .pjc-sum div{font-size:12.5px;color:#71717A}
 .pjc-sum b{display:block;font-size:21px;color:#18181B;font-weight:700;letter-spacing:-.015em;margin-top:2px;font-variant-numeric:tabular-nums}
 .pjc-sum-click{cursor:pointer}.pjc-sum-click:hover span{color:#18181B;text-decoration:underline}
@@ -5628,7 +5634,7 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
        i browseren faktisk ER det nyeste deploy, eller om Render/GitHub bare
        ikke er nået at opdatere endnu — i stedet for at skulle gætte om en
        rettelse "stadig ikke virker" eller bare endnu ikke er live. -->
-  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build v2.68.0 · 2026-11-02</span></div>
+  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build v2.68.1 · 2026-11-02</span></div>
 </aside>
 <div class="app-content">
 <!-- RUNDE FB — AI-ASSISTENTEN (Martin: "en ai der er nede i venstre hjørne af
@@ -9144,15 +9150,15 @@ body.ai-has-reply #ai-fab{animation:ai-nudge 1.4s ease-in-out 3}
       <button type="button" id="proj-view-kanban-btn" title="Kanban — træk sager mellem stadier">▦ Kanban</button>
       <button type="button" id="proj-view-gantt-btn" title="Tidsplan på tværs af alle sager">▤ Gantt</button>
     </div>
-    <button class="pjc-icon" id="proj-stages-btn" type="button" title="Tilføj, omdøb eller omarrangér sagernes stadier">⚙️</button>
+    <button class="pjc-icon" id="proj-stages-btn" type="button" title="Stadier, KS-skabeloner og kontaktformularer">⚙️</button>
     <button class="bly-btn" id="proj-new-btn" type="button">+ Nyt projekt</button>
   </div>
   <div class="pjc-links" id="proj-tabs">
     <button class="bly-segtab active" data-projtab="list" type="button" style="display:none">Projekter</button>
     <button class="bly-segtab" data-projtab="gantt" type="button" style="display:none">Gantt</button>
     <span style="flex:1"></span>
-    <button class="bly-segtab pjc-link" data-projtab="qa-templates" type="button">📋 KS-skabeloner</button>
-    <button class="bly-segtab pjc-link" data-projtab="contact-templates" type="button">📇 Kontaktformularer</button>
+    <button class="bly-segtab pjc-link" data-projtab="qa-templates" type="button" style="display:none">📋 KS-skabeloner</button>
+    <button class="bly-segtab pjc-link" data-projtab="contact-templates" type="button" style="display:none">📇 Kontaktformularer</button>
   </div>
   <div class="projtabpage" id="projtab-list">
     <div class="pjc-tabsrow">
@@ -34971,7 +34977,15 @@ function initProjectsModule(){
     document.getElementById('proj-view-kanban-btn').addEventListener('click',function(){switchPjView('kanban');});
     document.getElementById('proj-new-btn').addEventListener('click',openPjNewModal);
     // RUNDE R (Martins ønske: "gør så jeg selv kan ændre/tilføje stadier").
-    document.getElementById('proj-stages-btn').addEventListener('click',openPjStagesModal);
+    // v2.68.1 — ⚙️ samler de sjældne ting i én menu (stadier, KS-skabeloner, kontaktformularer).
+    document.getElementById('proj-stages-btn').addEventListener('click',function(e){
+      e.stopPropagation();var r=this.getBoundingClientRect();
+      setTimeout(function(){showCtxMenu(r.left-150,r.bottom+6,[
+        {text:'Rediger stadier',icon:'⚙️',onClick:openPjStagesModal},
+        {text:'KS-skabeloner',icon:'📋',onClick:function(){switchProjTab('qa-templates');}},
+        {text:'Kontaktformularer',icon:'📇',onClick:function(){switchProjTab('contact-templates');}}
+      ]);},0);
+    });
     document.getElementById('pjs-close-btn').addEventListener('click',function(){closeModal('pj-stages-modal');});
     document.getElementById('pjs-add-btn').addEventListener('click',pjAddStage);
     document.getElementById('pjn-cancel-btn').addEventListener('click',function(){closeModal('pj-new-modal');});
@@ -35211,37 +35225,43 @@ function pjTimeInfo(p){
   if(!ds)return {txt:'Ingen datoer',cls:'mute'};
   return {txt:'Start uge '+weekNo(date(ds)),cls:''};
 }
+function pjIsClosedDone(p){return ['done','faktureret','ikke_udfoert'].indexOf(p.status)>-1;}
 function pjcTabCount(key,list){
   if(key==='_active')return list.filter(pjIsActive).length;
   if(key==='_ready')return list.filter(pjIsReady).length;
+  if(key==='_closed')return list.filter(pjIsClosedDone).length;
   if(key==='_all')return list.length;
   return list.filter(function(p){return p.status===key;}).length;
 }
+// v2.68.1 — forenklet: kun 4 faner + én "Stadie"-vælger til de enkelte stadier.
 function renderPjStatusFilter(nonArchived){
   var box=document.getElementById('proj-status-filter');
-  var tabs=[['_active','Aktive'],['_ready','Klar til faktura']].concat(pjNonArchivedStages().map(function(st){return [st.key,st.label,st.color];})).concat([['_all','Alle']]);
+  var tabs=[['_active','Aktive'],['_ready','Klar til faktura'],['_closed','Afsluttede'],['_all','Alle']];
+  var isStage=['_active','_ready','_closed','_all'].indexOf(pjStatusFilter)<0;
   box.innerHTML=tabs.map(function(t){
     var n=pjcTabCount(t[0],nonArchived);
-    if(!n&&pjStatusFilter!==t[0]&&['_active','_ready','_all'].indexOf(t[0])<0)return '';
+    if(t[0]==='_ready'&&!n&&pjStatusFilter!=='_ready')return '';
     return '<button type="button" class="pjc-tab'+(pjStatusFilter===t[0]?' on':'')+(t[0]==='_ready'&&n?' warn':'')+'" data-pj-status="'+esc(t[0])+'">'+esc(t[1])+'<em>'+n+'</em></button>';
-  }).join('');
+  }).join('')
+  +'<select class="pjc-stagepick'+(isStage?' on':'')+'" id="pjc-stagepick" title="Vis ét bestemt stadie"><option value="">Stadie…</option>'
+  +pjNonArchivedStages().map(function(st){var n=pjcTabCount(st.key,nonArchived);return '<option value="'+esc(st.key)+'"'+(pjStatusFilter===st.key?' selected':'')+'>'+esc(st.label)+' ('+n+')</option>';}).join('')+'</select>';
   box.querySelectorAll('[data-pj-status]').forEach(function(b){b.onclick=function(){pjStatusFilter=b.dataset.pjStatus;renderPjProjects();};});
+  document.getElementById('pjc-stagepick').onchange=function(){pjStatusFilter=this.value||'_active';renderPjProjects();};
 }
 function renderPjSummary(base){
   var el=document.getElementById('pjc-sum');if(!el)return;
   var act=base.filter(pjIsActive);
   var hasPrice=base.some(function(p){return p.quote_total!=null||p.invoice_total!=null;});
-  if(!hasPrice){el.innerHTML='';return;}
   var val=act.reduce(function(a,p){return a+(pjPrice(p)||0);},0);
-  var missing=base.filter(function(p){return pjIsActive(p)||p.status==='done';}).reduce(function(a,p){return a+pjRemaining(p);},0);
   var ready=base.filter(pjIsReady),readyV=ready.reduce(function(a,p){return a+pjRemaining(p);},0);
-  var mon=['januar','februar','marts','april','maj','juni','juli','august','september','oktober','november','december'][new Date().getMonth()];
-  el.innerHTML='<div><span>Værdi (aktive sager)</span><b>'+krFmt(val)+'</b></div>'
-    +'<div><span>Mangler at blive faktureret</span><b>'+krFmt(missing)+'</b></div>'
-    +'<div class="pjc-sum-click" data-pj-status="_ready"><span>Klar til faktura · '+ready.length+' sag'+(ready.length===1?'':'er')+'</span><b'+(readyV>0?' style="color:#B45309"':'')+'>'+krFmt(readyV)+'</b></div>'
-    +'<div><span>Faktureret i '+mon+'</span><b>'+(pjMonthInvoiced&&pjMonthInvoiced.total!=null?krFmt(pjMonthInvoiced.total):'…')+'</b></div>';
-  var rc=el.querySelector('[data-pj-status]');if(rc)rc.onclick=function(){pjStatusFilter='_ready';renderPjProjects();};
-  if(pjMonthInvoiced===null){pjMonthInvoiced={};api('/api/projects/invoiced-this-month').then(function(r){pjMonthInvoiced=r||{};renderPjSummary(base);});}
+  var over=act.filter(function(p){var st=pjStages.find(function(x){return x.key===p.status;})||{};return st.auto_rule==='overdue';}).length;
+  // Én rolig linje: antal aktive + værdi — og kun de to ting der kræver handling som klikbare mærker.
+  el.innerHTML='<span class="pjc-s1"><b>'+act.length+'</b> aktive sager'+(hasPrice?' · <b>'+krFmt(val)+'</b>':'')+'</span>'
+    +(hasPrice&&ready.length?'<button type="button" class="pjc-pill warn" data-pj-status="_ready">🧾 '+ready.length+' klar til faktura · '+krFmt(readyV)+' →</button>':'')
+    +(over?'<button type="button" class="pjc-pill red" data-pj-stage-over="1">⚠ '+over+' over slutdato</button>':'');
+  el.querySelectorAll('[data-pj-status]').forEach(function(b){b.onclick=function(){pjStatusFilter='_ready';renderPjProjects();};});
+  var ob=el.querySelector('[data-pj-stage-over]');
+  if(ob)ob.onclick=function(){var st=pjStages.find(function(x){return x.auto_rule==='overdue';});if(st){pjStatusFilter=st.key;renderPjProjects();}};
 }
 function pjcRowHtml(p){
   var pr=pjPrice(p),inv=pjInvoiced(p),ti=pjTimeInfo(p),ready=pjIsReady(p);
@@ -35293,6 +35313,7 @@ function renderPjProjects(){
   var list=filteredBase.filter(function(p){
     if(pjStatusFilter==='_active')return pjIsActive(p);
     if(pjStatusFilter==='_ready')return pjIsReady(p);
+    if(pjStatusFilter==='_closed')return pjIsClosedDone(p);
     if(pjStatusFilter!=='_all'&&p.status!==pjStatusFilter)return false;
     return true;
   });
@@ -35300,10 +35321,16 @@ function renderPjProjects(){
   var body=document.getElementById('proj-body');
   if(!list.length){body.innerHTML='<div class="pjc-empty">'+(q?'Ingen sager matcher "'+esc(q)+'"':(pjStatusFilter==='_ready'?'Ingen sager venter på faktura 🎉':'Ingen sager her endnu — de oprettes automatisk når et tilbud godkendes, eller opret én med "+ Nyt projekt"'))+'</div>';return;}
   // Grupperet efter stadie (i stadiernes rækkefølge), når fanen viser flere stadier.
-  var multi=['_active','_ready','_all'].indexOf(pjStatusFilter)>-1;
+  var multi=['_active','_ready','_closed','_all'].indexOf(pjStatusFilter)>-1;
   var html='';
   if(multi){
-    pjAllStagesSorted().forEach(function(st){
+    // v2.68.1 — i listen: Denne uge → Igangværende → Over slutdato først, så resten i stadiernes rækkefølge.
+    var PRI={this_week:0,running:1,overdue:2};
+    var ordered=pjAllStagesSorted().map(function(st,i){return {st:st,i:i};}).sort(function(a,b){
+      var pa=PRI[a.st.auto_rule],pb=PRI[b.st.auto_rule];
+      pa=pa===undefined?10+a.i:pa;pb=pb===undefined?10+b.i:pb;return pa-pb;
+    }).map(function(x){return x.st;});
+    ordered.forEach(function(st){
       var g=list.filter(function(p){return p.status===st.key;});
       if(!g.length)return;
       if(st.auto_rule)g=g.slice().sort(function(a,b){return String(a.gantt_start||'9999').localeCompare(String(b.gantt_start||'9999'));});
