@@ -5369,7 +5369,7 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
        i browseren faktisk ER det nyeste deploy, eller om Render/GitHub bare
        ikke er nået at opdatere endnu — i stedet for at skulle gætte om en
        rettelse "stadig ikke virker" eller bare endnu ikke er live. -->
-  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build v2.64.0 · 2026-11-02</span></div>
+  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build v2.64.1 · 2026-11-02</span></div>
 </aside>
 <div class="app-content">
 <!-- RUNDE FB — AI-ASSISTENTEN (Martin: "en ai der er nede i venstre hjørne af
@@ -24460,8 +24460,12 @@ function kbEditCell(rowId,colId,cellEl){
     cellEl.innerHTML='<input type="text" value="'+esc(String(v))+'">';
     inputEl=cellEl.querySelector('input');
   }
+  cellEl.removeAttribute('data-action');
+  cellEl.classList.add('editing');
   inputEl.focus();
-  if(inputEl.select)inputEl.select();
+  // Markøren sættes sidst i teksten (før blev alt markeret, så man kun kunne
+  // skrive forfra). Man kan nu klikke frit rundt i teksten.
+  try{if(inputEl.setSelectionRange&&(inputEl.type==='text'||inputEl.tagName==='TEXTAREA')){var L=inputEl.value.length;inputEl.setSelectionRange(L,L);}}catch(e){}
   var saved=false;
   function doSave(){
     if(saved)return;saved=true;
@@ -24781,6 +24785,9 @@ document.addEventListener('click',function(e){
   var fchip=t.closest('[data-kbfchip]');
   if(fchip){kbFilter.sel[fchip.dataset.kbfchip]=fchip.dataset.val;kbRenderFilterBar();kbRenderRows();return;}
   if(t.closest('#kb-fb-reset')){kbFilter={q:'',sel:{},minRating:0,sort:kbFilter.sort};kbRenderFilterBar();kbRenderRows();return;}
+  // v2.64.1 — klik INDE i et åbent felt (input/textarea/select) må ikke
+  // genåbne redigeringen: det lukkede dropdowns og flyttede markøren.
+  if(t.closest('.kb-cell input,.kb-cell textarea,.kb-cell select')&&!t.closest('[data-action="kb-toggle-checkbox"]'))return;
   var editCell=t.closest('[data-action="kb-edit-cell"]');
   if(editCell){kbEditCell(editCell.dataset.row,editCell.dataset.col,editCell);return;}
   if(t.closest('#kb-column-cancel')){closeModal('kb-column-modal');return;}
