@@ -2479,6 +2479,17 @@ body.plan-alt-dragging .ctl-add{display:none}
 .pdt-act button.del:hover{background:#FEF2F2}
 @media(hover:none){.pdt-act{opacity:1}}
 .pdt-empty{padding:40px 10px;text-align:center;color:#71717A;font-size:13.5px}.pdt-empty span{color:#A1A1AA;font-size:12.5px}
+.pd-dl{display:inline-flex;align-items:center;gap:6px;margin-left:10px;font-size:12px;font-weight:600;color:#71717A;background:#fff;border:1px solid var(--bly-border);border-radius:9px;padding:3px 4px 3px 10px;cursor:pointer;white-space:nowrap}
+.pd-dl input{border:0;background:none;font:600 12px inherit;font-family:inherit;color:#18181B;outline:none;padding:2px 0}
+.pd-dl button{border:0;background:none;color:#A1A1AA;cursor:pointer;font-size:11px;padding:2px 5px;border-radius:5px;display:none}
+.pd-dl.on{background:#FEF2F2;border-color:#FCA5A5;color:#B91C1C}
+.pd-dl.on button{display:inline-block}.pd-dl.on button:hover{background:#FEE2E2;color:#B91C1C}
+#pd-gantt-strip .pd-dayhead{cursor:pointer}
+#pd-gantt-strip .pd-dayhead:hover{background:#FEF2F2;color:#B91C1C}
+#pd-gantt-strip .pd-dayhead.is-deadline{background:#FEE2E2;color:#B91C1C;font-weight:800;box-shadow:inset 0 -3px 0 #EF4444}
+.pd-dl-col{position:absolute;top:0;bottom:0;background:rgba(244,114,182,.16);border-right:2px solid #EF4444;pointer-events:none;z-index:1}
+.pd-dl-flag{position:absolute;top:4px;left:calc(100% + 4px);z-index:6;white-space:nowrap;background:#EF4444;color:#fff;font-size:11px;font-weight:700;padding:2px 8px;border-radius:6px;box-shadow:0 2px 6px rgba(239,68,68,.3)}
+#pd-gantt-strip .gantt-bar.pd-late{outline:2px solid #EF4444;outline-offset:1px}
 .cd-note-item{display:flex;gap:10px;padding:12px 0;border-bottom:1px solid var(--bly-border-soft)}
 .cd-note-item:last-child{border-bottom:0}
 .cd-note-icon{width:26px;height:26px;border-radius:50%;background:var(--bly-border-soft);display:grid;place-items:center;flex-shrink:0;font-size:12px}
@@ -5617,7 +5628,7 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
        i browseren faktisk ER det nyeste deploy, eller om Render/GitHub bare
        ikke er nået at opdatere endnu — i stedet for at skulle gætte om en
        rettelse "stadig ikke virker" eller bare endnu ikke er live. -->
-  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build v2.67.2 · 2026-11-02</span></div>
+  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build v2.68.0 · 2026-11-02</span></div>
 </aside>
 <div class="app-content">
 <!-- RUNDE FB — AI-ASSISTENTEN (Martin: "en ai der er nede i venstre hjørne af
@@ -9477,6 +9488,12 @@ body.ai-has-reply #ai-fab{animation:ai-nudge 1.4s ease-in-out 3}
               <button type="button" class="btn small" id="pd-gantt-today-btn" title="Nulstil til automatisk tilpasning ud fra opgavernes datoer">I dag</button>
               <button type="button" class="btn small" id="pd-gantt-next-btn" title="Se fremad i tidslinjen">▶</button>
             </div>
+            <!-- v2.68.0 — kundens ønskede slutdato. Kan også sættes ved at klikke
+                 på en dag i Gantt'ets datolinje. -->
+            <label class="pd-dl" id="pd-dl-wrap" title="Den dag kunden har sagt vi skal være færdige — vises som en rød stolpe i tidslinjen">🎯 Kunde-deadline
+              <input type="date" id="pd-deadline-input">
+              <button type="button" id="pd-deadline-clear" title="Fjern deadline">✕</button>
+            </label>
           </div>
           <div class="bly-toolbar-right">
             <button class="bly-btn outline" id="pd-convert-lines-btn" type="button" title="Opret én opgave pr. linje i det tilknyttede tilbud">🔨 Opret opgaver fra tilbud</button>
@@ -36273,6 +36290,10 @@ function pdGanttDateRange(){
   var today=iso(new Date());
   var minD=starts.length?starts.reduce(function(a,b){return a<b?a:b;}):today;
   var maxD=ends.length?ends.reduce(function(a,b){return a>b?a:b;}):today;
+  // v2.68.0 — kundens deadline skal altid kunne ses i vinduet.
+  var dl=pjCurrent.customer_deadline;
+  if(dl&&dl>maxD)maxD=dl;
+  if(dl&&dl<minD)minD=dl;
   var start=add(date(minD),-2),end=add(date(maxD),7);
   var days=Math.max(21,Math.round((end-start)/86400000)+1);
   return {start:start,days:Math.min(days,120)};
@@ -36414,7 +36435,38 @@ function makePdGanttDragHandler(container){
 }
 function pdxGanttStatus(t){if(t.status==='done'||Number(t.progress)>=1)return 'done';if(t.status==='in_progress')return 'prog';if(t.status==='waiting')return 'wait';return 'todo';}
 function pdxGanttWho(t){var names=[],ini=[];(t.bookings||[]).forEach(function(b){var n=String(b.user_name||'').trim();if(!n||names.indexOf(n.split(' ')[0])>-1)return;names.push(n.split(' ')[0]);var u=(users||[]).find(function(x){return x.name===n;});ini.push((u&&u.initials)||n.split(/\s+/).map(function(x){return x[0]||'';}).join('').slice(0,2).toUpperCase());});return {names:names,ini:ini};}
+// ── v2.68.0 — Kundens deadline ─────────────────────────────
+async function pdSetDeadline(v){
+  if(!pjCurrent)return;
+  var r=await api('/api/projects/'+pjCurrent.id,{method:'PUT',body:JSON.stringify({customer_deadline:v||null})});
+  if(!r||r.error){toast((r&&r.error)||'Kunne ikke gemme deadline','❌');return;}
+  pjCurrent.customer_deadline=v||null;
+  pdGanttState.autoStart=null;
+  pdSyncDeadlineInput();
+  renderPdGanttStrip();
+  toast(v?'Kundens deadline sat til '+fmtDaDate(v):'Deadline fjernet','🎯');
+}
+function pdSyncDeadlineInput(){
+  var i=document.getElementById('pd-deadline-input');if(!i)return;
+  i.value=(pjCurrent&&pjCurrent.customer_deadline)||'';
+  document.getElementById('pd-dl-wrap').classList.toggle('on',!!(pjCurrent&&pjCurrent.customer_deadline));
+}
+document.addEventListener('change',function(e){if(e.target&&e.target.id==='pd-deadline-input')pdSetDeadline(e.target.value);});
+document.addEventListener('click',function(e){
+  if(e.target.closest&&e.target.closest('#pd-deadline-clear')){e.preventDefault();pdSetDeadline(null);return;}
+  var h=e.target.closest&&e.target.closest('#pd-gantt-strip [data-pd-day]');
+  if(!h)return;
+  var day=h.dataset.pdDay,isDl=pjCurrent&&pjCurrent.customer_deadline===day;
+  var r=h.getBoundingClientRect();
+  // setTimeout: ellers lukker det globale klik-lag menuen igen med det samme.
+  setTimeout(function(){showCtxMenu(r.left,r.bottom+4,isDl?[
+    {text:'Fjern kundens deadline',icon:'✕',danger:true,onClick:function(){pdSetDeadline(null);}}
+  ]:[
+    {text:'Sæt '+fmtDaDate(day)+' som kundens deadline',icon:'🎯',onClick:function(){pdSetDeadline(day);}}
+  ]);},0);
+});
 function renderPdGanttStrip(){
+  pdSyncDeadlineInput();
   var el=document.getElementById('pd-gantt-strip');
   // RETTET (RUNDE P, Martins ønske) — listen blev FØR sorteret efter startdato,
   // så en opgave hoppede rundt i rækkefølgen (typisk til bunds) hver gang man
@@ -36435,7 +36487,8 @@ function renderPdGanttStrip(){
   function flushPdWeekSeg(){if(curWeekSpan>0)weekCols+='<div class="gantt-week-col" style="width:'+(curWeekSpan*dw)+'px">'+curWeekLabel+'</div>';}
   for(var i=0;i<range.days;i++){
     var d=add(range.start,i),wk=d.getDay()===0||d.getDay()===6;
-    headCols+='<div class="gantt-day-col'+(wk?' weekend':'')+(iso(d)===todayIso?' today':'')+'" style="width:'+dw+'px">'+DAYABBR[d.getDay()]+'<br>'+(iso(d)===todayIso?'<span>'+d.getDate()+'</span>':d.getDate())+'</div>';
+    var isDl=pjCurrent.customer_deadline&&iso(d)===pjCurrent.customer_deadline;
+    headCols+='<div class="gantt-day-col pd-dayhead'+(wk?' weekend':'')+(iso(d)===todayIso?' today':'')+(isDl?' is-deadline':'')+'" data-pd-day="'+iso(d)+'" title="'+(isDl?'Kundens deadline — klik for at ændre/fjerne':'Klik for at sætte som kundens deadline')+'" style="width:'+dw+'px">'+DAYABBR[d.getDay()]+'<br>'+(iso(d)===todayIso?'<span>'+d.getDate()+'</span>':d.getDate())+'</div>';
     bgCols+='<div class="gantt-bg-col'+(wk?' weekend':'')+'" style="width:'+dw+'px"></div>';
     if(d.getDay()===1||i===0){flushPdWeekSeg();curWeekSpan=0;curWeekLabel='Uge '+weekNo(d)+' <span class="gantt-week-date">· '+d.getDate()+'/'+(d.getMonth()+1)+'</span>';}
     curWeekSpan++;
@@ -36481,7 +36534,7 @@ function renderPdGanttStrip(){
     var offset=Math.round((s-range.start)/86400000),span=Math.max(1,Math.round((e-s)/86400000)+1);
     timelineRows+='<div class="gantt-row">'+
       '<div class="gantt-row-bg">'+bgCols+'</div>'+
-      '<div class="gantt-bar pdx-gb st-'+stCls+(pdGanttSelected.has(String(t.id))?' selected':'')+'" data-pd-task-id="'+t.id+'" style="left:'+(offset*dw)+'px;width:'+(span*dw-4)+'px" title="'+esc(t.name)+' ('+(t.start_date||'?')+' – '+(t.end_date||'?')+') — træk for at flytte, træk i kanten for at ændre varighed">'+
+      '<div class="gantt-bar pdx-gb st-'+stCls+(pdGanttSelected.has(String(t.id))?' selected':'')+(pjCurrent.customer_deadline&&stCls!=='done'&&String(t.end_date||t.start_date||'').slice(0,10)>pjCurrent.customer_deadline?' pd-late':'')+'" data-pd-task-id="'+t.id+'" style="left:'+(offset*dw)+'px;width:'+(span*dw-4)+'px" title="'+esc(t.name)+' ('+(t.start_date||'?')+' – '+(t.end_date||'?')+') — træk for at flytte, træk i kanten for at ændre varighed">'+
         '<div class="gantt-bar-progress" style="width:'+Math.round((t.progress||0)*100)+'%"></div>'+
         '<span class="pdx-gb-label">'+(stCls==='done'?'✓ ':'')+esc(who.ini.length?who.ini.join(' '):(t.name||''))+'</span>'+
         '<div class="gantt-bar-handle left" data-handle="left"></div>'+
@@ -36533,6 +36586,9 @@ function renderPdGanttStrip(){
       '<div class="gantt-week-head">'+weekCols+'</div>'+
       '<div class="gantt-timeline-head">'+headCols+'</div>'+
       '<div id="pd-gantt-rows" style="position:relative">'+timelineRows+
+        (function(){var dl=pjCurrent.customer_deadline;if(!dl)return '';var off=Math.round((date(dl)-range.start)/86400000);if(off<0||off>=range.days)return '';
+          var late=(pjCurrent.tasks||[]).filter(function(t){return pdxGanttStatus(t)!=='done'&&String(t.end_date||t.start_date||'').slice(0,10)>dl;}).length;
+          return '<div class="pd-dl-col" style="left:'+(off*dw)+'px;width:'+dw+'px"><span class="pd-dl-flag" title="Kunden ønsker at vi er færdige '+esc(fmtDaDate(dl))+'">🎯 Kunde: færdig '+esc(pdxDate(dl))+(late?' · '+late+' opg. efter':'')+'</span></div>';})()+
         '<svg class="gantt-dep-svg" width="'+svgW+'" height="'+svgH+'"><defs>'+
           '<marker id="pdGanttArrow" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto"><path d="M0,0 L6,3 L0,6 Z" fill="#8B5CF6"/></marker>'+
           '<marker id="pdGanttArrowSel" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto"><path d="M0,0 L6,3 L0,6 Z" fill="#EF4444"/></marker>'+

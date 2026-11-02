@@ -2628,6 +2628,9 @@ async function initSchema() {
     -- createProjectFromAcceptedQuote nedenfor) — ellers skal Martin vælge den
     -- manuelt (almindeligt tekstfelt, ingen FK, ligesom projects.status).
     ALTER TABLE projects ADD COLUMN IF NOT EXISTS project_type TEXT;
+    -- v2.68.0 — kundens ønskede slutdato (YYYY-MM-DD), vises som rød/lyserød
+    -- stolpe i sagens opgave-Gantt.
+    ALTER TABLE projects ADD COLUMN IF NOT EXISTS customer_deadline TEXT;
     -- RUNDE FG (Martin: "custom stages under hvert projekt") — sagens egne
     -- pipeline-faser [{key,label,color}]. NULL = brug standardfaserne
     -- (app_settings 'default_pipeline_stages', ellers de 4 indbyggede).
@@ -17823,7 +17826,7 @@ app.put('/api/projects/:id', auth, panelAccess('projects'), asyncRoute(async (re
   }
   const newStatus = b.status !== undefined ? b.status : current.status;
   await pool.query(`
-    UPDATE projects SET name=$1, status=$2, customer_address=$3, customer_phone=$4, customer_email=$5, customer_id=$6, project_type=$7, updated_at=${nowTextSQL()}
+    UPDATE projects SET name=$1, status=$2, customer_address=$3, customer_phone=$4, customer_email=$5, customer_id=$6, project_type=$7, customer_deadline=$9, updated_at=${nowTextSQL()}
     WHERE id=$8
   `, [
     b.name !== undefined ? String(b.name).trim() : current.name,
@@ -17837,7 +17840,8 @@ app.put('/api/projects/:id', auth, panelAccess('projects'), asyncRoute(async (re
     b.customer_id !== undefined ? (b.customer_id || null) : current.customer_id,
     // RUNDE T — faggruppe, se skema-kommentaren ved projects.project_type.
     b.project_type !== undefined ? (b.project_type || null) : current.project_type,
-    req.params.id
+    req.params.id,
+    b.customer_deadline !== undefined ? (/^\d{4}-\d{2}-\d{2}$/.test(String(b.customer_deadline || '')) ? b.customer_deadline : null) : (current.customer_deadline || null)
   ]);
   // RUNDE FM — trækkes sagen til et automatisk stadie, placeres den straks
   // efter sine datoer (kan altså lande i en anden auto-kolonne end den man slap i).
