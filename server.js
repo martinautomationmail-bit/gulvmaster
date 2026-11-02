@@ -11457,6 +11457,7 @@ app.get('/api/crm/customers/:id', auth, panelAccess('customers'), asyncRoute(asy
     // tid, så "Handel"-kolonnen viser hver enkelt tilbuds EGEN kobling.
     pool.query(`
       SELECT q.id, q.quote_number, q.quote_title, q.job_name, q.status, q.total, q.created_at, q.updated_at,
+             (SELECT MIN(qs.sent_at) FROM quote_sends qs WHERE qs.quote_id=q.id) AS first_sent_at,
              p.id AS project_id, p.job_number AS project_job_number,
              q.crm_lead_id, q.crm_opportunity_id,
              cl.name AS crm_lead_name, co.name AS crm_opportunity_name
@@ -15474,6 +15475,23 @@ app.post('/api/crm/customers/:id/opportunities', auth, panelAccessAny(['customer
 // slet ingen server-rute der kunne. Se cdFillTypeToggle()/cdCreateOpportunityOrLead()
 // i admin.html for UI-siden (en Lead/Salg-vælger foran de eksisterende
 // pipeline/stage-dropdowns).
+// v2.65.0 — kundesiden (design C): alle opfølgninger på tværs af kundens
+// leads + handler, så de kan vises/afkrydses direkte på kundekortet.
+app.get('/api/crm/customers/:id/tasks', auth, panelAccess('customers'), asyncRoute(async (req, res) => {
+  const rows = (await pool.query(`
+    SELECT t.*, u.name AS assigned_name, u.color AS assigned_color, u.initials AS assigned_initials,
+           cu.name AS created_by_name, COALESCE(l.name, o.name) AS entity_name
+    FROM crm_tasks t
+    LEFT JOIN crm_leads l ON t.entity_type='lead' AND l.id=t.entity_id
+    LEFT JOIN crm_opportunities o ON t.entity_type='opportunity' AND o.id=t.entity_id
+    LEFT JOIN crm_contacts c ON c.id=COALESCE(l.contact_id, o.contact_id)
+    LEFT JOIN users u ON u.id=t.assigned_to
+    LEFT JOIN users cu ON cu.id=t.created_by
+    WHERE c.customer_id=$1
+    ORDER BY t.done ASC, (t.due_date IS NULL) ASC, t.due_date ASC, t.id DESC
+  `, [req.params.id])).rows;
+  res.json(rows);
+}));
 app.get('/api/crm/customers/:id/leads', auth, panelAccess('customers'), asyncRoute(async (req, res) => {
   const rows = (await pool.query(`
     SELECT l.*, s.name AS stage_name, s.color AS stage_color, p.name AS pipeline_name
