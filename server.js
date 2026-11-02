@@ -16887,7 +16887,27 @@ const AUTO_STAGE_RULES = ['next_year', 'this_year', 'next_week', 'this_week', 'r
 // "Fag" (vælg fra liste) og "Prioritet" (1-5 stjerner) lige efter Navn i
 // Samarbejdspartnere + Leverandører, hvis de ikke allerede findes. Slettes de
 // senere, kommer de ikke igen (app_migrations).
-const KB_DEFAULT_FAG = ['Maler', 'Gulvlægger', 'Gulvsliber', 'Tømrer', 'Snedker', 'Murer', 'Elektriker', 'VVS', 'Flisemontør', 'Rengøring', 'Materialer', 'Andet'];
+const KB_DEFAULT_FAG = ['Maler', 'Gulvlægger', 'Gulvsliber', 'Tømrer', 'Enterprise firma', 'Snedker', 'Murer', 'Elektriker', 'VVS', 'Flisemontør', 'Rengøring', 'Materialer', 'Andet'];
+// v2.65.1 — Martin: "Tilføj til Fag … enterprise firma". Lægges ind lige
+// efter Tømrer i Fag-kolonnen på Samarbejdspartnere/Leverandører, hvis den
+// mangler (rører ikke valg Martin selv har lavet om).
+async function migrateKbFagEnterprise() {
+  const name = 'kb_fag_enterprise_20261102';
+  try {
+    if (await pgOne('SELECT 1 FROM app_migrations WHERE name=$1', [name])) return;
+    const cols = (await pool.query(`SELECT c.id, c.options FROM kb_columns c JOIN kb_lists l ON l.id=c.list_id
+      WHERE l.name IN ('Samarbejdspartnere','Leverandører') AND c.type='select' AND lower(trim(c.name)) IN ('fag','profession')`)).rows;
+    for (const c of cols) {
+      const opts = Array.isArray(c.options) ? c.options.slice() : [];
+      const labels = opts.map(o => typeof o === 'string' ? o : (o && o.label) || '');
+      if (labels.some(l => l.toLowerCase().replace(/\s+/g, '') === 'enterprisefirma')) continue;
+      const i = labels.findIndex(l => l.toLowerCase() === 'tømrer');
+      opts.splice(i >= 0 ? i + 1 : opts.length, 0, 'Enterprise firma');
+      await pool.query('UPDATE kb_columns SET options=$1 WHERE id=$2', [JSON.stringify(opts), c.id]);
+    }
+    await pool.query('INSERT INTO app_migrations (name, details) VALUES ($1, $2)', [name, JSON.stringify({ columns: cols.length })]);
+  } catch (e) { console.error('migrateKbFagEnterprise fejlede:', e.message); }
+}
 async function migrateKbPriorityProfession() {
   const name = 'kb_priority_profession_20261102';
   try {
@@ -29331,6 +29351,7 @@ async function start() {
   await migrateTimetrackPanelPage();
   await migrateAutoProjectStages();
   await migrateKbPriorityProfession();
+  await migrateKbFagEnterprise();
   await migrateNotPerformedStage();
   await migrateSubcontractorCosts();
   await syncProjectTaskMirrorDates();
