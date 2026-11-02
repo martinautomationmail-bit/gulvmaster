@@ -17131,6 +17131,13 @@ async function recomputeProjectStatuses(opts) {
   if (!opts.projectId) autoStageRunning = run;
   try { return await run; } finally { if (!opts.projectId) autoStageRunning = null; }
 }
+// v2.67.0 — "Faktureret i <måned>" til Projekter-listens penge-overblik.
+app.get('/api/projects/invoiced-this-month', auth, asyncRoute(async (req, res) => {
+  if (!(await isFinanceAdmin(req.user.id))) return res.json({ total: null });
+  const r = await pgOne(`SELECT COALESCE(SUM(total),0)::float AS total, COUNT(*)::int AS n FROM invoices
+    WHERE status NOT IN ('draft','void') AND substr(created_at,1,7) = to_char(CURRENT_DATE,'YYYY-MM')`);
+  res.json(r || { total: 0, n: 0 });
+}));
 app.get('/api/projects', auth, asyncRoute(async (req, res) => {
   await recomputeProjectStatuses().catch(e => console.error('Auto-stadier fejlede:', e.message));
   // Pris/tilbudsbeløb sendes KUN med til kontor/økonomi-brugere (til søgning/visning
@@ -17154,7 +17161,19 @@ app.get('/api/projects', auth, asyncRoute(async (req, res) => {
       (SELECT MAX(COALESCE(NULLIF(end_date,''),start_date)) FROM gantt_tasks WHERE project_id=p.id AND start_date IS NOT NULL AND start_date<>'') AS gantt_end,
       (SELECT COUNT(*) FILTER (WHERE COALESCE(line_type,'item')<>'text') > 0
               AND COUNT(*) FILTER (WHERE COALESCE(line_type,'item')<>'text' AND invoiced_in_invoice_id IS NULL) = 0
-         FROM quote_lines WHERE quote_id=p.quote_id) AS fully_invoiced
+         FROM quote_lines WHERE quote_id=p.quote_id) AS fully_invoiced,
+      -- v2.67.0 — Projekter-listen (stil C): fremdrift + næste opgave.
+      (SELECT COUNT(*)::int FROM gantt_tasks WHERE project_id=p.id AND (status='done' OR progress>=1)) AS done_task_count,
+      (SELECT name FROM gantt_tasks WHERE project_id=p.id AND COALESCE(is_group,0)=0 AND COALESCE(NULLIF(end_date,''),start_date) >= to_char(CURRENT_DATE,'YYYY-MM-DD') AND NOT (status='done' OR progress>=1) ORDER BY start_date ASC, position ASC LIMIT 1) AS next_task_name,
+      (SELECT start_date FROM gantt_tasks WHERE project_id=p.id AND COALESCE(is_group,0)=0 AND COALESCE(NULLIF(end_date,''),start_date) >= to_char(CURRENT_DATE,'YYYY-MM-DD') AND NOT (status='done' OR progress>=1) ORDER BY start_date ASC, position ASC LIMIT 1) AS next_task_date${includePrice ? `,
+      -- Faktureret indtil nu på sagen: alle (ikke-kladde/annullerede) fakturaer
+      -- på sagens tilbud minus kreditnotaer — eller sagens egen direkte faktura.
+      CASE WHEN p.quote_id IS NOT NULL THEN
+        (SELECT COALESCE(SUM(i2.total),0) - COALESCE((SELECT SUM(cn.amount) FROM credit_notes cn JOIN invoices i3 ON i3.id=cn.invoice_id WHERE i3.quote_id=p.quote_id),0)
+           FROM invoices i2 WHERE i2.quote_id=p.quote_id AND i2.status NOT IN ('draft','void'))
+      WHEN p.invoice_id IS NOT NULL THEN
+        (SELECT CASE WHEN i4.status NOT IN ('draft','void') THEN i4.total ELSE 0 END FROM invoices i4 WHERE i4.id=p.invoice_id)
+      ELSE 0 END AS invoiced_total` : ''}
     FROM projects p LEFT JOIN quotes q ON q.id = p.quote_id${includePrice ? ' LEFT JOIN invoices i ON i.id = p.invoice_id' : ''}
     ORDER BY p.created_at DESC
   `);
