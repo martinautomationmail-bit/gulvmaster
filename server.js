@@ -9443,7 +9443,7 @@ app.delete('/api/library/:id', auth, panelAccess('library'), asyncRoute(async (r
 // som Bibliotek (library) ovenfor.
 // ══════════════════════════════════════════════════════════════════════════
 
-const KB_COLUMN_TYPES = ['text', 'number', 'date', 'select', 'checkbox', 'url', 'email', 'phone', 'note'];
+const KB_COLUMN_TYPES = ['text', 'number', 'date', 'select', 'checkbox', 'url', 'email', 'phone', 'note', 'rating'];
 
 // ── LISTER ──────────────────────────────────────────────────
 app.get('/api/kb/lists', auth, asyncRoute(async (req, res) => {
@@ -16864,6 +16864,34 @@ app.get('/api/project-types', auth, asyncRoute(async (req, res) => {
 // sek.) og straks når en sag/tidslinje ændres.
 // ══════════════════════════════════════════════════════════════
 const AUTO_STAGE_RULES = ['next_year', 'this_year', 'next_week', 'this_week', 'running', 'overdue'];
+// v2.64.0 — Martin: "Prioritet til hver leverandør … og Profession, så hvis vi
+// har 10 malere er det hurtigt at undersøge". Engangs: tilføjer kolonnerne
+// "Fag" (vælg fra liste) og "Prioritet" (1-5 stjerner) lige efter Navn i
+// Samarbejdspartnere + Leverandører, hvis de ikke allerede findes. Slettes de
+// senere, kommer de ikke igen (app_migrations).
+const KB_DEFAULT_FAG = ['Maler', 'Gulvlægger', 'Gulvsliber', 'Tømrer', 'Snedker', 'Murer', 'Elektriker', 'VVS', 'Flisemontør', 'Rengøring', 'Materialer', 'Andet'];
+async function migrateKbPriorityProfession() {
+  const name = 'kb_priority_profession_20261102';
+  try {
+    if (await pgOne('SELECT 1 FROM app_migrations WHERE name=$1', [name])) return;
+    const lists = (await pool.query("SELECT id FROM kb_lists WHERE name IN ('Samarbejdspartnere','Leverandører')")).rows;
+    for (const l of lists) {
+      const cols = (await pool.query('SELECT id, name, type FROM kb_columns WHERE list_id=$1', [l.id])).rows;
+      const has = n => cols.some(c => c.name.trim().toLowerCase() === n);
+      const add = [];
+      if (!has('fag') && !has('profession')) add.push({ name: 'Fag', type: 'select', options: KB_DEFAULT_FAG });
+      if (!has('prioritet')) add.push({ name: 'Prioritet', type: 'rating', options: [] });
+      if (!add.length) continue;
+      await pool.query('UPDATE kb_columns SET sort_order=sort_order+$1 WHERE list_id=$2 AND sort_order>1', [add.length, l.id]);
+      let pos = 2;
+      for (const c of add) {
+        await pool.query('INSERT INTO kb_columns (list_id, name, type, options, sort_order) VALUES ($1,$2,$3,$4,$5)', [l.id, c.name, c.type, JSON.stringify(c.options), pos++]);
+      }
+    }
+    await pool.query('INSERT INTO app_migrations (name, details) VALUES ($1, $2)', [name, JSON.stringify({ lists: lists.length })]);
+    console.log('Videnscenter: Fag + Prioritet tilføjet til ' + lists.length + ' liste(r).');
+  } catch (e) { console.error('migrateKbPriorityProfession fejlede:', e.message); }
+}
 async function migrateAutoProjectStages() {
   const name = 'auto_project_stages_20261029';
   try {
@@ -29284,6 +29312,7 @@ async function start() {
   await sprog.initSchema();
   await migrateTimetrackPanelPage();
   await migrateAutoProjectStages();
+  await migrateKbPriorityProfession();
   await migrateNotPerformedStage();
   await migrateSubcontractorCosts();
   await syncProjectTaskMirrorDates();

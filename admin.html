@@ -4424,11 +4424,31 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
 .kb-cell textarea{resize:vertical;min-height:60px}
 .kb-cell a{color:#1D4ED8;text-decoration:none}
 .kb-cell a:hover{text-decoration:underline}
-.kb-chip{display:inline-flex;padding:2px 9px;border-radius:999px;font-size:11.5px;font-weight:700;background:#EEF2FF;color:#4338CA}
+.kb-chip{display:inline-flex;white-space:nowrap;padding:2px 9px;border-radius:999px;font-size:11.5px;font-weight:700;background:#EEF2FF;color:#4338CA}
 .kb-row-actions-cell{width:34px;text-align:center!important}
 .kb-row-del-btn{opacity:0;transition:opacity .1s;width:24px;height:24px;border-radius:6px;border:0;background:transparent;color:#B91C1C;cursor:pointer;font-size:13px}
 .kb-table tr:hover .kb-row-del-btn{opacity:.7}
 .kb-row-del-btn:hover{opacity:1!important;background:#FEF2F2}
+.kb-rating{gap:1px;white-space:nowrap}
+.kb-table td:first-child .kb-cell{min-width:160px}
+.kb-star{font-size:17px;line-height:1;color:#E5E7EB;cursor:pointer;transition:color .1s,transform .1s;user-select:none}
+.kb-star.on{color:#F59E0B}
+.kb-rating:hover .kb-star{color:#FCD34D}
+.kb-rating .kb-star:hover~.kb-star{color:#E5E7EB}
+.kb-star:hover{transform:scale(1.15)}
+.kb-filter-bar{background:#fff;border:1px solid var(--border2);border-radius:12px;padding:10px 12px;margin-bottom:10px;box-shadow:var(--shadow)}
+.kb-fb-row{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.kb-fb-search{flex:1;min-width:180px;max-width:320px;height:34px;padding:6px 10px;font-size:13px}
+.kb-fb-row .kb-fb-sel{height:34px;padding:4px 28px 4px 10px;font-size:12.5px;width:auto!important;flex:0 0 auto;min-width:0}
+.kb-fb-row .kb-fb-search{width:auto!important}
+.kb-fb-count{margin-left:auto;font-size:12px;color:var(--muted);font-weight:600}
+.kb-fb-chips{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-top:9px;padding-top:9px;border-top:1px dashed var(--border2)}
+.kb-fb-chips-lbl{font-size:11.5px;font-weight:800;color:var(--muted);text-transform:uppercase;letter-spacing:.03em;margin-right:2px}
+.kb-fb-chip{border:1px solid var(--border2);background:#F9FAFB;border-radius:999px;padding:4px 11px;font-size:12.5px;font-weight:600;color:var(--ink);cursor:pointer;font-family:inherit}
+.kb-fb-chip b{font-weight:800;color:var(--muted);margin-left:3px}
+.kb-fb-chip:hover{background:#F3F4F6}
+.kb-fb-chip.on{background:#4338CA;border-color:#4338CA;color:#fff}
+.kb-fb-chip.on b{color:#C7D2FE}
 .kb-empty-state{padding:40px 20px;text-align:center;color:var(--muted);font-size:13px}
 
 /* VIDENSCENTER — NOTER (RUNDE DP, Martin: "private noter hver bruger men også
@@ -5349,7 +5369,7 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
        i browseren faktisk ER det nyeste deploy, eller om Render/GitHub bare
        ikke er nået at opdatere endnu — i stedet for at skulle gætte om en
        rettelse "stadig ikke virker" eller bare endnu ikke er live. -->
-  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build v2.63.1 · 2026-10-30</span></div>
+  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build v2.64.0 · 2026-11-02</span></div>
 </aside>
 <div class="app-content">
 <!-- RUNDE FB — AI-ASSISTENTEN (Martin: "en ai der er nede i venstre hjørne af
@@ -10319,6 +10339,7 @@ body.ai-has-reply #ai-fab{animation:ai-nudge 1.4s ease-in-out 3}
     </div>
     <div class="kb-main">
       <div class="kb-main-head" id="kb-list-head"></div>
+      <div class="kb-filter-bar" id="kb-filter-bar" style="display:none"></div>
       <div class="kb-table-wrap"><table class="kb-table" id="kb-table"></table></div>
       <button class="btn outline small" id="kb-add-row-btn" style="margin-top:12px">+ Tilføj række</button>
     </div>
@@ -10342,6 +10363,7 @@ body.ai-has-reply #ai-fab{animation:ai-nudge 1.4s ease-in-out 3}
         <option value="url">Link (URL)</option>
         <option value="email">Email</option>
         <option value="phone">Telefon</option>
+        <option value="rating">Prioritet (1-5 ★)</option>
       </select>
     </div>
     <div class="form-group" id="kb-column-options-wrap" style="display:none">
@@ -24260,7 +24282,9 @@ var kbLists=[],kbActiveListId=null,kbColumns=[],kbRows=[];
 var kbDocCategories=[],kbDocs=[],kbActiveDocCat='all';
 var kbEditingColumnId=null,kbEditingDocId=null;
 var kbDocMode='file',kbDocUploadedUrl=null,kbDocUploadedFileName=null,kbDocUploadedFileType=null;
-var KB_TYPE_ICON={text:'Aa',note:'≣',number:'#',date:'📅',select:'▾',checkbox:'☑',url:'🔗',email:'@',phone:'☎'};
+var KB_TYPE_ICON={text:'Aa',note:'≣',number:'#',date:'📅',select:'▾',checkbox:'☑',url:'🔗',email:'@',phone:'☎',rating:'★'};
+// v2.64.0 — filter/sortering over listen (søg, Fag-chips, min. prioritet, sortér).
+var kbFilter={q:'',sel:{},minRating:0,sort:'auto'};
 
 // ── LISTER ──────────────────────────────────────────────────
 async function kbListsInit(){
@@ -24284,6 +24308,7 @@ function renderKbListsRail(){
 async function kbSelectList(id){
   if(String(id)===String(kbActiveListId))return;
   kbActiveListId=id;
+  kbFilter={q:'',sel:{},minRating:0,sort:'auto'};
   renderKbListsRail();
   await kbLoadActiveList();
 }
@@ -24306,6 +24331,72 @@ function kbRenderTable(){
   }
   headEl.innerHTML='<span>'+esc(activeList.icon||'📋')+'</span><span>'+esc(activeList.name)+'</span>';
   if(addRowBtn)addRowBtn.style.display=kbColumns.length?'':'none';
+  kbRenderFilterBar();
+  kbRenderRows();
+}
+function kbRatingCol(){return kbColumns.filter(function(c){return c.type==='rating';})[0]||null;}
+function kbFagCol(){
+  var sels=kbColumns.filter(function(c){return c.type==='select';});
+  return sels.filter(function(c){return /^(fag|profession|faggruppe|branche|type)$/i.test(String(c.name).trim());})[0]||sels[0]||null;
+}
+function kbOptLabels(col){return (col.options||[]).map(function(o){return typeof o==='string'?o:o.label;});}
+function kbVisibleRows(){
+  var rc=kbRatingCol(),q=kbFilter.q.trim().toLowerCase();
+  var rows=kbRows.filter(function(row){
+    for(var cid in kbFilter.sel){var want=kbFilter.sel[cid];if(want&&String(kbCellValue(row,{id:cid}))!==want)return false;}
+    if(rc&&kbFilter.minRating&&Number(kbCellValue(row,rc)||0)<kbFilter.minRating)return false;
+    if(q){
+      var hay=kbColumns.map(function(c){return String(kbCellValue(row,c));}).join(' ').toLowerCase();
+      if(hay.indexOf(q)<0)return false;
+    }
+    return true;
+  });
+  var sort=kbFilter.sort==='auto'?(rc?'rating':'none'):kbFilter.sort;
+  var nameCol=kbColumns.filter(function(c){return c.type==='text';})[0];
+  if(sort==='rating'&&rc){
+    rows=rows.map(function(r,i){return {r:r,i:i};}).sort(function(a,b){return (Number(kbCellValue(b.r,rc)||0)-Number(kbCellValue(a.r,rc)||0))||(a.i-b.i);}).map(function(x){return x.r;});
+  }else if(sort==='name'&&nameCol){
+    rows=rows.slice().sort(function(a,b){return String(kbCellValue(a,nameCol)).localeCompare(String(kbCellValue(b,nameCol)),'da');});
+  }
+  return rows;
+}
+function kbRenderFilterBar(){
+  var bar=document.getElementById('kb-filter-bar');
+  if(!bar)return;
+  if(!kbColumns.length||!kbRows.length){bar.style.display='none';bar.innerHTML='';return;}
+  bar.style.display='';
+  var rc=kbRatingCol(),fc=kbFagCol();
+  var html='<div class="kb-fb-row"><input type="search" class="input kb-fb-search" id="kb-fb-search" placeholder="🔍 Søg i listen…" value="'+esc(kbFilter.q)+'">';
+  kbColumns.forEach(function(c){
+    if(c.type!=='select'||c===fc)return;
+    var cur=kbFilter.sel[c.id]||'';
+    html+='<select class="select kb-fb-sel" data-kbfsel="'+c.id+'"><option value="">'+esc(c.name)+': alle</option>'+kbOptLabels(c).map(function(l){return '<option value="'+esc(l)+'"'+(l===cur?' selected':'')+'>'+esc(l)+'</option>';}).join('')+'</select>';
+  });
+  if(rc){
+    html+='<select class="select kb-fb-sel" id="kb-fb-min"><option value="0">Alle prioriteter</option>'+[5,4,3,2,1].map(function(n){return '<option value="'+n+'"'+(kbFilter.minRating===n?' selected':'')+'>'+'★'.repeat(n)+(n<5?' og op':'')+'</option>';}).join('')+'</select>';
+  }
+  var sortVal=kbFilter.sort==='auto'?(rc?'rating':'none'):kbFilter.sort;
+  html+='<select class="select kb-fb-sel" id="kb-fb-sort"><option value="none"'+(sortVal==='none'?' selected':'')+'>Sortér: egen rækkefølge</option>'+(rc?'<option value="rating"'+(sortVal==='rating'?' selected':'')+'>Sortér: bedste først ★</option>':'')+'<option value="name"'+(sortVal==='name'?' selected':'')+'>Sortér: navn A–Å</option></select>';
+  var anyF=kbFilter.q||kbFilter.minRating||Object.keys(kbFilter.sel).some(function(k){return kbFilter.sel[k];});
+  if(anyF)html+='<button type="button" class="btn outline small" id="kb-fb-reset">Nulstil</button>';
+  html+='<span class="kb-fb-count" id="kb-fb-count"></span></div>';
+  if(fc){
+    var cur=kbFilter.sel[fc.id]||'';
+    var counts={};kbRows.forEach(function(r){var v=String(kbCellValue(r,fc));if(v)counts[v]=(counts[v]||0)+1;});
+    var labels=kbOptLabels(fc).filter(function(l){return counts[l];});
+    Object.keys(counts).forEach(function(l){if(labels.indexOf(l)<0)labels.push(l);});
+    html+='<div class="kb-fb-chips"><span class="kb-fb-chips-lbl">'+esc(fc.name)+':</span><button type="button" class="kb-fb-chip'+(cur?'':' on')+'" data-kbfchip="'+fc.id+'" data-val="">Alle <b>'+kbRows.length+'</b></button>'
+      +labels.map(function(l){return '<button type="button" class="kb-fb-chip'+(cur===l?' on':'')+'" data-kbfchip="'+fc.id+'" data-val="'+esc(l)+'">'+esc(l)+' <b>'+counts[l]+'</b></button>';}).join('')
+      +(labels.length?'':'<span class="kb-fb-chips-lbl" style="font-weight:500">— vælg '+esc(fc.name.toLowerCase())+' på rækkerne for at kunne filtrere</span>')+'</div>';
+  }
+  bar.innerHTML=html;
+}
+function kbRenderRows(){
+  var tableEl=document.getElementById('kb-table');
+  if(!tableEl)return;
+  var rows=kbVisibleRows();
+  var cnt=document.getElementById('kb-fb-count');
+  if(cnt)cnt.textContent=rows.length===kbRows.length?(kbRows.length+' rækker'):('Viser '+rows.length+' af '+kbRows.length);
   var thead='<thead><tr>'+kbColumns.map(function(c){
     return '<th><div class="kb-col-th" data-action="kb-edit-column" data-id="'+c.id+'" title="Klik for at redigere kolonnen"><span class="kb-col-th-type-icon">'+(KB_TYPE_ICON[c.type]||'')+'</span>'+esc(c.name)+'</div></th>';
   }).join('')+'<th class="kb-col-add-th"><button type="button" class="kb-col-add-btn" id="kb-col-add-btn" title="Ny kolonne">+</button></th>'+(kbColumns.length?'<th style="width:34px"></th>':'')+'</tr></thead>';
@@ -24314,8 +24405,10 @@ function kbRenderTable(){
     bodyHtml='<tbody><tr><td class="kb-empty-state">Tilføj din første kolonne med "+" for at komme i gang.</td></tr></tbody>';
   }else if(!kbRows.length){
     bodyHtml='<tbody><tr><td colspan="'+(kbColumns.length+2)+'" class="kb-empty-state">Ingen rækker endnu — klik "+ Tilføj række" nedenfor.</td></tr></tbody>';
+  }else if(!rows.length){
+    bodyHtml='<tbody><tr><td colspan="'+(kbColumns.length+2)+'" class="kb-empty-state">Ingen rækker matcher filteret.</td></tr></tbody>';
   }else{
-    bodyHtml='<tbody>'+kbRows.map(function(row){
+    bodyHtml='<tbody>'+rows.map(function(row){
       return '<tr data-row-id="'+row.id+'">'+kbColumns.map(function(c){return '<td>'+kbCellHtml(row,c)+'</td>';}).join('')
         +'<td></td><td class="kb-row-actions-cell"><button type="button" class="kb-row-del-btn" data-action="kb-delete-row" data-id="'+row.id+'" title="Slet række">✕</button></td></tr>';
     }).join('')+'</tbody>';
@@ -24328,6 +24421,11 @@ function kbCellHtml(row,col){
   var base='data-action="kb-edit-cell" data-row="'+row.id+'" data-col="'+col.id+'"';
   if(col.type==='checkbox'){
     return '<div class="kb-cell" style="cursor:default"><input type="checkbox" data-action="kb-toggle-checkbox" data-row="'+row.id+'" data-col="'+col.id+'" '+(v?'checked':'')+' style="width:16px;height:16px;cursor:pointer"></div>';
+  }
+  if(col.type==='rating'){
+    var rv=Number(v)||0,st='';
+    for(var si=1;si<=5;si++)st+='<span class="kb-star'+(si<=rv?' on':'')+'" data-action="kb-set-rating" data-row="'+row.id+'" data-col="'+col.id+'" data-val="'+si+'" title="'+si+' ud af 5'+(si===rv?' (klik igen for at fjerne)':'')+'">★</span>';
+    return '<div class="kb-cell kb-rating" style="cursor:default">'+st+'</div>';
   }
   if(col.type==='select'){
     if(!v)return '<div class="kb-cell empty" '+base+'>—</div>';
@@ -24382,6 +24480,17 @@ async function kbSaveCell(row,col,newVal,cellEl){
   if(!row.data)row.data={};
   row.data[col.id]=newVal;
   if(cellEl&&cellEl.isConnected)cellEl.outerHTML=kbCellHtml(row,col);
+  if(col.type==='select')kbRenderFilterBar();
+  var r=await api('/api/kb/rows/'+row.id,{method:'PUT',body:JSON.stringify({data:row.data})});
+  if(!r||!r.ok)toast((r&&r.error)||'Kunne ikke gemme','❌');
+}
+async function kbSetRating(rowId,colId,val){
+  var row=kbRows.filter(function(r){return String(r.id)===String(rowId);})[0];
+  if(!row)return;
+  if(!row.data)row.data={};
+  var cur=Number(row.data[colId])||0;
+  row.data[colId]=cur===val?0:val;
+  kbRenderFilterBar();kbRenderRows();
   var r=await api('/api/kb/rows/'+row.id,{method:'PUT',body:JSON.stringify({data:row.data})});
   if(!r||!r.ok)toast((r&&r.error)||'Kunne ikke gemme','❌');
 }
@@ -24667,6 +24776,11 @@ document.addEventListener('click',function(e){
   if(colTh){kbOpenColumnModal(Number(colTh.dataset.id));return;}
   var delRowBtn=t.closest('[data-action="kb-delete-row"]');
   if(delRowBtn){kbDeleteRow(Number(delRowBtn.dataset.id));return;}
+  var starEl=t.closest('[data-action="kb-set-rating"]');
+  if(starEl){kbSetRating(starEl.dataset.row,starEl.dataset.col,Number(starEl.dataset.val));return;}
+  var fchip=t.closest('[data-kbfchip]');
+  if(fchip){kbFilter.sel[fchip.dataset.kbfchip]=fchip.dataset.val;kbRenderFilterBar();kbRenderRows();return;}
+  if(t.closest('#kb-fb-reset')){kbFilter={q:'',sel:{},minRating:0,sort:kbFilter.sort};kbRenderFilterBar();kbRenderRows();return;}
   var editCell=t.closest('[data-action="kb-edit-cell"]');
   if(editCell){kbEditCell(editCell.dataset.row,editCell.dataset.col,editCell);return;}
   if(t.closest('#kb-column-cancel')){closeModal('kb-column-modal');return;}
@@ -24694,10 +24808,16 @@ document.addEventListener('click',function(e){
   if(t.closest('[data-action="kbn-add-shared"]')){kbnAddShared();return;}
   if(t.closest('#kbn-add-btn')){kbnAddPrivate();return;}
 });
+document.addEventListener('input',function(e){
+  if(e.target&&e.target.id==='kb-fb-search'){kbFilter.q=e.target.value;kbRenderRows();}
+});
 document.addEventListener('change',function(e){
   var t=e.target;
   if(!t)return;
   if(t.id==='kb-column-type'){kbColumnTypeChange();return;}
+  if(t.dataset&&t.dataset.kbfsel){kbFilter.sel[t.dataset.kbfsel]=t.value;kbRenderFilterBar();kbRenderRows();return;}
+  if(t.id==='kb-fb-min'){kbFilter.minRating=Number(t.value)||0;kbRenderFilterBar();kbRenderRows();return;}
+  if(t.id==='kb-fb-sort'){kbFilter.sort=t.value;kbRenderRows();return;}
   if(t.id==='kb-doc-file-input'){kbDocFileChange(e);return;}
   var cb=t.closest?t.closest('[data-action="kb-toggle-checkbox"]'):null;
   if(cb){kbToggleCheckbox(cb.dataset.row,cb.dataset.col,cb.checked);return;}
