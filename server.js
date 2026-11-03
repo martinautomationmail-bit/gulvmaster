@@ -12234,7 +12234,8 @@ app.get('/api/crm/customers/:id/emails', auth, panelAccess('customers'), asyncRo
 // ved synk (se gmailSyncCustomer), og er derfor billig selv med mange mails.
 // Kappet til de 40 nyeste mails-med-vedhæftning pr. kald, for ikke at kunne løbe
 // løbsk hvis en kunde en dag har hundredvis.
-app.get('/api/crm/customers/:id/files', auth, panelAccess('customers'), asyncRoute(async (req, res) => {
+async function customerFilesList(customerId) {
+  const req = { params: { id: customerId } };
   const files = [];
   // RUNDE BK — Filer-fanen er ikke længere kun for Gmail-vedhæftninger (se
   // customer_photo_requests-blokken nedenfor), så den skal fungere fint uden
@@ -12283,7 +12284,73 @@ app.get('/api/crm/customers/:id/files', auth, panelAccess('customers'), asyncRou
     });
   }
   files.sort((a, b) => Number(b.internal_date) - Number(a.internal_date));
-  res.json(files);
+  return files;
+}
+app.get('/api/crm/customers/:id/files', auth, panelAccess('customers'), asyncRoute(async (req, res) => {
+  res.json(await customerFilesList(req.params.id));
+}));
+// ── v2.70.0 — "Download alle" som én ZIP-fil (sagens billeder / kundens filer) ──
+// URL'erne kommer fra vores egen database (Cloudinary m.fl.), aldrig fra
+// forespørgslen, og hentes server-side. Loft: 300 filer / ca. 250 MB.
+function zipSafeName(n) { return String(n || 'fil').replace(/[\\/:*?"<>|\x00-\x1f]/g, '_').slice(0, 120); }
+function extFromUrlOrType(url, type) {
+  const m = String(url || '').split('?')[0].match(/\.([a-z0-9]{2,5})$/i);
+  if (m) return m[1].toLowerCase();
+  const t = String(type || '');
+  if (/pdf/.test(t)) return 'pdf'; if (/png/.test(t)) return 'png'; if (/webp/.test(t)) return 'webp'; if (/mp4/.test(t)) return 'mp4'; if (/quicktime|mov/.test(t)) return 'mov';
+  return 'jpg';
+}
+async function fetchUrlBuffer(url) {
+  if (!/^https?:\/\//i.test(String(url || ''))) throw new Error('Ugyldig URL');
+  const r = await fetch(url);
+  if (!r.ok) throw new Error('HTTP ' + r.status);
+  return { buf: Buffer.from(await r.arrayBuffer()), type: r.headers.get('content-type') || '' };
+}
+async function zipCollect(items, loader) {
+  const out = [], used = new Set();
+  let total = 0;
+  for (let i = 0; i < items.length && out.length < 300; i++) {
+    try {
+      const f = await loader(items[i], i);
+      if (!f || !f.data) continue;
+      total += f.data.length; if (total > 250 * 1024 * 1024) break;
+      let name = zipSafeName(f.name), k = 2;
+      while (used.has(name)) { name = zipSafeName(f.name).replace(/(\.[^.]+)?$/, '-' + (k++) + '$1'); }
+      used.add(name); out.push({ name, data: f.data });
+    } catch (e) { console.error('ZIP: kunne ikke hente fil', i, e.message); }
+  }
+  return out;
+}
+function sendZip(res, files, base) {
+  if (!files.length) return res.status(404).json({ error: 'Ingen filer at downloade' });
+  const zip = buildZip(files);
+  res.setHeader('Content-Type', 'application/zip');
+  res.setHeader('Content-Disposition', 'attachment; filename="' + zipSafeName(base).replace(/[^\w.\- ]/g, '_') + '.zip"');
+  res.send(zip);
+}
+app.get('/api/projects/:id/photos.zip', auth, panelAccess('projects'), asyncRoute(async (req, res) => {
+  const p = await pgOne('SELECT name, job_number FROM projects WHERE id=$1', [req.params.id]);
+  if (!p) return res.status(404).json({ error: 'Sagen findes ikke' });
+  const photos = await projectPhotoLibrary(req.params.id);
+  const files = await zipCollect(photos, async (ph, i) => {
+    const { buf, type } = await fetchUrlBuffer(ph.url);
+    const d = String(ph.date || '').slice(0, 10);
+    return { name: String(i + 1).padStart(3, '0') + ' ' + (ph.source || 'Billede') + (d ? ' ' + d : '') + '.' + extFromUrlOrType(ph.url, type), data: buf };
+  });
+  sendZip(res, files, 'Billeder ' + (p.job_number || '') + ' ' + (p.name || 'sag'));
+}));
+app.get('/api/crm/customers/:id/files.zip', auth, panelAccessAny(['customers', 'crmp_leads', 'crmp_sales']), asyncRoute(async (req, res) => {
+  const c = await pgOne('SELECT name FROM customers WHERE id=$1', [req.params.id]);
+  if (!c) return res.status(404).json({ error: 'Kunden findes ikke' });
+  const list = await customerFilesList(req.params.id);
+  let token = null;
+  const files = await zipCollect(list, async (f) => {
+    if (f.direct_url) { const { buf, type } = await fetchUrlBuffer(f.direct_url); let n = f.filename || 'fil'; if (!/\.[a-z0-9]{2,5}$/i.test(n)) n += '.' + extFromUrlOrType(f.direct_url, type); return { name: n, data: buf }; }
+    if (!token) token = await gmailGetValidAccessToken();
+    const att = await gmailApiFetch('/messages/' + f.gmail_message_id + '/attachments/' + f.attachmentId, token);
+    return { name: f.filename || 'vedhaeftning', data: gmailB64UrlDecode(att.data) };
+  });
+  sendZip(res, files, 'Filer ' + (c.name || 'kunde'));
 }));
 
 // ══════════════════════════════════════════════════════════════
