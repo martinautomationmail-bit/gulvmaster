@@ -2747,6 +2747,12 @@ body.plan-alt-dragging .ctl-add{display:none}
 .crmp-card-badges{display:flex;flex-wrap:wrap;gap:4px;margin-top:6px}
 .crmp-card-badge{background:var(--bly-accent-soft);color:var(--bly-accent);font-size:10px;font-weight:700;padding:2px 7px;border-radius:999px}
 .crmp-card-foot{display:flex;align-items:center;justify-content:space-between;margin-top:8px}
+.crmp-ownpill{display:inline-flex;align-items:center;gap:5px;border:1px solid color-mix(in srgb,var(--oc) 35%,transparent);background:color-mix(in srgb,var(--oc) 12%,#fff);color:color-mix(in srgb,var(--oc) 80%,#000);border-radius:999px;padding:1px 8px 1px 2px;font:700 11.5px inherit;font-family:inherit;cursor:pointer;line-height:18px}
+.crmp-ownpill i{width:18px;height:18px;border-radius:50%;background:var(--oc);color:#fff;font-style:normal;font-size:8.5px;display:grid;place-items:center}
+.crmp-ownpill:hover{filter:brightness(.96)}
+.crmp-ownpill.none{--oc:#9CA3AF;padding:1px 9px;border-style:dashed;background:#fff;color:#6B7280;font-weight:600}
+.crmp-ownerq{height:36px;border:1px solid var(--bly-border);border-radius:10px;padding:4px 10px;font:600 12.5px inherit;font-family:inherit;background:#fff;color:#374151;cursor:pointer;max-width:200px}
+.crmp-ownerq.on{background:#EEF2FF;border-color:#A5B4FC;color:#3730A3}
 .crmp-card-owner{width:20px;height:20px;border-radius:50%;display:grid;place-items:center;font-size:9px;font-weight:800;color:#fff;flex-shrink:0}
 .crmp-card-value{font-size:11.5px;font-weight:800;color:var(--bly-ink)}
 .crmp-card-note{font-size:11px;color:var(--bly-sub);margin-top:6px;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;line-height:1.4}
@@ -5704,7 +5710,7 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
        i browseren faktisk ER det nyeste deploy, eller om Render/GitHub bare
        ikke er nået at opdatere endnu — i stedet for at skulle gætte om en
        rettelse "stadig ikke virker" eller bare endnu ikke er live. -->
-  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build v2.70.0 · 2026-11-02</span></div>
+  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build v2.71.0 · 2026-11-02</span></div>
 </aside>
 <div class="app-content">
 <!-- RUNDE FB — AI-ASSISTENTEN (Martin: "en ai der er nede i venstre hjørne af
@@ -8463,6 +8469,8 @@ body.ai-has-reply #ai-fab{animation:ai-nudge 1.4s ease-in-out 3}
            vælgeren er den SAMME <select id="crmp-owner-filter"> som før (ingen
            JS-ændring i selve logikken), bare flyttet ind i menuen, med
            massevalg/CSV/ryd-filtre som almindelige menu-punkter nedenunder. -->
+      <!-- v2.71.0 — ansvarlig-filteret er flyttet ud af "Mere valg", så det altid ses. -->
+      <select id="crmp-owner-quick" class="crmp-ownerq" title="Vis kun kort for én ansvarlig"><option value="">👤 Alle ansvarlige</option></select>
       <div class="filter-dropdown crmp-more-filter" id="crmp-more-group">
         <button type="button" class="bly-ctl filter-dropdown-btn" id="crmp-more-btn" data-action="filter-dropdown-toggle">⋯ Mere valg ▾</button>
         <div class="filter-dropdown-menu">
@@ -31557,7 +31565,8 @@ async function initCrmpModule(){
     document.getElementById('crmp-settings-btn').addEventListener('click',openCrmpSettingsModal);
     document.getElementById('crmp-new-btn').addEventListener('click',openCrmpNewModal);
     document.getElementById('crmp-search').addEventListener('input',function(){crmpState.filters.q=this.value;clearTimeout(crmpState._searchTimer);crmpState._searchTimer=setTimeout(crmpLoadBoard,250);});
-    document.getElementById('crmp-owner-filter').addEventListener('change',function(){crmpState.filters.owner_id=this.value;crmpUpdateMoreBtn();crmpLoadBoard();});
+    document.getElementById('crmp-owner-filter').addEventListener('change',function(){crmpState.filters.owner_id=this.value;var oq=document.getElementById('crmp-owner-quick');if(oq){oq.value=this.value;oq.classList.toggle('on',!!this.value);}crmpUpdateMoreBtn();crmpLoadBoard();});
+    document.getElementById('crmp-owner-quick').addEventListener('change',function(){crmpState.filters.owner_id=this.value;document.getElementById('crmp-owner-filter').value=this.value;this.classList.toggle('on',!!this.value);crmpUpdateMoreBtn();crmpLoadBoard();});
     document.getElementById('crmp-date-from').addEventListener('change',function(){crmpState.filters.dateFrom=this.value;crmpUpdateDateFilterBtn();crmpLoadBoard();});
     document.getElementById('crmp-date-to').addEventListener('change',function(){crmpState.filters.dateTo=this.value;crmpUpdateDateFilterBtn();crmpLoadBoard();});
     // RUNDE (okt. 2026) — CSV/Ryd filtre ligger nu som menu-punkter inde i
@@ -31570,7 +31579,7 @@ async function initCrmpModule(){
     document.getElementById('crmp-export-csv-btn').addEventListener('click',function(){crmpExportCsv();crmpCloseMoreMenu();});
     document.getElementById('crmp-filter-clear').addEventListener('click',function(){
       crmpState.filters={q:'',owner_id:'',cf:{},dateFrom:'',dateTo:''};
-      document.getElementById('crmp-search').value='';document.getElementById('crmp-owner-filter').value='';
+      document.getElementById('crmp-search').value='';document.getElementById('crmp-owner-filter').value='';var oq0=document.getElementById('crmp-owner-quick');if(oq0){oq0.value='';oq0.classList.remove('on');}
       document.getElementById('crmp-date-from').value='';document.getElementById('crmp-date-to').value='';
       crmpBuildCfFilterControls();
       crmpUpdateDateFilterBtn();
@@ -31635,7 +31644,9 @@ async function crmpLoadPipelines(){
   if(crmpState.currentPipelineId)sel.value=crmpState.currentPipelineId;
   await crmpReloadCustomFieldDefs();
   var ownerSel=document.getElementById('crmp-owner-filter');
-  ownerSel.innerHTML='<option value="">Alle ansvarlige</option>'+crmUsers().map(function(u){return '<option value="'+u.id+'">'+esc(u.name)+'</option>';}).join('');
+  ownerSel.innerHTML='<option value="">Alle ansvarlige</option><option value="none">Ingen ansvarlig</option>'+crmUsers().map(function(u){return '<option value="'+u.id+'">'+esc(u.name)+'</option>';}).join('');
+  var oq=document.getElementById('crmp-owner-quick');
+  if(oq){oq.innerHTML='<option value="">👤 Alle ansvarlige</option>'+(me?'<option value="'+me.id+'">⭐ Mine ('+esc(String(me.name||'').split(' ')[0])+')</option>':'')+'<option value="none">Ingen ansvarlig</option>'+crmUsers().map(function(u){return '<option value="'+u.id+'">'+esc(u.name)+'</option>';}).join('');oq.value=crmpState.filters.owner_id||'';oq.classList.toggle('on',!!crmpState.filters.owner_id);}
 }
 async function crmGetCustomFieldDefsCache(entityType){
   var r=await api('/api/crm/custom-fields?entity_type='+entityType);
@@ -31735,7 +31746,7 @@ function crmpUpdateDateFilterBtn(){
 function crmpUpdateMoreBtn(){
   var btn=document.getElementById('crmp-more-btn');
   if(!btn)return;
-  btn.classList.toggle('active',!!crmpState.filters.owner_id||!!crmpState.selectMode);
+  btn.classList.toggle('active',!!crmpState.selectMode);
 }
 // CSV-eksport og Ryd filtre er "ét-klik og færdig"-punkter inde i "Mere
 // valg"-menuen (ikke noget man justerer videre på, som ansvarlig-vælgeren
@@ -31813,6 +31824,23 @@ function crmpExportCsv(){
   toast(rows.length+' kort eksporteret til CSV','✓');
 }
 var CRMP_OWNER_PALETTE=['#4F46E5','#0EA5E9','#16A34A','#D97706','#DB2777','#7C3AED','#DC2626'];
+// v2.71.0 — tildel ansvarlig direkte fra kortet (kun kontor/admin, se crmUsers()).
+function crmpAssignMenu(btn,cardId){
+  var c=crmpState.cards.find(function(x){return +x.id===+cardId;});if(!c)return;
+  var pipe=crmpCurrentPipeline();var type=pipe&&pipe.type==='lead'?'leads':'opportunities';
+  var r=btn.getBoundingClientRect();
+  async function setOwner(uid){
+    var res=await api('/api/crm/'+type+'/'+c.id,{method:'PUT',body:JSON.stringify({owner_id:uid||null})});
+    if(!res||res.error){toast((res&&res.error)||'Kunne ikke gemme','❌');return;}
+    var u=uid?(users||[]).find(function(x){return +x.id===+uid;}):null;
+    c.owner_id=uid||null;c.owner_name=u?u.name:null;c.owner_color=u?u.color:null;c.owner_initials=u?u.initials:null;
+    toast(u?'Tildelt '+u.name:'Ansvarlig fjernet','👤');
+    if(crmpState.filters.owner_id)crmpLoadBoard();else crmpRenderBoard();
+  }
+  var items=crmUsers(c.owner_id).map(function(u){return {text:u.name+(+u.id===+c.owner_id?'  ✓':''),icon:'👤',onClick:function(){setOwner(u.id);}};});
+  if(c.owner_id)items.push({sep:true},{text:'Fjern ansvarlig',icon:'✕',danger:true,onClick:function(){setOwner(null);}});
+  setTimeout(function(){showCtxMenu(r.left,r.bottom+4,items);},0);
+}
 function crmpOwnerColor(userId){return userId?CRMP_OWNER_PALETTE[userId%CRMP_OWNER_PALETTE.length]:'#9CA3AF';}
 // ── HVILKE KOLONNER STARTER KRYMPEDE? ────────────────────────────
 // Martins ønske (sep. 2026): "Konverteret", "Afvist" og "Tabt" skal altid
@@ -31894,6 +31922,8 @@ function crmpRenderBoard(){
   board.querySelectorAll('.crmp-card').forEach(function(card){
     var id=Number(card.dataset.id);
     card.addEventListener('click',function(e){
+      var ap=e.target.closest&&e.target.closest('[data-crmp-assign]');
+      if(ap){e.preventDefault();e.stopPropagation();crmpAssignMenu(ap,id);return;}
       // RUNDE L: kortet er nu et rigtigt <a href>, så almindeligt Ctrl/Cmd-klik
       // eller midterklik skal overlades til browseren (åbner selv i ny fane/vindue)
       // — kun et helt normalt venstreklik opfanges her til SPA-navigation.
@@ -32010,7 +32040,10 @@ function crmpCardHtml(c,pipeline,defs){
   var selected=!!crmpState.selected[c.id];
   var checkHtml=crmpState.selectMode?'<input type="checkbox" class="crmp-card-check" data-id="'+c.id+'"'+(selected?' checked':'')+' aria-label="Vælg kort">':'';
   var ownerLine=checkHtml
-    +'<span class="crmp-card-owner" style="background:'+crmpOwnerColor(ownerId)+';width:18px;height:18px;font-size:8.5px;display:inline-grid">'+esc(ownerInitials)+'</span>'
+    // v2.71.0 — ansvarlig som tydeligt navne-mærke; klik for at tildele uden at åbne kortet.
+    +(ownerId&&c.owner_name
+      ?'<button type="button" class="crmp-ownpill" data-crmp-assign="'+c.id+'" title="Ansvarlig: '+esc(c.owner_name)+' — klik for at skifte" style="--oc:'+(c.owner_color||crmpOwnerColor(ownerId))+'"><i>'+esc(ownerInitials)+'</i>'+esc(String(c.owner_name).split(' ')[0])+'</button>'
+      :'<button type="button" class="crmp-ownpill none" data-crmp-assign="'+c.id+'" title="Ingen ansvarlig — klik for at tildele">+ Tildel</button>')
     +(pipeline.type==='opportunity'&&c.probability!=null?'<span>'+esc(c.probability)+'%</span>':'')
     +'<span style="margin-left:auto">'+esc(fmtRelativeDa(c.updated_at||c.created_at))+'</span>';
   var noteText=pipeline.type==='lead'?c.note:null;

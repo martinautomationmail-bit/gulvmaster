@@ -14909,7 +14909,8 @@ app.get('/api/crm/leads', auth, panelAccess('crmp_leads'), asyncRoute(async (req
   const conds = ['1=1']; const params = [];
   if (req.query.pipeline_id) { params.push(req.query.pipeline_id); conds.push('l.pipeline_id=$' + params.length); }
   if (req.query.stage_id) { params.push(req.query.stage_id); conds.push('l.stage_id=$' + params.length); }
-  if (req.query.owner_id) { params.push(req.query.owner_id); conds.push('l.owner_id=$' + params.length); }
+  if (req.query.owner_id === 'none') conds.push('l.owner_id IS NULL');
+  else if (req.query.owner_id) { params.push(req.query.owner_id); conds.push('l.owner_id=$' + params.length); }
   if (req.query.q) { params.push('%' + req.query.q + '%'); conds.push('(l.name ILIKE $' + params.length + ' OR l.email ILIKE $' + params.length + ' OR l.phone ILIKE $' + params.length + ')'); }
   const rows = (await pool.query(`
     SELECT l.*, u.name AS owner_name, u.color AS owner_color, u.initials AS owner_initials,
@@ -15259,7 +15260,8 @@ app.get('/api/crm/opportunities', auth, panelAccess('crmp_sales'), asyncRoute(as
   const conds = ['1=1']; const params = [];
   if (req.query.pipeline_id) { params.push(req.query.pipeline_id); conds.push('o.pipeline_id=$' + params.length); }
   if (req.query.stage_id) { params.push(req.query.stage_id); conds.push('o.stage_id=$' + params.length); }
-  if (req.query.owner_id) { params.push(req.query.owner_id); conds.push('o.owner_id=$' + params.length); }
+  if (req.query.owner_id === 'none') conds.push('o.owner_id IS NULL');
+  else if (req.query.owner_id) { params.push(req.query.owner_id); conds.push('o.owner_id=$' + params.length); }
   if (req.query.q) { params.push('%' + req.query.q + '%'); conds.push('(o.name ILIKE $' + params.length + ' OR c.name ILIKE $' + params.length + ' OR c.phone ILIKE $' + params.length + ' OR c.email ILIKE $' + params.length + ')'); }
   const rows = (await pool.query(`
     SELECT o.*, u.name AS owner_name, u.color AS owner_color, u.initials AS owner_initials,
