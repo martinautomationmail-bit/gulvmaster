@@ -15466,7 +15466,7 @@ app.delete('/api/crm/activities/:id', auth, asyncRoute(async (req, res) => {
 // kundekortet til at vise "tilknyttede opportunities" (se customer-detail).
 app.get('/api/crm/customers/:id/opportunities', auth, panelAccess('customers'), asyncRoute(async (req, res) => {
   const rows = (await pool.query(`
-    SELECT o.*, s.name AS stage_name, s.color AS stage_color, p.name AS pipeline_name
+    SELECT o.*, s.name AS stage_name, s.color AS stage_color, s.is_won, s.is_lost, p.name AS pipeline_name
     FROM crm_opportunities o
     JOIN crm_contacts c ON c.id=o.contact_id
     JOIN crm_stages s ON s.id=o.stage_id
