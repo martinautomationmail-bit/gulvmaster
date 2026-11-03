@@ -5039,6 +5039,16 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
 #page-project-detail>.page-head{grid-column:1/-1}
 @media(max-width:1100px){#page-project-detail.active{grid-template-columns:minmax(0,1fr)}}
 .pdx-side{position:sticky;top:12px;display:flex;flex-direction:column;gap:12px}
+.pdx-collapse{margin-left:auto;align-self:flex-start;width:28px;height:28px;border-radius:8px;border:1px solid #E5E7EB;background:#fff;color:#71717A;cursor:pointer;font-size:13px;flex-shrink:0}
+.pdx-collapse:hover{background:#F4F4F5;color:#18181B}
+.pdx-mini{display:none;flex-direction:column;align-items:center;gap:8px;background:#fff;border:1px solid #E5E7EB;border-radius:16px;padding:10px 6px}
+.pdx-mini-b{width:36px;height:36px;border-radius:10px;border:1px solid #EDEDEF;background:#fff;display:grid;place-items:center;cursor:pointer;font-size:14px;text-decoration:none;color:#18181B}
+.pdx-mini-b:hover{background:#F4F4F5}.pdx-mini-b[disabled]{opacity:.35;cursor:default}
+.pdx-mini-open{background:#18181B;color:#fff;border-color:#18181B}.pdx-mini-open:hover{background:#3F3F46}
+#page-project-detail.active.pdx-collapsed{grid-template-columns:52px minmax(0,1fr)}
+#page-project-detail.pdx-collapsed .pdx-side>*:not(.pdx-mini){display:none}
+#page-project-detail.pdx-collapsed .pdx-mini{display:flex}
+@media(max-width:1100px){#page-project-detail.active.pdx-collapsed{grid-template-columns:minmax(0,1fr)}#page-project-detail.pdx-collapsed .pdx-mini{flex-direction:row;justify-content:flex-start;padding:8px}}
 @media(max-width:1100px){.pdx-side{position:static}}
 .pdx-card{background:#fff;border:1px solid #E5E7EB;border-radius:16px;padding:14px 16px;min-width:0}
 .pdx-k{font:700 11px Inter,system-ui,sans-serif;color:#9CA3AF;text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px}
@@ -5673,7 +5683,7 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
        i browseren faktisk ER det nyeste deploy, eller om Render/GitHub bare
        ikke er nået at opdatere endnu — i stedet for at skulle gætte om en
        rettelse "stadig ikke virker" eller bare endnu ikke er live. -->
-  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build v2.69.1 · 2026-11-02</span></div>
+  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build v2.69.2 · 2026-11-02</span></div>
 </aside>
 <div class="app-content">
 <!-- RUNDE FB — AI-ASSISTENTEN (Martin: "en ai der er nede i venstre hjørne af
@@ -35730,7 +35740,18 @@ function pdxOpenDd(btn){
   var r=btn.getBoundingClientRect();m.style.left=Math.min(r.left,window.innerWidth-m.offsetWidth-8)+'px';m.style.top=(r.bottom+6)+'px';
   setTimeout(function(){document.addEventListener('mousedown',function h(ev){if(!m.contains(ev.target)&&!btn.contains(ev.target)){pdxCloseDd();document.removeEventListener('mousedown',h,true);}},true);},0);
 }
+function pdxApplySideCollapsed(){
+  var on=false;try{on=localStorage.getItem('gm_pd_side_collapsed')==='1';}catch(e){}
+  var pg=document.getElementById('page-project-detail');if(pg)pg.classList.toggle('pdx-collapsed',on);
+}
+document.addEventListener('click',function(e){
+  var b=e.target.closest&&e.target.closest('[data-pdx-side]');if(!b)return;
+  try{localStorage.setItem('gm_pd_side_collapsed',b.dataset.pdxSide==='close'?'1':'0');}catch(err){}
+  pdxApplySideCollapsed();
+  if(typeof renderPdGanttStrip==='function'&&pjCurrent&&document.getElementById('pdtab-tasks')&&document.getElementById('pdtab-tasks').style.display!=='none')renderPdGanttStrip();
+});
 function renderPdSide(){
+  pdxApplySideCollapsed();
   var el=document.getElementById('pdx-side');if(!el||!pjCurrent)return;
   var d=pjCurrent,tasks=(d.tasks||[]).filter(function(t){return !t.is_group;});
   var name=d.name||'Sag',ini=String(name).split(/\s+/).map(function(x){return x[0]||'';}).join('').slice(0,2).toUpperCase();
@@ -35740,8 +35761,18 @@ function renderPdSide(){
   var stage=(pjAllStagesSorted().find(function(s){return s.key===d.status;})||{}).label||d.status||'';
   // Fag-/status-vælgerne ligger i kortet — tag dem ud FØR kortet tegnes om, ellers slettes de.
   var keepSel=['pd-type-select','pd-status-select'].map(function(id){var x=document.getElementById(id);if(x&&x.parentNode)x.parentNode.removeChild(x);return x;});
-  el.innerHTML='<div class="pdx-card pdx-cust">'
-    +'<div class="pdx-cust-top"><span class="pdx-av">'+esc(ini)+'</span><div><b>'+esc(name)+'</b><div>'+esc([d.job_number,d.project_type].filter(Boolean).join(' · ')||'Sag')+'</div></div></div>'
+  // v2.69.2 — kundekortet kan klappes sammen til en smal stribe (huskes i browseren).
+  var telHref=phone?'tel:'+esc(String(phone).replace(/[^+\d]/g,'')):'';
+  el.innerHTML='<div class="pdx-mini">'
+      +'<button type="button" class="pdx-mini-b pdx-mini-open" data-pdx-side="open" title="Vis kundekortet">⇥</button>'
+      +'<span class="pdx-av" title="'+esc(name)+'">'+esc(ini)+'</span>'
+      +(phone?'<a class="pdx-mini-b" href="'+telHref+'" title="Ring '+esc(phone)+'">📞</a>':'')
+      +(mail?'<button type="button" class="pdx-mini-b" data-pdx="mail" title="Mail '+esc(mail)+'">✉</button>':'')
+      +(addr?'<a class="pdx-mini-b" href="https://maps.google.com/?q='+encodeURIComponent(addr)+'" target="_blank" rel="noopener" title="'+esc(addr)+'">📍</a>':'')
+      +'<button type="button" class="pdx-mini-b" data-pdx="invoice"'+(d.quote_id?'':' disabled')+' title="Fakturér">🧾</button>'
+    +'</div>'
+    +'<div class="pdx-card pdx-cust">'
+    +'<div class="pdx-cust-top"><span class="pdx-av">'+esc(ini)+'</span><div style="flex:1;min-width:0"><b>'+esc(name)+'</b><div>'+esc([d.job_number,d.project_type].filter(Boolean).join(' · ')||'Sag')+'</div></div><button type="button" class="pdx-collapse" data-pdx-side="close" title="Klap kundekortet sammen — mere plads til sagen">⇤</button></div>'
     +(addr?'<a class="pdx-map" href="https://maps.google.com/?q='+encodeURIComponent(addr)+'" target="_blank" rel="noopener"><iframe loading="lazy" tabindex="-1" src="https://maps.google.com/maps?q='+encodeURIComponent(addr)+'&z=15&output=embed"></iframe><span>📍 '+esc(addr)+'</span></a>':'<div class="pdx-noaddr">Ingen adresse på sagen</div>')
     +'<div class="pdx-contact">'+(phone?'<a href="tel:'+esc(String(phone).replace(/[^+\d]/g,''))+'">📞 '+esc(phone)+'</a>':'<span>📞 Intet telefonnummer</span>')+(mail?'<a href="mailto:'+esc(mail)+'">✉ '+esc(mail)+'</a>':'<span>✉ Ingen e-mail</span>')+'</div>'
     +'<div class="pdx-qa">'
