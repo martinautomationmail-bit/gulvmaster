@@ -2522,6 +2522,7 @@ body.plan-alt-dragging .ctl-add{display:none}
 .cda-tabs button:hover{color:#18181B}
 .cda-tabs button.on{color:#18181B;box-shadow:inset 0 -2px 0 #18181B}
 .cda-tabs em{font-style:normal;color:#A1A1AA;font-weight:500;margin-left:3px}
+.cda-grid2.ov{grid-template-columns:minmax(280px,1fr) 1.6fr}
 .cda-grid3{display:grid;grid-template-columns:1fr 1.15fr 1.15fr;gap:14px;align-items:start}
 .cda-grid2{display:grid;grid-template-columns:1fr 1fr;gap:14px;align-items:start}
 @media(max-width:1100px){.cda-grid3,.cda-grid2{grid-template-columns:1fr}}
@@ -5672,7 +5673,7 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
        i browseren faktisk ER det nyeste deploy, eller om Render/GitHub bare
        ikke er nået at opdatere endnu — i stedet for at skulle gætte om en
        rettelse "stadig ikke virker" eller bare endnu ikke er live. -->
-  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build v2.69.0 · 2026-11-02</span></div>
+  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build v2.69.1 · 2026-11-02</span></div>
 </aside>
 <div class="app-content">
 <!-- RUNDE FB — AI-ASSISTENTEN (Martin: "en ai der er nede i venstre hjørne af
@@ -8230,17 +8231,33 @@ body.ai-has-reply #ai-fab{animation:ai-nudge 1.4s ease-in-out 3}
   <div id="cda-next"></div>
   <div class="cda-tabs" id="cda-tabs">
     <button type="button" class="on" data-cda-tab="overview">Overblik</button>
+    <button type="button" data-cda-tab="deals">Handler &amp; sager <em id="cda-n-deals"></em></button>
+    <button type="button" data-cda-tab="visits">Kundebesøg <em id="cda-n-visits"></em></button>
+    <button type="button" data-cda-tab="docs">Tilbud &amp; faktura <em id="cda-n-docs"></em></button>
     <button type="button" data-cda-tab="activity">Aktivitet <em id="cda-n-activity"></em></button>
     <button type="button" data-cda-tab="mails">Mails <em id="cda-n-mails"></em></button>
-    <button type="button" data-cda-tab="docs">Tilbud &amp; fakturaer <em id="cda-n-docs"></em></button>
-    <button type="button" data-cda-tab="files">Filer</button>
-    <button type="button" data-cda-tab="more">Besøg &amp; automatik</button>
+    <button type="button" data-cda-tab="more">Automatik <em id="cda-n-auto"></em></button>
   </div>
 
   <!-- OVERBLIK -->
   <div class="cda-pane" data-cda-pane="overview">
-    <div class="cda-grid3">
+    <div class="cda-grid2 ov">
       <div class="cdx-card"><div class="cdx-k">Økonomi</div><div id="cdx-about"></div></div>
+      <div class="cdx-card"><div class="cdx-k">Seneste</div><div id="cda-latest"></div></div>
+    </div>
+  </div>
+
+  <!-- KUNDEBESØG -->
+  <div class="cda-pane" data-cda-pane="visits" hidden>
+    <div class="cdx-card" id="cd-visits-panel">
+      <h3 class="cdx-ph">📅 Kundebesøg <span class="sub" id="cd-visits-count"></span></h3>
+      <div id="cd-visits-list" style="margin-top:10px"></div>
+    </div>
+  </div>
+
+  <!-- HANDLER & SAGER -->
+  <div class="cda-pane" data-cda-pane="deals" hidden>
+    <div style="max-width:760px">
       <div class="cdx-card cdx-assoc">
         <div class="cdx-ah">🤝 Handler <span class="cdx-cnt" id="cd-opps-count"></span><button type="button" class="cdx-add" id="cdx-newopp-toggle">+ Ny</button></div>
         <div id="cdx-newopp-box" hidden>
@@ -8264,7 +8281,6 @@ body.ai-has-reply #ai-fab{animation:ai-nudge 1.4s ease-in-out 3}
         <div class="cdx-ah" style="margin-top:14px">🏗️ Sager <span class="cdx-cnt" id="cd-projects-count"></span></div>
         <div id="cd-projects-body"></div>
       </div>
-      <div class="cdx-card"><div class="cdx-k">Seneste</div><div id="cda-latest"></div></div>
     </div>
   </div>
 
@@ -8296,7 +8312,7 @@ body.ai-has-reply #ai-fab{animation:ai-nudge 1.4s ease-in-out 3}
           </div>
           <div class="cdx-cfoot"><label class="cdx-chk"><input type="checkbox" id="cdx-task-priority"> ⚡ Høj prioritet</label><button class="bly-btn" type="button" id="cdx-task-add">+ Opret opgave</button></div>
         </div>
-        <div id="cdx-task-none" class="sub" style="padding:16px" hidden>Opgaver hører til en handel eller et lead — opret en handel under Overblik først (🤝 Handler → + Ny).</div>
+        <div id="cdx-task-none" class="sub" style="padding:16px" hidden>Opgaver hører til en handel eller et lead — opret en handel under fanen Handler &amp; sager først (+ Ny).</div>
       </div>
       <div class="cdx-cpane" data-cdx-pane="call" hidden>
         <textarea id="cdx-call-text" class="cdx-ta" rows="3" placeholder="Hvad blev der talt om? (gemmes som note med 📞)"></textarea>
@@ -8316,6 +8332,16 @@ body.ai-has-reply #ai-fab{animation:ai-nudge 1.4s ease-in-out 3}
       <h3 class="cdx-ph" id="cd-emails-toggle" style="cursor:pointer;user-select:none">📧 Alle mails <span class="sub" id="cd-emails-count"></span> <span id="cd-emails-toggle-icon" style="float:right;font-size:11px;color:var(--bly-sub)">▾ Skjul</span></h3>
       <div id="cd-emails-list"></div>
     </div>
+    <div class="cdx-card" id="cd-files-panel" style="display:none">
+      <h3 class="cdx-ph" id="cd-files-toggle" style="cursor:pointer;user-select:none">📎 Filer <span class="sub" id="cd-files-count"></span> <span id="cd-files-toggle-icon" style="float:right;font-size:11px;color:var(--bly-sub)">▸ Vis</span></h3>
+      <div id="cd-files-wrap" hidden>
+        <div style="display:flex;justify-content:flex-end;margin:10px 0">
+          <button class="bly-btn outline small" type="button" id="cd-files-fullsync-btn" title="Henter hele mailhistorikken med denne kunde (ikke kun de seneste)">🔄 Hent hele mail-historikken</button>
+        </div>
+        <div id="cd-files-grid" class="cd-files-grid"></div>
+      </div>
+    </div>
+    <div class="cdx-empty" id="cda-files-none" style="display:none">Filer hentes fra mailkorrespondancen med kunden — forbind Gmail for at se dem.</div>
     <div class="hint" id="cd-emails-not-connected" style="margin-bottom:14px;display:none">📧 Forbind jeres Gmail under "Min side → Indstillinger → Gmail" for automatisk at se mailkorrespondance med kunden her.</div>
   </div>
 
@@ -8334,26 +8360,8 @@ body.ai-has-reply #ai-fab{animation:ai-nudge 1.4s ease-in-out 3}
     </div>
   </div>
 
-  <!-- FILER -->
-  <div class="cda-pane" data-cda-pane="files" hidden>
-    <div class="cdx-card" id="cd-files-panel" style="display:none">
-      <h3 class="cdx-ph" id="cd-files-toggle" style="cursor:pointer;user-select:none">📎 Filer <span class="sub" id="cd-files-count"></span> <span id="cd-files-toggle-icon" style="float:right;font-size:11px;color:var(--bly-sub)">▸ Vis</span></h3>
-      <div id="cd-files-wrap" hidden>
-        <div style="display:flex;justify-content:flex-end;margin:10px 0">
-          <button class="bly-btn outline small" type="button" id="cd-files-fullsync-btn" title="Henter hele mailhistorikken med denne kunde (ikke kun de seneste)">🔄 Hent hele mail-historikken</button>
-        </div>
-        <div id="cd-files-grid" class="cd-files-grid"></div>
-      </div>
-    </div>
-    <div class="cdx-empty" id="cda-files-none" style="display:none">Filer hentes fra mailkorrespondancen med kunden — forbind Gmail for at se dem.</div>
-  </div>
-
-  <!-- BESØG & AUTOMATIK -->
+  <!-- AUTOMATIK -->
   <div class="cda-pane" data-cda-pane="more" hidden>
-    <div class="cdx-card" id="cd-visits-panel">
-      <h3 class="cdx-ph">📅 Kundebesøg <span class="sub" id="cd-visits-count"></span></h3>
-      <div id="cd-visits-list" style="margin-top:10px"></div>
-    </div>
     <div class="cdx-card" id="cd-automation-panel">
       <h3 class="cdx-ph" id="cd-automation-toggle" style="cursor:pointer;user-select:none">🔔 Automatik <span class="sub" id="cd-automation-count"></span> <span id="cd-automation-toggle-icon" style="float:right;font-size:11px;color:var(--bly-sub)">▾ Skjul</span></h3>
       <div id="cd-automation-list" style="margin-top:10px"></div>
@@ -30898,6 +30906,8 @@ function cdaRenderCounts(){
   set('cda-n-activity',cdxFeedItems().length);
   set('cda-n-mails',(cdEmails||[]).length);
   set('cda-n-docs',cdQuotes.length+cdInvoices.length);
+  set('cda-n-deals',cdOpps.length+cdLeads.length+cdProjects.length);
+  set('cda-n-visits',(typeof crmpxVisitsCache!=='undefined'&&Array.isArray(crmpxVisitsCache))?crmpxVisitsCache.length:0);
 }
 function cdaRenderLatest(){
   var el=document.getElementById('cda-latest');if(!el)return;
@@ -30983,8 +30993,7 @@ function cdaRenderNext(){
 function cdaSetTab(tab){
   document.querySelectorAll('#cda-tabs [data-cda-tab]').forEach(function(b){b.classList.toggle('on',b.dataset.cdaTab===tab);});
   document.querySelectorAll('#page-customer-detail [data-cda-pane]').forEach(function(p){p.hidden=p.dataset.cdaPane!==tab;});
-  if(tab==='files'){var w=document.getElementById('cd-files-wrap');if(w&&w.hidden&&document.getElementById('cd-files-panel').style.display!=='none')cdToggleFilesPanel();
-    document.getElementById('cda-files-none').style.display=document.getElementById('cd-files-panel').style.display==='none'?'':'none';}
+
 }
 function safeJsonParseClient(t){try{return JSON.parse(t);}catch(e){return {};}}
 
@@ -31441,7 +31450,7 @@ async function openCustomerDetail(id){
   // enhver ændring i panelet via ccOnChangeHandlers['cd-cc'] nedenfor.
   ccLoadAndRenderAll('cd-cc','customer',id);
   cdLoadNotes(id);
-  crmpxVisitsCache=[];Promise.resolve(crmpxLoadVisits(id,'cd-visits-list','cd-visits-count')).then(function(){cdaRenderSteps();});
+  crmpxVisitsCache=[];Promise.resolve(crmpxLoadVisits(id,'cd-visits-list','cd-visits-count')).then(function(){cdaRenderSteps();cdaRenderCounts();});
   cdLoadEmails(id);
   // Mails starter altid sammenklappet ved åbning af en kundeside (Martins ønske) —
   // nulstilles her hver gang, så en tidligere udfoldning (denne kunde, eller en
