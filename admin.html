@@ -2646,6 +2646,8 @@ body.plan-alt-dragging .ctl-add{display:none}
 .cdx-li .m .sub{font-size:11.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:block}
 .cdx-li .amt{font-weight:800;font-variant-numeric:tabular-nums;white-space:nowrap}
 .cdx-li .bly-status-dot{margin-right:4px}
+.cdx-li{text-decoration:none;color:inherit}
+.cdx-ext{color:#A1A1AA;font-size:12px;margin-left:2px;opacity:0;transition:opacity .1s}.cdx-li:hover .cdx-ext{opacity:1}
 .cdx-li-warn{margin-top:4px;font-size:11px;color:#92400E;background:#FFFBEB;border:1px solid #FDE68A;border-radius:6px;padding:2px 6px;display:inline-block}
 .cdx-sublbl{font-size:10px;font-weight:800;color:var(--bly-sub);text-transform:uppercase;letter-spacing:.06em;margin:10px 0 0}
 .cdx-none{color:var(--bly-sub);font-size:12.5px;padding:4px 0}
@@ -5710,7 +5712,7 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
        i browseren faktisk ER det nyeste deploy, eller om Render/GitHub bare
        ikke er nået at opdatere endnu — i stedet for at skulle gætte om en
        rettelse "stadig ikke virker" eller bare endnu ikke er live. -->
-  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build v2.71.0 · 2026-11-02</span></div>
+  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build v2.72.0 · 2026-11-02</span></div>
 </aside>
 <div class="app-content">
 <!-- RUNDE FB — AI-ASSISTENTEN (Martin: "en ai der er nede i venstre hjørne af
@@ -8268,7 +8270,8 @@ body.ai-has-reply #ai-fab{animation:ai-nudge 1.4s ease-in-out 3}
   <div id="cda-next"></div>
   <div class="cda-tabs" id="cda-tabs">
     <button type="button" class="on" data-cda-tab="overview">Overblik</button>
-    <button type="button" data-cda-tab="deals">Handler &amp; sager <em id="cda-n-deals"></em></button>
+    <button type="button" data-cda-tab="deals">Handler <em id="cda-n-deals"></em></button>
+    <button type="button" data-cda-tab="projects">Projekter <em id="cda-n-projects"></em></button>
     <button type="button" data-cda-tab="visits">Kundebesøg <em id="cda-n-visits"></em></button>
     <button type="button" data-cda-tab="docs">Tilbud &amp; faktura <em id="cda-n-docs"></em></button>
     <button type="button" data-cda-tab="activity">Aktivitet <em id="cda-n-activity"></em></button>
@@ -8296,7 +8299,8 @@ body.ai-has-reply #ai-fab{animation:ai-nudge 1.4s ease-in-out 3}
   <div class="cda-pane" data-cda-pane="deals" hidden>
     <div style="max-width:760px">
       <div class="cdx-card cdx-assoc">
-        <div class="cdx-ah">🤝 Handler <span class="cdx-cnt" id="cd-opps-count"></span><button type="button" class="cdx-add" id="cdx-newopp-toggle">+ Ny</button></div>
+        <div class="cdx-ah">🤝 Handler <span class="cdx-cnt" id="cd-opps-count"></span><button type="button" class="cdx-add" id="cdx-newopp-toggle">+ Ny handel</button></div>
+        <div class="sub" style="margin:-2px 0 6px">Alle handler og leads der er lavet på kunden. Klik åbner i ny fane.</div>
         <div id="cdx-newopp-box" hidden>
           <div class="cdx-newopp-sel">
             <select id="cd-newopp-type" class="select"><option value="opportunity">Salg</option><option value="lead">Lead</option></select>
@@ -8315,7 +8319,16 @@ body.ai-has-reply #ai-fab{animation:ai-nudge 1.4s ease-in-out 3}
         </div>
         <div id="cd-opps-body"></div>
         <div id="cd-leads-body"></div>
-        <div class="cdx-ah" style="margin-top:14px">🏗️ Sager <span class="cdx-cnt" id="cd-projects-count"></span></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- PROJEKTER -->
+  <div class="cda-pane" data-cda-pane="projects" hidden>
+    <div style="max-width:760px">
+      <div class="cdx-card cdx-assoc">
+        <div class="cdx-ah">🏗️ Projekter <span class="cdx-cnt" id="cd-projects-count"></span></div>
+        <div class="sub" style="margin:-2px 0 6px">Sager oprettes automatisk, når et tilbud godkendes. Klik åbner i ny fane.</div>
         <div id="cd-projects-body"></div>
       </div>
     </div>
@@ -8349,7 +8362,7 @@ body.ai-has-reply #ai-fab{animation:ai-nudge 1.4s ease-in-out 3}
           </div>
           <div class="cdx-cfoot"><label class="cdx-chk"><input type="checkbox" id="cdx-task-priority"> ⚡ Høj prioritet</label><button class="bly-btn" type="button" id="cdx-task-add">+ Opret opgave</button></div>
         </div>
-        <div id="cdx-task-none" class="sub" style="padding:16px" hidden>Opgaver hører til en handel eller et lead — opret en handel under fanen Handler &amp; sager først (+ Ny).</div>
+        <div id="cdx-task-none" class="sub" style="padding:16px" hidden>Opgaver hører til en handel eller et lead — opret en handel under fanen Handler først (+ Ny).</div>
       </div>
       <div class="cdx-cpane" data-cdx-pane="call" hidden>
         <textarea id="cdx-call-text" class="cdx-ta" rows="3" placeholder="Hvad blev der talt om? (gemmes som note med 📞)"></textarea>
@@ -30947,7 +30960,8 @@ function cdaRenderCounts(){
   set('cda-n-activity',cdxFeedItems().length);
   set('cda-n-mails',(cdEmails||[]).length);
   set('cda-n-docs',cdQuotes.length+cdInvoices.length);
-  set('cda-n-deals',cdOpps.length+cdLeads.length+cdProjects.length);
+  set('cda-n-deals',cdOpps.length+cdLeads.length);
+  set('cda-n-projects',cdProjects.length);
   set('cda-n-visits',(typeof crmpxVisitsCache!=='undefined'&&Array.isArray(crmpxVisitsCache))?crmpxVisitsCache.length:0);
 }
 function cdaRenderLatest(){
@@ -31011,21 +31025,21 @@ function cdaRenderNext(){
   var acceptedQ=cdQuotes.some(function(q){return q.status==='accepted'||q.status==='converted';});
   if(won&&pendingQ&&!acceptedQ&&!cdProjects.length){
     out.push(cdaNextBox('⚠️','Handlen er vundet, men tilbuddet '+esc(pendingQ.quote_number||'')+' står stadig som "'+esc((QZ_QUOTE_STATUS[pendingQ.status]||{}).label||pendingQ.status)+'"','Godkend tilbuddet, så oprettes sagen automatisk.',
-      '<button type="button" class="bly-btn outline" onclick="openQuoteEditorSafe('+pendingQ.id+')">Åbn tilbud</button><button type="button" class="bly-btn cda-green" data-cda-accept="'+pendingQ.id+'">✓ Godkend tilbud</button>','warn'));
+      '<button type="button" class="bly-btn outline" onclick="gmOpenTab(\'quotes/tilbud/'+pendingQ.id+'\')">Åbn tilbud</button><button type="button" class="bly-btn cda-green" data-cda-accept="'+pendingQ.id+'">✓ Godkend tilbud</button>','warn'));
   }else if(!open[0]){
     var draft=cdQuotes.find(function(q){return q.status==='draft';});
     var sent=cdQuotes.filter(function(q){return q.status==='sent';}).sort(function(a,b){return String(b.first_sent_at||b.created_at).localeCompare(String(a.first_sent_at||a.created_at));})[0];
     if(cdBalance>0)out.push(cdaNextBox('💰','Kunden skylder '+krFmt(cdBalance),'Se fakturaerne og send evt. en rykker.','<button type="button" class="bly-btn" data-cda-go="docs">Se fakturaer</button>','warn'));
     else if(!cdQuotes.length&&(cdOpps.length||cdLeads.length))out.push(cdaNextBox('📄','Næste skridt: Lav et tilbud','Der er endnu ikke lavet et tilbud til kunden.','<button type="button" class="bly-btn" onclick="cdOpenQuote()">+ Lav tilbud</button>'));
-    else if(draft)out.push(cdaNextBox('📄','Næste skridt: Send tilbud '+esc(draft.quote_number||''),'Tilbuddet er stadig en kladde.','<button type="button" class="bly-btn" onclick="openQuoteEditorSafe('+draft.id+')">Åbn og send</button>'));
+    else if(draft)out.push(cdaNextBox('📄','Næste skridt: Send tilbud '+esc(draft.quote_number||''),'Tilbuddet er stadig en kladde.','<button type="button" class="bly-btn" onclick="gmOpenTab(\'quotes/tilbud/'+draft.id+'\')">Åbn og send</button>'));
     else if(sent&&!acceptedQ){
       var days=Math.round((Date.now()-(cdxDate(sent.first_sent_at||sent.created_at)||new Date()))/864e5);
       out.push(cdaNextBox('⏳',days>=5?'Næste skridt: Følg op på tilbuddet':'Venter på svar på tilbuddet',esc(sent.quote_number||'')+' blev sendt for '+days+' dag'+(days===1?'':'e')+' siden · '+krFmt(sent.total),'<button type="button" class="bly-btn" onclick="cdxOpenMail()">✉️ Skriv opfølgning</button>',days>=5?'warn':''));
     }else{
       var proj=cdProjects.find(function(p){return ['done','faktureret','archived','ikke_udfoert'].indexOf(p.status)<0;});
       var doneNoInv=cdProjects.find(function(p){return p.status==='done';});
-      if(doneNoInv)out.push(cdaNextBox('🧾','Næste skridt: Fakturér sagen',esc(doneNoInv.name)+' er afsluttet.','<button type="button" class="bly-btn" onclick="openProjectDetail('+doneNoInv.id+')">Åbn sagen</button>'));
-      else if(proj)out.push(cdaNextBox('🏗️','Sagen er '+esc(pjStageLabel(proj.status)).toLowerCase(),esc(proj.name),'<button type="button" class="bly-btn outline" onclick="openProjectDetail('+proj.id+')">Åbn sagen →</button>','calm'));
+      if(doneNoInv)out.push(cdaNextBox('🧾','Næste skridt: Fakturér sagen',esc(doneNoInv.name)+' er afsluttet.','<button type="button" class="bly-btn" onclick="gmOpenTab(\'project-detail/'+doneNoInv.id+'\')">Åbn sagen</button>'));
+      else if(proj)out.push(cdaNextBox('🏗️','Sagen er '+esc(pjStageLabel(proj.status)).toLowerCase(),esc(proj.name),'<button type="button" class="bly-btn outline" onclick="gmOpenTab(\'project-detail/'+proj.id+'\')">Åbn sagen →</button>','calm'));
     }
   }
   if(!out.length)out.push('<div class="cda-next calm"><div class="cda-nic">✓</div><div class="cda-nb"><b>Intet mangler lige nu</b><div>Opret en opgave under Aktivitet, hvis der skal følges op.</div></div></div>');
@@ -31042,10 +31056,10 @@ function cdxRenderDeals(){
   var oc=document.getElementById('cd-opps-count');
   oc.textContent=(cdOpps.length+cdLeads.length)||'';
   document.getElementById('cd-opps-body').innerHTML=cdOpps.length?cdOpps.map(function(o){
-    return '<div class="cdx-li" onclick="openCrmpDetail(\'opportunity\','+o.id+')"><div class="m"><b>'+esc(o.name)+'</b><span class="sub">'+esc(o.pipeline_name)+' · '+cdxPill(o.stage_name,o.stage_color)+'</span></div><span class="amt">'+(o.value!=null?krFmt(o.value):'')+'</span></div>';
+    return '<a class="cdx-li" href="#crmp-detail/opportunity/'+o.id+'" target="_blank" rel="noopener" title="Åbner i ny fane"><div class="m"><b>'+esc(o.name)+'</b><span class="sub">'+esc(o.pipeline_name)+' · '+cdxPill(o.stage_name,o.stage_color)+(o.owner_id&&cdxUserName(o.owner_id)?' · 👤 '+esc(cdxUserName(o.owner_id)):'')+(o.created_at?' · '+esc(fmtDaDate(o.created_at)):'')+'</span></div><span class="amt">'+(o.value!=null?krFmt(o.value):'')+'</span><span class="cdx-ext">↗</span></a>';
   }).join(''):(cdLeads.length?'':'<div class="cdx-none">Ingen handler endnu</div>');
   document.getElementById('cd-leads-body').innerHTML=cdLeads.length?'<div class="cdx-sublbl">🧲 Leads</div>'+cdLeads.map(function(l){
-    return '<div class="cdx-li" onclick="openCrmpDetail(\'lead\','+l.id+')"><div class="m"><b>'+esc(l.name)+'</b><span class="sub">'+esc(l.pipeline_name)+' · '+cdxPill(l.stage_name,l.stage_color)+'</span></div><span class="sub" style="font-size:11px">'+esc(l.source||'')+'</span></div>';
+    return '<a class="cdx-li" href="#crmp-detail/lead/'+l.id+'" target="_blank" rel="noopener" title="Åbner i ny fane"><div class="m"><b>'+esc(l.name)+'</b><span class="sub">'+esc(l.pipeline_name)+' · '+cdxPill(l.stage_name,l.stage_color)+(l.created_at?' · '+esc(fmtDaDate(l.created_at)):'')+'</span></div><span class="sub" style="font-size:11px">'+esc(l.source||'')+'</span><span class="cdx-ext">↗</span></a>';
   }).join(''):'';
   cdxRenderHeader();
   cdxFillTaskEntities();
@@ -31065,23 +31079,23 @@ function cdxQuoteLi(x){
   }
   var sub=[fmtDaDate(x.created_at)];
   if(x.job_name&&x.job_name!==(cdCurrent&&cdCurrent.name))sub.unshift(x.job_name);
-  return '<div class="cdx-li" onclick="openQuoteEditorSafe('+x.id+')"><div class="m"><b>'+esc(x.quote_number||'Tilbud')+(x.quote_title?' · <span style="font-weight:600">'+esc(x.quote_title)+'</span>':'')+'</b><span class="sub">'+qzStatusDot(QZ_QUOTE_STATUS,x.status)+' · '+esc(sub.join(' · '))+'</span>'
-    +(x.project_id?'<span class="sub"><a href="#" onclick="event.preventDefault();event.stopPropagation();openProjectDetail('+x.project_id+')" style="color:#4338CA;font-weight:600">📁 '+esc(x.project_job_number||'Åbn sag')+'</a></span>':'')
-    +(foreign?'<span class="cdx-li-warn" title="Tilbuddet er koblet til en handel der hører til en anden kunde" onclick="event.stopPropagation();openCrmpDetail(\''+crmType+'\','+crmId+')">⚠ Koblet til “'+esc(crmName||'anden handel')+'”</span>':'')
-    +'</div><span class="amt">'+krFmt(x.total)+'</span></div>';
+  return '<a class="cdx-li" href="#quotes/tilbud/'+x.id+'" target="_blank" rel="noopener" title="Åbner i ny fane"><div class="m"><b>'+esc(x.quote_number||'Tilbud')+(x.quote_title?' · <span style="font-weight:600">'+esc(x.quote_title)+'</span>':'')+'</b><span class="sub">'+qzStatusDot(QZ_QUOTE_STATUS,x.status)+' · '+esc(sub.join(' · '))+'</span>'
+    +(x.project_id?'<span class="sub"><span onclick="event.preventDefault();event.stopPropagation();gmOpenTab(\'project-detail/'+x.project_id+'\')" style="color:#4338CA;font-weight:600;cursor:pointer">📁 '+esc(x.project_job_number||'Åbn sag')+' ↗</span></span>':'')
+    +(foreign?'<span class="cdx-li-warn" title="Tilbuddet er koblet til en handel der hører til en anden kunde" onclick="event.preventDefault();event.stopPropagation();gmOpenTab(\'crmp-detail/'+crmType+'/'+crmId+'\')">⚠ Koblet til “'+esc(crmName||'anden handel')+'”</span>':'')
+    +'</div><span class="amt">'+krFmt(x.total)+'</span><span class="cdx-ext">↗</span></a>';
 }
 function cdxRenderInvoices(){
   document.getElementById('cd-invoices-count').textContent=cdInvoices.length||'';
   document.getElementById('cd-invoices-body').innerHTML=cdInvoices.length?cdInvoices.map(function(x){
     var rest=Number(x.remaining)||0;
     var extra=Number(x.credited_total)>0?' · ↩️ krediteret '+krFmt(x.credited_total):'';
-    return '<div class="cdx-li" onclick="openInvoiceDetail('+x.id+')"><div class="m"><b>'+esc(x.invoice_number||'Faktura')+'</b><span class="sub">'+qzStatusDot(QZ_INVOICE_STATUS,x.status)+' · '+(x.due_date?'Forfald '+esc(fmtDaDate(x.due_date)):esc(x.job_name||''))+esc(extra)+'</span>'+(rest>0&&x.status!=='paid'&&x.status!=='draft'?'<span class="sub" style="color:#B91C1C;font-weight:700">Rest '+krFmt(rest)+'</span>':'')+'</div><span class="amt">'+krFmt(x.total)+'</span></div>';
+    return '<a class="cdx-li" href="#qz-invoices/faktura/'+x.id+'" target="_blank" rel="noopener" title="Åbner i ny fane"><div class="m"><b>'+esc(x.invoice_number||'Faktura')+'</b><span class="sub">'+qzStatusDot(QZ_INVOICE_STATUS,x.status)+' · '+(x.due_date?'Forfald '+esc(fmtDaDate(x.due_date)):esc(x.job_name||''))+esc(extra)+'</span>'+(rest>0&&x.status!=='paid'&&x.status!=='draft'?'<span class="sub" style="color:#B91C1C;font-weight:700">Rest '+krFmt(rest)+'</span>':'')+'</div><span class="amt">'+krFmt(x.total)+'</span><span class="cdx-ext">↗</span></a>';
   }).join(''):'<div class="cdx-none">Ingen fakturaer endnu</div>';
 }
 function cdxRenderProjects(){
   document.getElementById('cd-projects-count').textContent=cdProjects.length||'';
   document.getElementById('cd-projects-body').innerHTML=cdProjects.length?cdProjects.map(function(p){
-    return '<div class="cdx-li" onclick="openProjectDetail('+p.id+')"><div class="m"><b>'+esc(p.name)+'</b><span class="sub">'+esc(pjStageLabel(p.status))+(p.created_at?' · '+esc(fmtDaDate(p.created_at)):'')+'</span></div><span style="color:var(--bly-sub)">→</span></div>';
+    return '<a class="cdx-li" href="#project-detail/'+p.id+'" target="_blank" rel="noopener" title="Åbner i ny fane"><div class="m"><b>'+esc(p.name)+(p.job_number?' <span style="font-weight:500;color:var(--bly-sub);font-size:11.5px">'+esc(p.job_number)+'</span>':'')+'</b><span class="sub">'+esc(pjStageLabel(p.status))+(p.created_at?' · oprettet '+esc(fmtDaDate(p.created_at)):'')+'</span></div><span class="cdx-ext">↗</span></a>';
   }).join(''):'<div class="cdx-none">Oprettes når et tilbud accepteres</div>';
 }
 
@@ -31216,20 +31230,20 @@ function cdxFeedRow(x){
   }
   if(x.kind==='quote'){
     var q=x.q;
-    return '<div class="cdx-f click" onclick="openQuoteEditorSafe('+q.id+')"><div class="cdx-ic" style="background:#EEF2FF">📄</div><div class="cdx-fb"><b>'+esc(x.title)+'</b><p>'+krFmt(q.total)+(q.quote_title?' · '+esc(q.quote_title):'')+(x.sent?'':' · nu: '+qzStatusDot(QZ_QUOTE_STATUS,q.status))+'</p></div><span class="cdx-ft">'+t+'</span></div>';
+    return '<div class="cdx-f click" onclick="gmOpenTab(\'quotes/tilbud/'+q.id+'\')"><div class="cdx-ic" style="background:#EEF2FF">📄</div><div class="cdx-fb"><b>'+esc(x.title)+'</b><p>'+krFmt(q.total)+(q.quote_title?' · '+esc(q.quote_title):'')+(x.sent?'':' · nu: '+qzStatusDot(QZ_QUOTE_STATUS,q.status))+'</p></div><span class="cdx-ft">'+t+'</span></div>';
   }
   if(x.kind==='invoice'){
     var i=x.inv;
-    return '<div class="cdx-f click" onclick="openInvoiceDetail('+i.id+')"><div class="cdx-ic" style="background:#ECFEFF">🧾</div><div class="cdx-fb"><b>'+esc(x.title)+'</b><p>'+krFmt(i.total)+' · '+qzStatusDot(QZ_INVOICE_STATUS,i.status)+'</p></div><span class="cdx-ft">'+t+'</span></div>';
+    return '<div class="cdx-f click" onclick="gmOpenTab(\'qz-invoices/faktura/'+i.id+'\')"><div class="cdx-ic" style="background:#ECFEFF">🧾</div><div class="cdx-fb"><b>'+esc(x.title)+'</b><p>'+krFmt(i.total)+' · '+qzStatusDot(QZ_INVOICE_STATUS,i.status)+'</p></div><span class="cdx-ft">'+t+'</span></div>';
   }
   if(x.kind==='task'){
     var k=x.task;
     return '<div class="cdx-f"><div class="cdx-ic" style="background:#DCFCE7">✅</div><div class="cdx-fb"><b>'+esc(x.title)+'</b><p>'+esc(k.entity_name||'')+(k.assigned_name?' · '+esc(k.assigned_name):'')+'</p></div><span class="cdx-ft"><a href="#" data-cdx-undo="'+k.id+'" style="color:var(--bly-sub);font-size:11px">fortryd</a></span></div>';
   }
   // deal
-  if(x.opp)return '<div class="cdx-f click" onclick="openCrmpDetail(\'opportunity\','+x.opp.id+')"><div class="cdx-ic" style="background:#F3E8FF">🤝</div><div class="cdx-fb"><b>'+esc(x.title)+'</b><p>'+esc(x.opp.pipeline_name)+' · nu: '+esc(x.opp.stage_name)+'</p></div><span class="cdx-ft">'+t+'</span></div>';
-  if(x.lead)return '<div class="cdx-f click" onclick="openCrmpDetail(\'lead\','+x.lead.id+')"><div class="cdx-ic" style="background:#F3F4F6">🧲</div><div class="cdx-fb"><b>'+esc(x.title)+'</b><p>'+esc(x.lead.pipeline_name)+' · nu: '+esc(x.lead.stage_name)+'</p></div><span class="cdx-ft">'+t+'</span></div>';
-  if(x.proj)return '<div class="cdx-f click" onclick="openProjectDetail('+x.proj.id+')"><div class="cdx-ic" style="background:#FEF3C7">🏗️</div><div class="cdx-fb"><b>'+esc(x.title)+'</b><p>'+esc(pjStageLabel(x.proj.status))+'</p></div><span class="cdx-ft">'+t+'</span></div>';
+  if(x.opp)return '<div class="cdx-f click" onclick="gmOpenTab(\'crmp-detail/opportunity/'+x.opp.id+'\')"><div class="cdx-ic" style="background:#F3E8FF">🤝</div><div class="cdx-fb"><b>'+esc(x.title)+'</b><p>'+esc(x.opp.pipeline_name)+' · nu: '+esc(x.opp.stage_name)+'</p></div><span class="cdx-ft">'+t+'</span></div>';
+  if(x.lead)return '<div class="cdx-f click" onclick="gmOpenTab(\'crmp-detail/lead/'+x.lead.id+'\')"><div class="cdx-ic" style="background:#F3F4F6">🧲</div><div class="cdx-fb"><b>'+esc(x.title)+'</b><p>'+esc(x.lead.pipeline_name)+' · nu: '+esc(x.lead.stage_name)+'</p></div><span class="cdx-ft">'+t+'</span></div>';
+  if(x.proj)return '<div class="cdx-f click" onclick="gmOpenTab(\'project-detail/'+x.proj.id+'\')"><div class="cdx-ic" style="background:#FEF3C7">🏗️</div><div class="cdx-fb"><b>'+esc(x.title)+'</b><p>'+esc(pjStageLabel(x.proj.status))+'</p></div><span class="cdx-ft">'+t+'</span></div>';
   return '';
 }
 function cdxOpenMailItem(id){
@@ -31243,6 +31257,8 @@ function cdxOpenMailItem(id){
   cdLoadEmailBody(row.id,row.gmail_message_id);
   setTimeout(function(){var it=document.querySelector('#cd-emails-list [data-email-id="'+row.id+'"]');if(it)it.scrollIntoView({behavior:'smooth',block:'center'});},60);
 }
+// v2.72.0 — handler, tilbud, fakturaer og sager fra kundesiden åbner i ny fane.
+function gmOpenTab(hash){var w=window.open(location.pathname+'#'+hash,'_blank');if(w)w.opener=null;}
 function cdxBind(){
   if(cdxBound)return;cdxBound=true;
   document.getElementById('cda-tabs').addEventListener('click',function(e){var b=e.target.closest('[data-cda-tab]');if(b)cdaSetTab(b.dataset.cdaTab);});
