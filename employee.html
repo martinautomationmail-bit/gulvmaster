@@ -255,7 +255,7 @@
      Se openTaskQuoteModal(). -->
 <div id="quote-view-modal" class="modal-backdrop" onclick="closeQuoteViewOnBackdrop(event)"><div class="modal"><div class="modal-head"><div class="modal-title">📄 Tilbud</div><button class="modal-close" onclick="closeQuoteView()">Close</button></div><div class="modal-body"><div id="quote-view-body"></div></div></div></div>
 <!-- PROJEKTER — sager der er blevet til efter en kunde har underskrevet et
-     tilbud. Herfra kan medarbejdere registrere tid (note + billede påkrævet),
+     tilbud. Herfra kan medarbejdere registrere tid (note påkrævet, billede valgfrit),
      tilføje billeder til sagen, og udfylde KS-formularer. -->
 <div id="projects-modal" class="modal-backdrop" onclick="closeProjectsOnBackdrop(event)">
   <div class="modal" style="width:min(520px,96vw)">
@@ -892,7 +892,7 @@ async function pmOpenTimeForm(){
     ${workBlock}
     <label class="req-label">Note — hvad blev der lavet</label>
     <textarea class="req-textarea" id="pmt-note" rows="3" placeholder="Beskriv det udførte arbejde..."></textarea>
-    <label class="req-label">Billeder — mindst ét er påkrævet som dokumentation</label>
+    <label class="req-label">Billeder — anbefales (kan springes over ved dårligt netværk)</label>
     <div id="pmt-photos-preview" style="display:flex;gap:8px;flex-wrap:wrap;margin:6px 0"></div>
     <label class="small-btn primary" style="cursor:pointer;display:inline-flex;margin-bottom:10px">+ Tilføj billeder/video<input type="file" accept="image/*,video/*" multiple id="pmt-photo" style="display:none" onchange="pmAddTimePhoto(event)"></label>
     <label class="req-label">Post fra tilbud — valgfrit</label>
@@ -995,16 +995,17 @@ async function pmSubmitTime(){
     minutesPayload={minutes};
   }
   if(!note){pmFeedback('pmt-feedback','Skriv en note om det udførte arbejde',false);return}
-  if(!pmtPhotoFiles.length){pmFeedback('pmt-feedback','Upload mindst ét billede som dokumentation',false);return}
   const btn=document.getElementById('pmt-submit');btn.disabled=true;btn.textContent='Gemmer…';
   try{
-    const photoUrls=[];
+    const photoUrls=[];let photoFails=0;
     for(let i=0;i<pmtPhotoFiles.length;i++){
       if(pmtPhotoFiles.length>1)btn.textContent='Uploader billede '+(i+1)+'/'+pmtPhotoFiles.length+'…';
-      const dataUrl=await pmReadFileAsDataUrl(pmtPhotoFiles[i]);
-      const up=await pmUploadPhoto(dataUrl,'projects/'+pmState.current.id);
-      if(!up||!up.ok){pmFeedback('pmt-feedback',(up&&up.data&&up.data.error)||'Kunne ikke uploade et billede',false);btn.disabled=false;btn.textContent='Gem tidsregistrering';return}
-      photoUrls.push(up.data.url);
+      // Fejler et billede (fx netværk), gemmes timerne alligevel — uden det billede.
+      try{
+        const dataUrl=await pmReadFileAsDataUrl(pmtPhotoFiles[i]);
+        const up=await pmUploadPhoto(dataUrl,'projects/'+pmState.current.id);
+        if(up&&up.ok&&up.data&&up.data.url)photoUrls.push(up.data.url);else photoFails++;
+      }catch(_){photoFails++}
     }
     const baseBody={note,photo_urls:photoUrls,bought_materials:materials||null,quote_line_id:lineId||null,entry_date:date};
     if(isAkkord){
@@ -1031,7 +1032,7 @@ async function pmSubmitTime(){
       const r=await api('/api/projects/'+pmState.current.id+'/time-entries',{method:'POST',body:JSON.stringify({...baseBody,...minutesPayload})});
       if(!r||!r.ok){pmFeedback('pmt-feedback',(r&&r.data&&r.data.error)||'Kunne ikke gemme',false);btn.disabled=false;btn.textContent='Gem tidsregistrering';return}
     }
-    toast('Tid registreret ✓');await pmOpenProject(pmState.current.id)
+    toast(photoFails?('Tid registreret ✓ — '+photoFails+' billede(r) kunne ikke uploades (netværk)'):'Tid registreret ✓');await pmOpenProject(pmState.current.id)
   }catch(e){pmFeedback('pmt-feedback',(e&&e.pmFriendly)?e.message:'Netværksfejl — prøv igen',false);btn.disabled=false;btn.textContent='Gem tidsregistrering'}
 }
 function pmOpenPhotoForm(){

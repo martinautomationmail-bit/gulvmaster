@@ -18499,9 +18499,6 @@ app.post('/api/projects/:id/time-entries', auth, asyncRoute(async (req, res) => 
   const note = String(b.note || '').trim();
   const minutes = Number(b.minutes);
   // Billeder: understøt både det gamle enkelt-felt (photo_url) og en liste (photo_urls).
-  // En medarbejders egen registrering kræver stadig mindst ét billede som dokumentation.
-  // Kontorets manuelle registreringer (finance/admin, evt. for en anden medarbejder)
-  // kan undtagelsesvist gemmes uden billede, da de typisk indtastes efterfølgende.
   let photoUrls = Array.isArray(b.photo_urls) ? b.photo_urls.filter(Boolean).map(String) : [];
   if (!photoUrls.length && b.photo_url) photoUrls = [String(b.photo_url)];
   // Valgfri user_id: kun kontor/økonomi-brugere må registrere tid FOR en anden medarbejder.
@@ -18519,7 +18516,8 @@ app.post('/api/projects/:id/time-entries', auth, asyncRoute(async (req, res) => 
   const akkordQuantity = Math.max(0, Number(b.akkord_quantity) || 0);
   const hasAkkord = akkordItemId && akkordQuantity > 0;
   if (!note) return res.status(400).json({ error: 'Skriv en note om det udførte arbejde' });
-  if (!photoUrls.length && !isManualByOffice) return res.status(400).json({ error: 'Upload et billede som dokumentation' });
+  // Billeder er anbefalet men valgfrie (nov. 2026) — medarbejdere med dårligt netværk
+  // skal stadig kunne registrere deres timer.
   if ((!minutes || minutes <= 0) && !hasAkkord) return res.status(400).json({ error: 'Angiv hvor mange minutter der er brugt, eller vælg en akkord-post' });
   const entryDate = validDate(b.entry_date) ? b.entry_date : new Date().toISOString().slice(0, 10);
   // RUNDE BB — den pris der GÆLDER for targetUserId lige nu (egen aftalte pris
