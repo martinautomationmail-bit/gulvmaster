@@ -3642,6 +3642,15 @@ tr.tt-detail-wrap td{padding:0;background:#FAFAFA}
 .qe-lines-locked-note{font-size:11px;color:#0369A1;background:#F0F9FF;border:1px solid #BAE6FD;border-radius:8px;padding:8px 10px;margin-bottom:8px}
 #qe-lines.qe-lines-locked .qe-line-field{pointer-events:none;background:#F3F4F6;color:#6B7280}
 #qe-lines.qe-lines-locked .qe-line-remove,#qe-lines.qe-lines-locked .qe-line-drag{display:none}
+.qe-line-invoiced{position:relative;background:#F9FAFB!important}
+.qe-line-invoiced .qe-line-field,.qe-line-invoiced .qz-rt-host{pointer-events:none}
+.qe-line-invoiced .qe-line-field{background:#F3F4F6!important;color:#9CA3AF!important;text-decoration:line-through;text-decoration-color:#9CA3AF}
+.qe-line-invoiced .qe-line-remove,.qe-line-invoiced .qe-line-duplicate,.qe-line-invoiced .qe-line-rail{display:none!important}
+.qe-line-invoiced .qe-line-drag,.qe-line-invoiced .qz-rt-toolbar{visibility:hidden!important;pointer-events:none}
+.qe-line-invoiced [id^="qe-line-total-"]{text-decoration:line-through;color:#9CA3AF}
+.qe-inv-tag{display:inline-block;font-size:11px;font-weight:700;color:#15803D;background:#DCFCE7;border-radius:999px;padding:2px 9px;margin:0 0 6px}
+.qe-line-invoiced.qe-line-item{flex-wrap:wrap}.qe-line-invoiced.qe-line-item>.qe-inv-tag{flex-basis:100%}
+.qe-aconto-note{font-size:12px;color:#0369A1;margin:6px 0 2px;line-height:1.45}
 .qcv-line-row{display:flex;align-items:flex-start;gap:10px;padding:9px 0;border-bottom:1px solid var(--bly-border-soft);font-size:12.5px}
 .qcv-line-row:last-child{border-bottom:none}
 .qcv-line-row input[type=checkbox]{margin-top:3px;width:16px;height:16px;flex-shrink:0}
@@ -5757,7 +5766,7 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
        i browseren faktisk ER det nyeste deploy, eller om Render/GitHub bare
        ikke er nået at opdatere endnu — i stedet for at skulle gætte om en
        rettelse "stadig ikke virker" eller bare endnu ikke er live. -->
-  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build v2.73.0 · 2026-11-02</span></div>
+  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build v2.74.0 · 2026-11-02</span></div>
 </aside>
 <div class="app-content">
 <!-- RUNDE FB — AI-ASSISTENTEN (Martin: "en ai der er nede i venstre hjørne af
@@ -6820,7 +6829,7 @@ body.ai-has-reply #ai-fab{animation:ai-nudge 1.4s ease-in-out 3}
   <p>Accepterer kunden i stedet mundtligt/telefonisk, sætter I bare status til "Godkendt" manuelt i dropdownen — det udløser præcis de samme automatiske trin (projekt oprettes, intern mail sendes) som den online underskrift.</p>
 
   <h3>Fra tilbud til faktura (også delvis fakturering)</h3>
-  <p>Tryk "➜ Konvertér til faktura". Du får en liste over alle linjer, der endnu ikke er faktureret (forhåndskrydset af) — fjern flueben på de linjer, der ikke skal faktureres <i>denne gang</i>. Det betyder, I sagtens kan fakturere et tilbud i flere omgange, efterhånden som arbejdet udføres. Linjer, der allerede er faktureret, låses for redigering — vil I tilføje helt nye ydelser til et tilbud, der allerede er delvist faktureret, bruger I <b>"+ Tilføj ekstra ydelser"</b>, som lægger de nye linjer i "puljen" til næste faktura.</p>
+  <p>Tryk "➜ Konvertér til faktura". Du får en liste over alle linjer, der endnu ikke er faktureret (forhåndskrydset af) — fjern flueben på de linjer, der ikke skal faktureres <i>denne gang</i>. Det betyder, I sagtens kan fakturere et tilbud i flere omgange, efterhånden som arbejdet udføres. Linjer, der allerede er faktureret, streges ud og kan ikke rettes — resten af tilbuddet kan stadig rettes, og nye linjer tilføjes som normalt og kommer med i næste faktura. Er der opkrævet a conto via betalingsplanen, trækkes det automatisk fra, når posterne faktureres.</p>
   <p>I selve tilbuds-editoren kan I altid se en <b>faktureringsstatus</b>-boks, der viser, hvor meget der er faktureret ud af det samlede beløb, med en progress-bar og links direkte til de tilhørende fakturaer.</p>
 
   <h3>Tidslinje / aktivitetslog</h3>
@@ -29026,7 +29035,7 @@ function qzLineRowHtml(l,idx,prefix){
     // (:has(input:checked)) — ELLERS ville man skulle gentegne HELE linjen
     // (og dermed miste fokus midt i en tastning) bare for at afsløre feltet
     // igen efter at have krydset af.
-    return '<div class="qe-line qe-line-text" data-idx="'+idx+'">'
+    return '<div class="qe-line qe-line-text'+(prefix==='qe'&&l.invoiced_in_invoice_id?' qe-line-invoiced':'')+'" data-idx="'+idx+'">'
       +'<div class="qe-line-top">'
       +qzLineDragHandle(idx)
       +'<input class="qe-input qe-line-field" data-idx="'+idx+'" data-field="description" value="'+esc(l.description||'')+'" placeholder="✦ Sektionsoverskrift — fx en faggruppe (\'Gulvarbejde\', \'Malerarbejde\'...) — vises som en tydelig adskiller i tilbuddet">'
@@ -29051,7 +29060,9 @@ function qzLineRowHtml(l,idx,prefix){
   // knapper (💾/⧉/✕, tidligere klemt ind i toppens sidste 30px-kolonne) bor
   // nu i en fast ikon-skinne (.qe-line-rail) til højre langs HELE kortets
   // højde — se den store CSS-kommentar ved .qe-line-top for baggrunden.
-  return '<div class="qe-line qe-line-item" data-idx="'+idx+'">'
+  var invd=prefix==='qe'&&l.invoiced_in_invoice_id;
+  return '<div class="qe-line qe-line-item'+(invd?' qe-line-invoiced':'')+'" data-idx="'+idx+'">'
+    +(invd?'<div class="qe-inv-tag">✓ Faktureret'+(typeof qeInvNumber==='function'&&qeInvNumber(l.invoiced_in_invoice_id)?' · '+esc(qeInvNumber(l.invoiced_in_invoice_id)):'')+' — kan ikke rettes</div>':'')
     +'<div class="qe-line-item-body">'
     +'<div class="qe-line-top">'
     +qzLineDragHandle(idx)
@@ -39544,7 +39555,7 @@ async function openQuoteEditor(id,prefillCustomer){
     // manglede 'note' — uden den blev linjens note tabt hver gang et EKSISTERENDE tilbud
     // blev åbnet og gemt igen (qeState.lines fik ikke feltet med, og et efterfølgende
     // gem ville derfor overskrive den gemte note i databasen med null).
-    qeState.lines=(qd.lines||[]).map(function(l){return {product_id:l.product_id||null,description:l.description,note:l.note||'',unit:l.unit||'stk',quantity:Number(l.quantity)||1,cost_price:Number(l.cost_price)||0,sell_price:Number(l.sell_price)||0,product_type:qzType(l.product_type),discount_pct:Number(l.discount_pct)||0,discount_type:l.discount_type==='fixed'?'fixed':'pct',line_type:l.line_type==='text'?'text':'item',show_sum:!!l.show_sum};});
+    qeState.lines=(qd.lines||[]).map(function(l){return {id:l.id,invoiced_in_invoice_id:l.invoiced_in_invoice_id||null,product_id:l.product_id||null,description:l.description,note:l.note||'',unit:l.unit||'stk',quantity:Number(l.quantity)||1,cost_price:Number(l.cost_price)||0,sell_price:Number(l.sell_price)||0,product_type:qzType(l.product_type),discount_pct:Number(l.discount_pct)||0,discount_type:l.discount_type==='fixed'?'fixed':'pct',line_type:l.line_type==='text'?'text':'item',show_sum:!!l.show_sum};});
     // RUNDE AC — se kommentaren ved docAttachStateFor.
     qeState.attachments=qd.attachments||[];
     docAttachRenderList('quote');
@@ -39728,12 +39739,16 @@ function qeToolbarSyncGroupVisibility(){
     if(wrap)wrap.style.display=anyVisible?'':'none';
   });
 }
+function qeInvNumber(invId){var L=(qeState.invStatus&&qeState.invStatus.invoices)||[];var f=L.find(function(i){return i.id===Number(invId);});return f?f.invoice_number:'';}
 function renderQeInvoicingPanel(){
   var st=qeState.invStatus;
   var hasInvoices=!!(st&&st.invoices&&st.invoices.length);
   document.getElementById('qe-invoicing-panel').style.display=hasInvoices?'':'none';
-  document.getElementById('qe-lines').classList.toggle('qe-lines-locked',hasInvoices);
-  qeSetLineButtonsLocked(hasInvoices);
+  // v2.74.0 — tilbuddet låses ikke længere: kun de fakturerede poster streges
+  // ud (se qzLineRowHtml), resten kan rettes, slettes og tilføjes som normalt.
+  document.getElementById('qe-lines').classList.remove('qe-lines-locked');
+  qeSetLineButtonsLocked(false);
+  var xb=document.getElementById('qe-add-extra-lines-btn');if(xb)xb.style.display='none';
   var remaining=st?(st.remaining_lines||[]):qeState.lines;
   document.getElementById('qe-convert-btn').style.display=remaining.length?'inline-flex':'none';
   document.getElementById('qe-convert-btn').textContent=hasInvoices?'📄 Fakturér flere linjer':'📄 Lav faktura';
@@ -39741,9 +39756,16 @@ function renderQeInvoicingPanel(){
   if(!hasInvoices)return;
   var pct=st.quote_total>0?Math.min(100,Math.round(st.invoiced_total/st.quote_total*100)):0;
   document.getElementById('qe-invoicing-summary').textContent='Faktureret '+krFmt(st.invoiced_total)+' af '+krFmt(st.quote_total)+' ('+pct+'%)'+(remaining.length?'':' — alt faktureret');
+  var acEl=document.getElementById('qe-invoicing-aconto');
+  if(!acEl){acEl=document.createElement('div');acEl.id='qe-invoicing-aconto';acEl.className='qe-aconto-note';var pf=document.getElementById('qe-invoicing-progress-fill');(pf&&pf.parentNode?pf.parentNode:document.getElementById('qe-invoicing-summary')).insertAdjacentElement('afterend',acEl);}
+  var ac=st.aconto||{};
+  var invLines=(qeState.lines||[]).filter(function(l){return l.invoiced_in_invoice_id;}).length;
+  acEl.innerHTML=(ac.remaining_ex>0?'💡 <b>'+krFmt(ac.remaining_incl)+' er opkrævet a conto</b> (betalingsplan) og trækkes automatisk fra, når du fakturerer posterne. ':'')
+    +(invLines?'Fakturerede poster er streget ud — resten af tilbuddet kan stadig rettes.':'Ingen poster er faktureret endnu — alle poster kan stadig rettes og tilføjes.');
   document.getElementById('qe-invoicing-progress-fill').style.width=pct+'%';
   document.getElementById('qe-invoicing-inv-list').innerHTML=st.invoices.map(function(inv){
-    return '<div class="qe-invoicing-inv-row" data-invid="'+inv.id+'"><span>'+esc(inv.invoice_number)+(inv.sent_at?' · sendt':' · ikke sendt endnu')+'</span><span>'+krFmt(Number(inv.total))+'</span></div>';
+    var isAc=((st.aconto&&st.aconto.invoices)||[]).some(function(a){return a.id===inv.id;});
+    return '<div class="qe-invoicing-inv-row" data-invid="'+inv.id+'"><span>'+esc(inv.invoice_number)+(isAc?' · a conto':'')+(inv.sent_at?' · sendt':' · ikke sendt endnu')+'</span><span>'+krFmt(Number(inv.total))+'</span></div>';
   }).join('');
   Array.prototype.forEach.call(document.getElementById('qe-invoicing-inv-list').querySelectorAll('[data-invid]'),function(row){
     row.onclick=function(){
@@ -40675,8 +40697,8 @@ function qeBuildSaveBody(){
   // låst i den tilstand (se renderQeInvoicingPanel), og serveren afviser
   // (400) et PUT med 'lines' i det tilfælde, se guard i PUT /api/quotes/:id.
   // Andre felter (kunde/noter/gyldig til/rabat) kan stadig gemmes som hidtil.
-  var hasInvoices=!!(qeState.invStatus&&qeState.invStatus.invoices&&qeState.invStatus.invoices.length);
-  if(!hasInvoices)body.lines=qeState.lines;
+  // v2.74.0 — linjerne sendes altid med; serveren rører aldrig fakturerede poster.
+  body.lines=qeState.lines;
   // RUNDE (okt. 2026) — se skema-kommentaren ved quotes.created_via i
   // server.js. Sendes KUN ved selve oprettelsen (POST, qeState.id endnu
   // ikke sat) — PUT /api/quotes/:id læser ikke disse felter, og vi vil
@@ -40800,6 +40822,11 @@ function qeEnqueueSave(taskFn){
 // er specificeret til at måtte fortsætte selvom siden lukkes/genindlæses lige
 // bagefter. Bruges IKKE ved normale autogem-kald (unødvendigt, og keepalive
 // har en lav samlet størrelsesgrænse man ikke skal bruge i utide).
+// v2.74.0 — nye linjer får deres database-id efter gem (samme objekter som blev sendt).
+function qeApplyLineIds(sent,ids){
+  if(!Array.isArray(sent)||!Array.isArray(ids))return;
+  sent.forEach(function(l,i){if(l&&!l.id&&ids[i])l.id=ids[i];});
+}
 function qeAutoSave(keepaliveFlush){
   if(qeAutoSaveSuppressed||!qeState||qeState.directInvoice)return Promise.resolve();
   var jobNameEl=document.getElementById('qe-customer-search');
@@ -40826,6 +40853,7 @@ function qeAutoSave(keepaliveFlush){
     if(keepaliveFlush)opts.keepalive=true;
     var r=stateRef.id?await api('/api/quotes/'+stateRef.id,opts):await api('/api/quotes',opts);
     if(r&&r.ok){
+      qeApplyLineIds(body.lines,r.line_ids);
       if(qeState===stateRef)qeShowSaveStatus('Gemt ✓'); // undlad at opdatere pillen hvis brugeren nåede at åbne et andet tilbud i mellemtiden
       if(!stateRef.id){
         // Se punkt 3) i kommentaren ved autogem-headeren ovenfor.
@@ -40892,7 +40920,7 @@ async function convertQuoteToInvoice(){
   qeState.invStatus=st;
   renderQeInvoicingPanel();
   if(!st.remaining_lines.length){toast('Alle linjer på tilbuddet er allerede faktureret','ℹ️');return;}
-  qcvState={quoteId:qeState.id,lines:st.remaining_lines};
+  qcvState={quoteId:qeState.id,lines:st.remaining_lines,aconto:st.aconto||null,deductAconto:true};
   renderQcvLines();
   document.getElementById('quote-convert-modal').classList.add('open');
 }
@@ -40920,7 +40948,16 @@ function qcvRecalcTotal(){
   // Beløbet her er FØR tilbuddets evt. dokument-rabat og moms (som først lægges
   // proportionalt på den faktiske delfaktura af serveren) — vist som vejledende
   // "ca."-beløb, ikke fakturaens endelige total.
-  document.getElementById('qcv-total').innerHTML='<div class="qe-totals-row total"><span>Valgte linjer, ca. (før evt. tilbudsrabat/moms)</span><span>'+krFmt(sum)+'</span></div>';
+  var ac=qcvState.aconto,acHtml='';
+  if(ac&&ac.remaining_ex>0){
+    var ded=Math.min(ac.remaining_ex,Math.max(0,sum));
+    acHtml='<label class="qcv-line-row" style="background:#F0F9FF;border-color:#BAE6FD"><input type="checkbox" id="qcv-aconto"'+(qcvState.deductAconto?' checked':'')+'>'
+      +'<span style="flex:1"><b>Træk a conto fra</b><div class="sub">'+esc(ac.invoices.filter(function(a){return a.remaining_ex>0;}).map(function(a){return a.invoice_number;}).join(', '))+' — '+krFmt(ac.remaining_ex)+' ekskl. moms er endnu ikke modregnet</div></span>'
+      +'<span style="flex-shrink:0;font-weight:700;color:#0369A1">'+(qcvState.deductAconto?'−'+krFmt(ded):'')+'</span></label>';
+    if(qcvState.deductAconto)sum=sum-ded;
+  }
+  document.getElementById('qcv-total').innerHTML=acHtml+'<div class="qe-totals-row total"><span>'+(acHtml&&qcvState.deductAconto?'Til betaling, ca. (ekskl. moms, efter a conto)':'Valgte linjer, ca. (før evt. tilbudsrabat/moms)')+'</span><span>'+krFmt(sum)+'</span></div>';
+  var acCb=document.getElementById('qcv-aconto');if(acCb)acCb.onchange=function(){qcvState.deductAconto=this.checked;qcvRecalcTotal();};
   document.getElementById('qcv-confirm-btn').disabled=!anyChecked;
 }
 async function qcvConfirm(){
@@ -40929,9 +40966,9 @@ async function qcvConfirm(){
     if(cb.checked)ids.push(qcvState.lines[Number(cb.dataset.idx)].id);
   });
   if(!ids.length){toast('Vælg mindst én linje','⚠️');return;}
-  var r=await api('/api/quotes/'+qcvState.quoteId+'/convert-to-invoice',{method:'POST',body:JSON.stringify({line_ids:ids})});
+  var r=await api('/api/quotes/'+qcvState.quoteId+'/convert-to-invoice',{method:'POST',body:JSON.stringify({line_ids:ids,deduct_aconto:qcvState.deductAconto!==false})});
   if(r&&r.ok){
-    toast('Faktura '+r.invoice_number+' oprettet','✓');
+    toast('Faktura '+r.invoice_number+' oprettet'+(r.aconto_deducted>0?' — a conto '+krFmt(r.aconto_deducted)+' fratrukket':''),'✓');
     closeModal('quote-convert-modal');
     // RETTELSE (okt. 2026, Martins fejlrapport: "Hver gang jeg konverterer et
     // tilbud siger den en fejl") — BUG: qeGoBackToList() herunder lukker

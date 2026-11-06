@@ -1460,6 +1460,9 @@ async function initSchema() {
     -- tekst-/overskriftslinje på et tilbud kan konverteres videre til en faktura, og
     -- skal blive ved med at vises som ren tekst dér også, ikke som en 0 kr.-varelinje.
     ALTER TABLE invoice_lines ADD COLUMN IF NOT EXISTS line_type TEXT NOT NULL DEFAULT 'item';
+    -- v2.74.0 — fradrag af a conto (betalingsplan-rate) på en senere faktura:
+    -- linjen peger på den a conto-faktura beløbet trækkes fra.
+    ALTER TABLE invoice_lines ADD COLUMN IF NOT EXISTS aconto_of_invoice_id INTEGER;
     -- Note pr. linje (sep. 2026) — kopieres fra quote_lines.note ved konvertering til
     -- faktura (se POST /api/quotes/:id/convert-to-invoice), samme visning som på tilbuddet.
     ALTER TABLE invoice_lines ADD COLUMN IF NOT EXISTS note TEXT;
@@ -23989,7 +23992,9 @@ app.post('/api/quotes/:id/payment-plan/invoice-phase', auth, panelAccess('quotes
     VALUES ($1,$2,'stk',1,0,$3,0,'service','item',true)
   `, [invoiceId, description.slice(0, 400), sellPriceExTax]);
   phases[idx] = Object.assign({}, phase, { invoiced_in_invoice_id: invoiceId, invoiced_invoice_number: invoiceNumber });
-  await pool.query(`UPDATE quotes SET payment_plan=$1, status='converted', converted_invoice_id=$2, updated_at=${nowTextSQL()} WHERE id=$3`, [JSON.stringify({ phases }), invoiceId, quote.id]);
+  // v2.74.0 — en a conto-rate lukker IKKE tilbuddet; posterne kan stadig rettes
+  // og faktureres (raten trækkes fra, se convert-to-invoice).
+  await pool.query(`UPDATE quotes SET payment_plan=$1, status=CASE WHEN status IN ('draft','sent') THEN 'accepted' ELSE status END, converted_invoice_id=$2, updated_at=${nowTextSQL()} WHERE id=$3`, [JSON.stringify({ phases }), invoiceId, quote.id]);
   await pool.query(`UPDATE projects SET invoice_id=$1, updated_at=${nowTextSQL()} WHERE quote_id=$2`, [invoiceId, quote.id]);
   logDocActivity('quote', quote.id, 'converted', req.user.name, invoiceNumber + ' (betalingsplan-fase: ' + phase.label + ')');
   logDocActivity('invoice', invoiceId, 'created', req.user.name, 'fra betalingsplan-fase på tilbud ' + quote.quote_number);
@@ -24443,6 +24448,90 @@ app.get('/api/quotes/:id', auth, panelAccess('quotes'), asyncRoute(async (req, r
 // `exec` er valgfri (pool som standard, eller en transaktionsklient) — se samme
 // mønster ved crmSetCustomFieldValues/mirrorProjectTaskToPool. Eksisterende
 // kaldesteder er uændrede; kun JobTread-sagsimporten sender en klient med.
+// v2.74.0 (Martin: "Når jeg sender delvist faktura ... skal den ikke lukke for
+// tilbuddet ... Den skal blot strege de poster ud der er sendt") — gemmer
+// tilbuddets linjer UDEN at røre de poster der allerede er faktureret, og
+// beholder linje-id'erne på de øvrige (så tidsregistreringer/opgaver/
+// underleverandører der peger på en post ikke mister koblingen).
+async function upsertQuoteLines(quoteId, lines) {
+  const existing = (await pool.query('SELECT id, invoiced_in_invoice_id FROM quote_lines WHERE quote_id=$1', [quoteId])).rows;
+  const byId = new Map(existing.map(r => [r.id, r]));
+  const used = new Set();
+  let pos = 0;
+  const outIds = [];
+  for (const l of (lines || [])) {
+    outIds.push(null);
+    const id = Number(l.id) || null;
+    const ex = id ? byId.get(id) : null;
+    if (ex && !used.has(id)) {
+      used.add(id);
+      outIds[outIds.length - 1] = id;
+      if (ex.invoiced_in_invoice_id) { await pool.query('UPDATE quote_lines SET position=$1 WHERE id=$2', [pos++, id]); continue; }
+      if (!l.description) continue;
+      const isText = l.line_type === 'text';
+      await pool.query(`UPDATE quote_lines SET product_id=$1, description=$2, unit=$3, quantity=$4, cost_price=$5, sell_price=$6, position=$7, product_type=$8,
+          discount_pct=$9, discount_type=$10, line_type=$11, note=$12, show_sum=$13 WHERE id=$14`,
+        [isText ? null : (l.product_id || null), String(l.description).trim(), isText ? '' : (l.unit || 'stk'), isText ? 0 : (Number(l.quantity) || 1), isText ? 0 : (Number(l.cost_price) || 0), isText ? 0 : (Number(l.sell_price) || 0), pos++, l.product_type === 'materialer' ? 'materialer' : 'service', isText ? 0 : (Number(l.discount_pct) || 0), l.discount_type === 'fixed' ? 'fixed' : 'pct', isText ? 'text' : 'item', isText ? null : (l.note ? String(l.note).trim() : null), isText ? !!l.show_sum : false, id]);
+      continue;
+    }
+    if (l.invoiced_in_invoice_id) continue; // forældet kopi af en faktureret post — springes over
+    if (!l.description) continue;
+    const isText = l.line_type === 'text';
+    const ins = await pgOne(`
+      INSERT INTO quote_lines (quote_id,product_id,description,unit,quantity,cost_price,sell_price,position,product_type,discount_pct,discount_type,line_type,note,show_sum)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14) RETURNING id
+    `, [quoteId, isText ? null : (l.product_id || null), String(l.description).trim(), isText ? '' : (l.unit || 'stk'), isText ? 0 : (Number(l.quantity) || 1), isText ? 0 : (Number(l.cost_price) || 0), isText ? 0 : (Number(l.sell_price) || 0), pos++, l.product_type === 'materialer' ? 'materialer' : 'service', isText ? 0 : (Number(l.discount_pct) || 0), l.discount_type === 'fixed' ? 'fixed' : 'pct', isText ? 'text' : 'item', isText ? null : (l.note ? String(l.note).trim() : null), isText ? !!l.show_sum : false]);
+    outIds[outIds.length - 1] = ins.id;
+  }
+  for (const r of existing) {
+    if (used.has(r.id)) continue;
+    if (r.invoiced_in_invoice_id) await pool.query('UPDATE quote_lines SET position=$1 WHERE id=$2', [pos++, r.id]); // fakturerede poster slettes aldrig
+    else await pool.query('DELETE FROM quote_lines WHERE id=$1', [r.id]);
+  }
+  return outIds;
+}
+// v2.74.0 — A CONTO: fakturaer lavet fra betalingsplanen (en procentdel af
+// tilbuddet, ikke bestemte poster). Det der er opkrævet a conto trækkes fra,
+// når posterne senere faktureres (se convert-to-invoice). Beløb ekskl. moms.
+async function quoteAcontoStatus(quoteId) {
+  const q = await pgOne('SELECT payment_plan, tax_rate FROM quotes WHERE id=$1', [quoteId]);
+  const phases = (q && q.payment_plan && Array.isArray(q.payment_plan.phases)) ? q.payment_plan.phases : [];
+  const ids = phases.map(p => Number(p.invoiced_in_invoice_id)).filter(Boolean);
+  if (!ids.length) return { invoices: [], total_ex: 0, deducted_ex: 0, remaining_ex: 0, remaining_incl: 0 };
+  const rows = (await pool.query(`SELECT i.id, i.invoice_number, i.subtotal, i.total, i.status,
+      COALESCE((SELECT SUM(-(il.quantity * il.sell_price) * (1 - COALESCE(i2.discount_pct,0)/100.0)) FROM invoice_lines il JOIN invoices i2 ON i2.id=il.invoice_id
+                WHERE il.aconto_of_invoice_id=i.id AND i2.status <> 'void'),0) AS deducted
+    FROM invoices i WHERE i.id = ANY($1::int[]) AND i.status <> 'void' ORDER BY i.created_at, i.id`, [ids])).rows;
+  const list = rows.map(r => {
+    const sub = Number(r.subtotal) || 0, ded = Math.round((Number(r.deducted) || 0) * 100) / 100;
+    return { id: r.id, invoice_number: r.invoice_number, subtotal: sub, total: Number(r.total) || 0, status: r.status, deducted_ex: ded, remaining_ex: Math.max(0, Math.round((sub - ded) * 100) / 100) };
+  });
+  const rate = Number(q.tax_rate) || 0;
+  const total_ex = list.reduce((a, x) => a + x.subtotal, 0), deducted_ex = list.reduce((a, x) => a + x.deducted_ex, 0), remaining_ex = list.reduce((a, x) => a + x.remaining_ex, 0);
+  return { invoices: list, total_ex, deducted_ex, remaining_ex, remaining_incl: Math.round(remaining_ex * (1 + rate / 100) * 100) / 100 };
+}
+// Tilbuddet er først "konverteret" (lukket), når ALLE poster er faktureret.
+async function quoteSyncInvoicedStatus(quoteId) {
+  const r = await pgOne(`SELECT q.status,
+      (SELECT COUNT(*)::int FROM quote_lines l WHERE l.quote_id=q.id AND COALESCE(l.line_type,'item')<>'text') AS items,
+      (SELECT COUNT(*)::int FROM quote_lines l WHERE l.quote_id=q.id AND COALESCE(l.line_type,'item')<>'text' AND l.invoiced_in_invoice_id IS NULL) AS open_items
+    FROM quotes q WHERE q.id=$1`, [quoteId]);
+  if (!r) return;
+  const next = (r.items > 0 && r.open_items === 0) ? 'converted' : 'accepted';
+  if (next !== r.status && (r.status === 'converted' || r.status === 'accepted' || next === 'accepted')) {
+    await pool.query(`UPDATE quotes SET status=$1, updated_at=${nowTextSQL()} WHERE id=$2`, [next, quoteId]);
+  }
+}
+async function migrateReopenPartlyInvoicedQuotes() {
+  const name = 'reopen_partly_invoiced_quotes_v2740';
+  try {
+    if (await pgOne('SELECT 1 FROM app_migrations WHERE name=$1', [name])) return;
+    const r = await pool.query(`UPDATE quotes q SET status='accepted' WHERE q.status='converted'
+      AND EXISTS (SELECT 1 FROM quote_lines l WHERE l.quote_id=q.id AND COALESCE(l.line_type,'item')<>'text' AND l.invoiced_in_invoice_id IS NULL)`);
+    await pool.query('INSERT INTO app_migrations (name, details) VALUES ($1, $2)', [name, JSON.stringify({ reopened: r.rowCount || 0 })]);
+    if (r.rowCount) console.log('Genåbnet ' + r.rowCount + ' delvist fakturerede tilbud');
+  } catch (e) { console.error(name + ' fejlede:', e.message); }
+}
 async function saveQuoteLines(quoteId, lines, exec) {
   const db = exec || pool;
   await db.query('DELETE FROM quote_lines WHERE quote_id=$1', [quoteId]);
@@ -24547,10 +24636,9 @@ app.put('/api/quotes/:id', auth, panelAccess('quotes'), asyncRoute(async (req, r
   // POST /api/quotes/:id/lines ("+ Tilføj ekstra ydelser"). Andre felter
   // (kundeoplysninger, noter, gyldig til) kan fortsat redigeres uændret, blot
   // uden 'lines' i samme kald.
-  if (b.lines !== undefined) {
-    const hasInvoices = await pgOne('SELECT 1 FROM invoices WHERE quote_id=$1 LIMIT 1', [req.params.id]);
-    if (hasInvoices) return res.status(400).json({ error: 'Tilbuddet har allerede faktura(er) knyttet til sig og kan ikke redigeres i sin helhed — brug "+ Tilføj ekstra ydelser" for nye linjer.' });
-  }
+  // v2.74.0 — linjerne må nu altid rettes; fakturerede poster beskyttes af
+  // upsertQuoteLines (de kan hverken rettes eller slettes).
+  const hasInvoicedLines = b.lines !== undefined && !!(await pgOne('SELECT 1 FROM quote_lines WHERE quote_id=$1 AND invoiced_in_invoice_id IS NOT NULL LIMIT 1', [req.params.id]));
   const taxRate = b.tax_rate !== undefined ? Number(b.tax_rate) : current.tax_rate;
   const discountPct = b.discount_pct !== undefined ? Number(b.discount_pct) || 0 : Number(current.discount_pct) || 0;
   const discountType = b.discount_type !== undefined ? (b.discount_type === 'fixed' ? 'fixed' : 'pct') : (current.discount_type === 'fixed' ? 'fixed' : 'pct');
@@ -24586,11 +24674,20 @@ app.put('/api/quotes/:id', auth, panelAccess('quotes'), asyncRoute(async (req, r
     crmOpportunityId,
     req.params.id
   ]);
-  if (b.lines !== undefined) await saveQuoteLines(req.params.id, b.lines);
+  let lineIds = null;
+  if (b.lines !== undefined) {
+    lineIds = await upsertQuoteLines(req.params.id, b.lines);
+    // Totaler regnes fra de gemte linjer (fakturerede poster kan ikke ændres af klienten).
+    const saved = (await pool.query('SELECT * FROM quote_lines WHERE quote_id=$1', [req.params.id])).rows;
+    const t2 = computeTotals(saved, taxRate, { value: discountPct, type: discountType });
+    totals.subtotal = t2.subtotal; totals.taxAmount = t2.taxAmount; totals.total = t2.total;
+    await pool.query('UPDATE quotes SET subtotal=$1, tax_amount=$2, total=$3 WHERE id=$4', [t2.subtotal, t2.taxAmount, t2.total, req.params.id]);
+    if (hasInvoicedLines) await quoteSyncInvoicedStatus(req.params.id);
+  }
   if (b.quote_title !== undefined) await pool.query('UPDATE quotes SET quote_title=$1 WHERE id=$2', [String(b.quote_title || '').trim().slice(0, 80) || null, req.params.id]);
   logDocActivity('quote', req.params.id, 'edited', req.user.name, null);
   crmSyncOpportunityValueFromQuote({ id: req.params.id, total: totals.total, crm_opportunity_id: crmOpportunityId, quote_number: current.quote_number });
-  res.json({ ok: true });
+  res.json({ ok: true, line_ids: lineIds });
 }));
 
 // RUNDE FU — gem kun tilbuddets interne navn (bruges fra listen og editorens top).
@@ -24689,20 +24786,46 @@ app.post('/api/quotes/:id/convert-to-invoice', auth, panelAccess('quotes'), asyn
     `, [invoiceId, l.product_id, l.description, l.unit, l.quantity, l.cost_price, l.sell_price, pos++, l.product_type || 'service', equivalentLinePct(l), l.line_type === 'text' ? 'text' : 'item', l.note || null, l.line_type === 'text' ? !!l.show_sum : false]);
   }
   await pool.query(`UPDATE quote_lines SET invoiced_in_invoice_id=$1 WHERE id = ANY($2::int[])`, [invoiceId, linesToInvoice.map(l => l.id)]);
+  // v2.74.0 — A CONTO: er der opkrævet rater via betalingsplanen, trækkes de
+  // fra her (højst op til denne fakturas beløb), så kunden ikke betaler dobbelt.
+  let acontoDeducted = 0;
+  if (req.body?.deduct_aconto !== false) {
+    const ac = await quoteAcontoStatus(quote.id);
+    let room = Math.max(0, Math.round(batchTotals.subtotal * 100) / 100);
+    const pctFactor = 1 - Math.min(99.99, Math.max(0, equivDocDiscountPct)) / 100;
+    for (const a of ac.invoices) {
+      if (room <= 0) break;
+      const amt = Math.min(room, a.remaining_ex);
+      if (!(amt > 0)) continue;
+      // sell_price kompenserer for fakturaens dokumentrabat, så fradraget efter rabat er præcis amt.
+      await pool.query(`INSERT INTO invoice_lines (invoice_id,description,unit,quantity,cost_price,sell_price,position,product_type,discount_pct,line_type,show_sum,aconto_of_invoice_id)
+        VALUES ($1,$2,'stk',1,0,$3,$4,'service',0,'item',false,$5)`,
+        [invoiceId, 'Fradrag for a conto-betaling, faktura ' + a.invoice_number, -Math.round(amt / pctFactor * 100) / 100, pos++, a.id]);
+      room -= amt; acontoDeducted += amt;
+    }
+    if (acontoDeducted > 0) {
+      const sub = Math.round((batchTotals.subtotal - acontoDeducted) * 100) / 100;
+      const tax = Math.round(sub * (Number(quote.tax_rate) || 0) / 100 * 100) / 100;
+      await pool.query('UPDATE invoices SET subtotal=$1, tax_amount=$2, total=$3 WHERE id=$4', [sub, tax, Math.round((sub + tax) * 100) / 100, invoiceId]);
+    }
+  }
   // 'converted' markerer nu "der findes mindst én faktura" — blokerer IKKE
   // længere yderligere delfakturaer, se availableLines-tjekket ovenfor.
   // converted_invoice_id/projects.invoice_id er rene bekvemmeligheds-links til
   // "seneste faktura" (bruges intet sted til at afgøre hvor meget der ER
   // faktureret — det læses altid live fra quote_lines/invoices, se
   // GET /api/quotes/:id/invoicing-status).
-  await pool.query(`UPDATE quotes SET status='converted', converted_invoice_id=$1, updated_at=${nowTextSQL()} WHERE id=$2`, [invoiceId, quote.id]);
+  // v2.74.0 — tilbuddet forbliver åbent ('accepted') indtil ALLE poster er
+  // faktureret; først da bliver det 'converted'.
+  await pool.query(`UPDATE quotes SET converted_invoice_id=$1, updated_at=${nowTextSQL()} WHERE id=$2`, [invoiceId, quote.id]);
+  await quoteSyncInvoicedStatus(quote.id);
   // Sagen (projektet) blev oprettet da kunden underskrev tilbuddet — nu hvor
   // der findes en faktura, kobles den på projektet, så "Tilføj til faktura"
   // fra tidsregistreringer og "Se faktura"-linket i sags-dashboardet virker.
   await pool.query(`UPDATE projects SET invoice_id=$1, updated_at=${nowTextSQL()} WHERE quote_id=$2`, [invoiceId, quote.id]);
   logDocActivity('quote', quote.id, 'converted', req.user.name, invoiceNumber + (requestedIds ? ' (delfaktura)' : ''));
   logDocActivity('invoice', invoiceId, 'created', req.user.name, `fra tilbud ${quote.quote_number}`);
-  res.json({ ok: true, invoice_id: invoiceId, invoice_number: invoiceNumber });
+  res.json({ ok: true, invoice_id: invoiceId, invoice_number: invoiceNumber, aconto_deducted: acontoDeducted });
 }));
 
 // RUNDE J (sep. 2026, Martins ønske) — "+ Tilføj ekstra ydelser": tilføjer nye
@@ -24735,6 +24858,7 @@ app.post('/api/quotes/:id/lines', auth, panelAccess('quotes'), asyncRoute(async 
   const totals = computeTotals(allLines, quote.tax_rate, { value: Number(quote.discount_pct) || 0, type: quote.discount_type === 'fixed' ? 'fixed' : 'pct' });
   await pool.query(`UPDATE quotes SET subtotal=$1, tax_amount=$2, total=$3, updated_at=${nowTextSQL()} WHERE id=$4`, [totals.subtotal, totals.taxAmount, totals.total, quote.id]);
   logDocActivity('quote', quote.id, 'edited', req.user.name, `${inserted.length} ekstra ydelse(r) tilføjet`);
+  await quoteSyncInvoicedStatus(quote.id);
   crmSyncOpportunityValueFromQuote({ id: quote.id, total: totals.total, crm_opportunity_id: quote.crm_opportunity_id, quote_number: quote.quote_number });
   res.json({ ok: true, added: inserted.length });
 }));
@@ -24752,7 +24876,8 @@ app.get('/api/quotes/:id/invoicing-status', auth, panelAccess('quotes'), asyncRo
     quote_total: Number(quote.total),
     invoiced_total: invoicedTotal,
     remaining_lines: remainingLines,
-    invoices: invoicesRes.rows
+    invoices: invoicesRes.rows,
+    aconto: await quoteAcontoStatus(quote.id)
   });
 }));
 
@@ -29760,6 +29885,7 @@ async function start() {
   await migrateKbPriorityProfession();
   await migrateKbFagEnterprise();
   await syncQuoteProjectLinks();
+  await migrateReopenPartlyInvoicedQuotes();
   await migrateNotPerformedStage();
   await migrateSubcontractorCosts();
   await syncProjectTaskMirrorDates();
