@@ -18310,6 +18310,8 @@ app.delete('/api/projects/:id', auth, panelAccess('projects'), asyncRoute(async 
   await pool.query('DELETE FROM gantt_tasks WHERE project_id=$1', [req.params.id]);
   await pool.query('DELETE FROM completion_emails WHERE project_id=$1', [req.params.id]);
   await pool.query('DELETE FROM projects WHERE id=$1', [req.params.id]);
+  // v2.74.1 — tilbuddene på sagen slippes fri, så de kan tilknyttes en anden sag.
+  await pool.query('UPDATE quotes SET project_id=NULL WHERE project_id=$1', [req.params.id]);
   res.json({ ok: true });
 }));
 
@@ -24333,7 +24335,10 @@ async function loadQuoteFull(id) {
 }
 
 app.get('/api/quotes', auth, panelAccess('quotes'), asyncRoute(async (req, res) => {
-  const rows = await pool.query('SELECT * FROM quotes ORDER BY created_at DESC, id DESC');
+  // v2.74.1 — project_id kun hvis sagen stadig findes (+ sagens navn til visning).
+  const rows = await pool.query(`SELECT q.*, p.id AS project_id, p.name AS project_name, p.job_number AS project_job_number
+    FROM quotes q LEFT JOIN projects p ON p.id = COALESCE(q.project_id, (SELECT px.id FROM projects px WHERE px.quote_id=q.id LIMIT 1))
+    ORDER BY q.created_at DESC, q.id DESC`);
   res.json(rows.rows);
 }));
 

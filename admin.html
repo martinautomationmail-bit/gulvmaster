@@ -5766,7 +5766,7 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
        i browseren faktisk ER det nyeste deploy, eller om Render/GitHub bare
        ikke er nået at opdatere endnu — i stedet for at skulle gætte om en
        rettelse "stadig ikke virker" eller bare endnu ikke er live. -->
-  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build v2.74.0 · 2026-11-02</span></div>
+  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build v2.74.1 · 2026-11-02</span></div>
 </aside>
 <div class="app-content">
 <!-- RUNDE FB — AI-ASSISTENTEN (Martin: "en ai der er nede i venstre hjørne af
@@ -36731,15 +36731,21 @@ async function openPjAttachQuoteModal(){
 function pjaqRunSearch(q){
   var box=document.getElementById('pjaq-results');
   var custOnly=!q||q.length<2;
-  if(custOnly&&!(pjCurrent&&pjCurrent.customer_id)){box.style.display='none';box.innerHTML='';return;}
   (pjaqQuotes?Promise.resolve(pjaqQuotes):api('/api/quotes').then(function(r){pjaqQuotes=Array.isArray(r)?r:[];return pjaqQuotes;})).then(function(all){
     var ql=(q||'').toLowerCase();
     var mine=(pjCurrent.quotes||[]).map(function(z){return z.id;});
     all=all.filter(function(x){return mine.indexOf(x.id)<0;});
     if(custOnly){
-      var rows0=all.filter(function(x){return x.customer_id&&x.customer_id===pjCurrent.customer_id;}).slice(0,15);
-      if(!rows0.length){box.style.display='none';box.innerHTML='';return;}
-      pjaqRender(box,rows0,'Kundens andre tilbud');return;
+      // v2.74.1 — kundens tilbud (match på kunde, e-mail eller navn), og
+      // godkendte tilbud der ikke ligger på nogen sag, øverst.
+      var nm=String(pjCurrent.name||'').toLowerCase().trim(),em=String(pjCurrent.customer_email||'').toLowerCase().trim();
+      function isCust(x){return (pjCurrent.customer_id&&x.customer_id===pjCurrent.customer_id)||(em&&String(x.customer_email||'').toLowerCase().trim()===em)||(nm&&String(x.job_name||'').toLowerCase().trim()===nm);}
+      function isAcc(x){return x.status==='accepted'||x.status==='converted';}
+      var cust=all.filter(isCust);
+      var free=all.filter(function(x){return isAcc(x)&&!x.project_id&&!isCust(x);});
+      cust.sort(function(a2,b2){return (isAcc(b2)&&!b2.project_id?1:0)-(isAcc(a2)&&!a2.project_id?1:0);});
+      if(!cust.length&&!free.length){box.style.display='none';box.innerHTML='';return;}
+      pjaqRender(box,cust.slice(0,15),cust.length?'Kundens tilbud':'',free.slice(0,10),'Godkendte tilbud uden sag');return;
     }
     // Et tilbud der allerede sidder på en ANDEN sag kan sagtens dukke op her
     // (quotes-tabellen ved ikke selv hvilken sag den bruges af) — vælger man
@@ -36750,8 +36756,12 @@ function pjaqRunSearch(q){
     pjaqRender(box,rows,'');
   });
 }
-function pjaqRender(box,rows,head){
-  box.innerHTML=(head?'<div class="qe-customer-result" style="color:var(--bly-sub);font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;cursor:default">'+esc(head)+'</div>':'')+rows.map(function(r,i){return '<div class="qe-customer-result" data-idx="'+i+'"><b>'+esc(r.quote_number)+'</b> — '+esc(r.job_name||'')+(r.quote_title?' · <span style="color:#4338CA;font-weight:600">'+esc(r.quote_title)+'</span>':'')+'<br><span style="color:var(--bly-sub)">'+krFmt(Number(r.total))+' · '+esc(QZ_QUOTE_STATUS&&QZ_QUOTE_STATUS[r.status]?QZ_QUOTE_STATUS[r.status].label:r.status)+(r.project_id?' · på en anden sag':'')+'</span></div>';}).join('');
+function pjaqRender(box,rows,head,rows2,head2){
+  function hd(t){return '<div class="qe-customer-result" style="color:var(--bly-sub);font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;cursor:default">'+esc(t)+'</div>';}
+  function row(r,i){var acc=r.status==='accepted'||r.status==='converted';return '<div class="qe-customer-result" data-idx="'+i+'"><b>'+esc(r.quote_number)+'</b> — '+esc(r.job_name||'')+(r.quote_title?' · <span style="color:#4338CA;font-weight:600">'+esc(r.quote_title)+'</span>':'')+'<br><span style="color:var(--bly-sub)">'+krFmt(Number(r.total))+' · '+(acc?'<b style="color:#15803D">Godkendt</b>':esc(QZ_QUOTE_STATUS&&QZ_QUOTE_STATUS[r.status]?QZ_QUOTE_STATUS[r.status].label:r.status))+(r.project_id?' · ligger på sagen '+esc(r.project_name||r.project_job_number||''):(acc?' · <b style="color:#B45309">ingen sag</b>':''))+'</span></div>';}
+  var all=rows.concat(rows2||[]);
+  box.innerHTML=(head?hd(head):'')+rows.map(row).join('')+((rows2&&rows2.length)?hd(head2||'')+rows2.map(function(r,i){return row(r,rows.length+i);}).join(''):'');
+  rows=all;
   box.style.display='block';
   Array.prototype.forEach.call(box.querySelectorAll('.qe-customer-result[data-idx]'),function(elx){
     elx.onclick=function(){pjaqAttach(rows[Number(elx.dataset.idx)].id);};
