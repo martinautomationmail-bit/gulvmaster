@@ -5802,7 +5802,7 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
        i browseren faktisk ER det nyeste deploy, eller om Render/GitHub bare
        ikke er nået at opdatere endnu — i stedet for at skulle gætte om en
        rettelse "stadig ikke virker" eller bare endnu ikke er live. -->
-  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build v2.74.3 · 2026-11-02</span></div>
+  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build v2.74.4 · 2026-11-02</span></div>
 </aside>
 <div class="app-content">
 <!-- RUNDE FB — AI-ASSISTENTEN (Martin: "en ai der er nede i venstre hjørne af
@@ -35902,8 +35902,10 @@ function renderPdBudgetQuotes(d){
     +'<div class="r"><span>Omkostninger i alt</span><b>'+krFmt(d.cost_to_complete+d.labor_cost+(Number(d.subcontractor_cost)||0)+(Number(d.material_invoice_cost)||0))+'</b></div>'
     +'<div class="r"><span>Opkrævet</span><b>'+krFmt(d.collected)+'</b></div>'
     +'<div class="p"><span style="color:'+col(d.projected_profit)+'">Fortjeneste · '+pc(d.projected_margin)+'</span><b style="color:'+col(d.projected_profit)+'">'+krFmt(d.projected_profit)+'</b></div></div>');
-  el.innerHTML='<div class="pdbq"><h3>📄 Fortjeneste pr. tilbud</h3><div class="pdbq-grid">'+cards.join('')+'</div>'
-    +(d.shared_cost>0?'<div class="pdbq-note">Timer og udgifter der ikke er koblet til en bestemt tilbudspost ('+krFmt(d.shared_cost)+') er fordelt på tilbuddene efter deres værdi. Vælg "Post fra tilbud" ved tidsregistrering og underleverandører for at gøre tallene mere præcise.</div>':'')+'</div>';
+  var nQ=L.filter(function(q){return q.counted;}).length;
+  el.innerHTML='<div class="pdbq pdb-sec" data-pdb-sec="quotes"><h3 class="pdb-sec-h" data-pdb-toggle="quotes"><i class="pdb-chev">▾</i>📄 Fortjeneste pr. tilbud <span class="pdb-sec-sum">'+nQ+' tilbud · '+krFmt(d.projected_profit)+'</span></h3><div class="pdb-sec-b"><div class="pdbq-grid">'+cards.join('')+'</div>'
+    +(d.shared_cost>0?'<div class="pdbq-note">Timer og udgifter der ikke er koblet til en bestemt tilbudspost ('+krFmt(d.shared_cost)+') er fordelt på tilbuddene efter deres værdi. Vælg "Post fra tilbud" ved tidsregistrering og fordel fakturaer på poster for at gøre tallene mere præcise.</div>':'')+'</div></div>';
+  pdbApplyCollapsed();
 }
 // v2.73.0 — tilbud/post-vælgere til underleverandør-udgifter.
 function pdSubQuotes(){return ((pjCurrent&&pjCurrent.quotes)||[]).filter(function(q){return q.counted;});}
