@@ -2537,6 +2537,13 @@ async function initSchema() {
       updated_at TEXT DEFAULT ${nowTextSQL()}
     );
     CREATE INDEX IF NOT EXISTS idx_projects_status ON projects(status);
+    -- v2.73.0 (Martin: "2 tilbud eller mere godt kan være tilsluttet samme sag") —
+    -- quotes.project_id er den sag tilbuddet hører til. projects.quote_id er
+    -- stadig sagens FØRSTE/primære tilbud (bruges mange steder), mens alle
+    -- tilbud på sagen — også det primære — har project_id sat (se
+    -- syncQuoteProjectLinks ved opstart).
+    ALTER TABLE quotes ADD COLUMN IF NOT EXISTS project_id INTEGER;
+    CREATE INDEX IF NOT EXISTS idx_quotes_project ON quotes(project_id);
     -- RUNDE FM — stadier med auto_rule styres af sagens tidslinje (se recomputeProjectStatuses).
     -- RUNDE R (Martins ønske: "gør så jeg selv kan ændre/tilføje stadier") —
     -- projekt-Kanban'ets faser var hidtil 4 hårdkodede værdier i selve koden
@@ -2611,6 +2618,12 @@ async function initSchema() {
       created_at TEXT DEFAULT ${nowTextSQL()},
       updated_at TEXT DEFAULT ${nowTextSQL()}
     );
+    -- v2.73.0 — PDF af underleverandørens faktura (AI udfylder felterne) og
+    -- hvilket tilbud/hvilken tilbudspost udgiften dækker.
+    ALTER TABLE project_subcontractor_costs ADD COLUMN IF NOT EXISTS file_url TEXT;
+    ALTER TABLE project_subcontractor_costs ADD COLUMN IF NOT EXISTS file_name TEXT;
+    ALTER TABLE project_subcontractor_costs ADD COLUMN IF NOT EXISTS quote_id INTEGER;
+    ALTER TABLE project_subcontractor_costs ADD COLUMN IF NOT EXISTS quote_line_id INTEGER;
     CREATE INDEX IF NOT EXISTS idx_project_subcontractor_costs ON project_subcontractor_costs(project_id);
     -- RUNDE H: Færdig-mailen til kunden sendes nu automatisk når SAGEN sættes til
     -- "Afsluttet" (status='done'), ikke længere manuelt pr. opgave i Opgavepool.
@@ -8731,6 +8744,7 @@ async function jtImportMaterializeJob(jobData) {
         VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *
       `, [quoteId, projectName, customerId, jobData.address || null, null, null, jobNumber, jobtreadJobId]);
       const project = projectRow.rows[0];
+      await client.query('UPDATE quotes SET project_id=$1 WHERE id=$2', [project.id, quoteId]);
 
       // Sagens tidsplan: én linje der spænder over hele det planlagte forløb i
       // JobTread. job_id sættes til 'project-<id>' præcis som alle andre
@@ -9987,15 +10001,19 @@ app.get('/api/customer-visits/:taskId/quote-scope', auth, asyncRoute(async (req,
 app.get('/api/tasks/:taskId/quote-scope', auth, asyncRoute(async (req, res) => {
   const task = await pgOne('SELECT project_id FROM jt_tasks WHERE id=$1', [req.params.taskId]);
   if (!task || !task.project_id) return res.json({ quote_id: null, lines: [] });
-  const project = await pgOne('SELECT quote_id FROM projects WHERE id=$1', [task.project_id]);
+  const project = await pgOne('SELECT id, quote_id FROM projects WHERE id=$1', [task.project_id]);
   if (!project || !project.quote_id) return res.json({ quote_id: null, lines: [] });
-  const quote = await pgOne('SELECT id, quote_number FROM quotes WHERE id=$1', [project.quote_id]);
-  if (!quote) return res.json({ quote_id: null, lines: [] });
-  const linesResult = await pool.query(`
-    SELECT description, unit, quantity, line_type, note
-    FROM quote_lines WHERE quote_id=$1 ORDER BY position ASC, id ASC
-  `, [project.quote_id]);
-  res.json({ quote_id: quote.id, quote_number: quote.quote_number, lines: linesResult.rows });
+  // v2.73.0 — alle tilbud der tæller med på sagen; ved flere tilbud indledes
+  // hvert tilbuds linjer med en overskrift, så medarbejderen kan se skellet.
+  const qs = (await projectQuotes(project)).filter(q => q.counted);
+  if (!qs.length) return res.json({ quote_id: null, lines: [] });
+  let lines = [];
+  for (const q of qs) {
+    const r = await pool.query(`SELECT description, unit, quantity, line_type, note FROM quote_lines WHERE quote_id=$1 ORDER BY position ASC, id ASC`, [q.id]);
+    if (qs.length > 1) lines.push({ description: 'Tilbud ' + q.quote_number + (q.quote_title ? ' – ' + q.quote_title : ''), unit: null, quantity: null, line_type: 'text', note: null });
+    lines = lines.concat(r.rows);
+  }
+  res.json({ quote_id: qs[0].id, quote_number: qs.map(q => q.quote_number).join(' + '), lines });
 }));
 
 // RUNDE FV — "Opdateret tilbud givet" efter besøget (sæt/fjern).
@@ -11529,7 +11547,7 @@ app.get('/api/crm/customers/:id', auth, panelAccess('customers'), asyncRoute(asy
              q.crm_lead_id, q.crm_opportunity_id,
              cl.name AS crm_lead_name, co.name AS crm_opportunity_name
       FROM quotes q
-      LEFT JOIN projects p ON p.quote_id = q.id
+      LEFT JOIN projects p ON p.id = COALESCE(q.project_id, (SELECT px.id FROM projects px WHERE px.quote_id=q.id LIMIT 1))
       LEFT JOIN crm_leads cl ON cl.id = q.crm_lead_id
       LEFT JOIN crm_opportunities co ON co.id = q.crm_opportunity_id
       WHERE q.customer_id=$1 ORDER BY q.created_at DESC
@@ -15038,7 +15056,7 @@ app.get('/api/crm/leads/:id', auth, panelAccess('crmp_leads'), asyncRoute(async 
 app.get('/api/crm/leads/:id/quotes', auth, panelAccess('crmp_leads'), asyncRoute(async (req, res) => {
   const rows = await pool.query(`
     SELECT q.id, q.quote_number, q.quote_title, q.job_name, q.status, q.total, q.created_at, p.id AS project_id, p.job_number AS project_job_number
-    FROM quotes q LEFT JOIN projects p ON p.quote_id = q.id
+    FROM quotes q LEFT JOIN projects p ON p.id = COALESCE(q.project_id, (SELECT px.id FROM projects px WHERE px.quote_id=q.id LIMIT 1))
     WHERE q.crm_lead_id=$1 ORDER BY q.created_at DESC
   `, [req.params.id]);
   res.json(rows.rows);
@@ -15347,7 +15365,7 @@ app.get('/api/crm/opportunities/:id', auth, panelAccess('crmp_sales'), asyncRout
 app.get('/api/crm/opportunities/:id/quotes', auth, panelAccess('crmp_sales'), asyncRoute(async (req, res) => {
   const rows = await pool.query(`
     SELECT q.id, q.quote_number, q.quote_title, q.job_name, q.status, q.total, q.created_at, p.id AS project_id, p.job_number AS project_job_number
-    FROM quotes q LEFT JOIN projects p ON p.quote_id = q.id
+    FROM quotes q LEFT JOIN projects p ON p.id = COALESCE(q.project_id, (SELECT px.id FROM projects px WHERE px.quote_id=q.id LIMIT 1))
     WHERE q.crm_opportunity_id=$1 ORDER BY q.created_at DESC
   `, [req.params.id]);
   res.json(rows.rows);
@@ -16790,9 +16808,72 @@ async function mirrorProjectTaskToPool(id, project, fields, exec) {
 // Martins ønske: "når et projekt er oprettet i projekter, oprettes det
 // automatisk i opgavepool" (i stedet for at kræve et manuelt klik bagefter).
 // project skal mindst have {id, quote_id, name}.
-async function convertQuoteLinesToTasks(project) {
-  if (!project || !project.quote_id) return { ok: false, created: 0 };
-  const lines = (await pool.query('SELECT * FROM quote_lines WHERE quote_id=$1 ORDER BY position ASC, id ASC', [project.quote_id])).rows;
+// ── v2.73.0 — FLERE TILBUD PR. SAG ──────────────────────────────────
+// Et tilbud "tæller med" i sagens pris/budget når det er sagens primære
+// tilbud (projects.quote_id, uændret adfærd) eller er accepteret/konverteret.
+// Et ekstra tilbud der stadig er kladde/sendt vises på sagen, men tælles ikke.
+const PQ_COUNTED_STATUSES = ['accepted', 'converted'];
+function pqCountedSql(qAlias, pAlias) {
+  return `(${qAlias}.id = ${pAlias}.quote_id OR (${qAlias}.project_id = ${pAlias}.id AND ${qAlias}.status IN ('accepted','converted')))`;
+}
+async function projectQuotes(project, exec) {
+  if (!project) return [];
+  const rows = (await (exec || pool).query(
+    `SELECT id, quote_number, quote_title, job_name, job_number, total, tax_amount, status, signed_at, created_at
+     FROM quotes WHERE project_id=$1 OR id=$2
+     ORDER BY (id=$2) DESC, created_at ASC, id ASC`, [project.id, project.quote_id || -1])).rows;
+  return rows.map(q => ({
+    ...q, total: Number(q.total) || 0, tax_amount: Number(q.tax_amount) || 0,
+    is_primary: q.id === project.quote_id,
+    counted: q.id === project.quote_id || PQ_COUNTED_STATUSES.includes(q.status)
+  }));
+}
+// Finder sagen et tilbud hører til (primært eller ekstra).
+async function projectForQuote(quoteId, cols) {
+  return pgOne(`SELECT ${cols || 'id, name, job_number'} FROM projects
+    WHERE quote_id=$1 OR id=(SELECT project_id FROM quotes WHERE id=$1)
+    ORDER BY (quote_id=$1) DESC, id LIMIT 1`, [quoteId]);
+}
+async function syncQuoteProjectLinks() {
+  try {
+    const a = await pool.query('UPDATE quotes q SET project_id=p.id FROM projects p WHERE p.quote_id=q.id AND q.project_id IS NULL');
+    const b = await pool.query('UPDATE quotes q SET project_id=NULL WHERE q.project_id IS NOT NULL AND NOT EXISTS (SELECT 1 FROM projects p WHERE p.id=q.project_id)');
+    if (a.rowCount || b.rowCount) console.log(`syncQuoteProjectLinks: ${a.rowCount} koblet, ${b.rowCount} løsnet`);
+  } catch (e) { console.error('syncQuoteProjectLinks fejlede:', e.message); }
+}
+// Fletter sagen src ind i dst (når et tilbud der allerede har sin egen sag
+// tilknyttes en anden sag). Alt med project_id flyttes over — opgaver, timer,
+// billeder, materialer, KS, underleverandører, fakturaer — og src slettes.
+async function mergeProjectInto(src, dst) {
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const nDst = await client.query('SELECT COUNT(*)::int AS n FROM gantt_tasks WHERE project_id=$1', [dst.id]).then(r => r.rows[0].n);
+    await client.query(`UPDATE gantt_tasks SET project_id=$1, job_id=$2, job_name=$3, job_number=$4,
+        position = CASE WHEN position ~ '^[0-9]+$' THEN (position::int + $5)::text ELSE position END
+      WHERE project_id=$6`, [dst.id, 'project-' + dst.id, dst.name, dst.job_number || null, nDst, src.id]);
+    await client.query('UPDATE jt_tasks SET project_id=$1, job_name=$2, job_number=$3 WHERE project_id=$4', [dst.id, dst.name, dst.job_number || null, src.id]);
+    // Unikke nøgler: KS-skabeloner og KS-dagbog (én side pr. dag).
+    await client.query('DELETE FROM project_qa_templates t WHERE t.project_id=$1 AND EXISTS (SELECT 1 FROM project_qa_templates d WHERE d.project_id=$2 AND d.qa_template_id=t.qa_template_id)', [src.id, dst.id]);
+    await client.query('UPDATE project_qa_diary s SET project_id=$1 WHERE s.project_id=$2 AND NOT EXISTS (SELECT 1 FROM project_qa_diary d WHERE d.project_id=$1 AND d.entry_date=s.entry_date)', [dst.id, src.id]);
+    const cols = (await client.query(`SELECT table_name FROM information_schema.columns
+      WHERE table_schema='public' AND column_name='project_id' AND table_name NOT IN ('projects','quotes','gantt_tasks','jt_tasks','project_qa_diary')`)).rows.map(r => r.table_name);
+    for (const t of cols) await client.query(`UPDATE "${t}" SET project_id=$1 WHERE project_id=$2`, [dst.id, src.id]);
+    const moved = (await client.query('UPDATE quotes SET project_id=$1, job_number=COALESCE($2, job_number) WHERE project_id=$3 OR id=$4 RETURNING id', [dst.id, dst.job_number || null, src.id, src.quote_id || -1])).rows.map(r => r.id);
+    if (moved.length && dst.job_number) await client.query('UPDATE invoices SET job_number=$1 WHERE quote_id = ANY($2)', [dst.job_number, moved]);
+    if (!dst.invoice_id && src.invoice_id) await client.query('UPDATE projects SET invoice_id=$1 WHERE id=$2', [src.invoice_id, dst.id]);
+    await client.query('DELETE FROM projects WHERE id=$1', [src.id]);
+    await client.query('COMMIT');
+    return { moved_quotes: moved };
+  } catch (e) {
+    await client.query('ROLLBACK').catch(() => {});
+    throw e;
+  } finally { client.release(); }
+}
+async function convertQuoteLinesToTasks(project, quoteId) {
+  const qid = quoteId || (project && project.quote_id);
+  if (!project || !qid) return { ok: false, created: 0 };
+  const lines = (await pool.query('SELECT * FROM quote_lines WHERE quote_id=$1 ORDER BY position ASC, id ASC', [qid])).rows;
   const existing = (await pool.query('SELECT source_quote_line_id FROM gantt_tasks WHERE project_id=$1 AND source_quote_line_id IS NOT NULL', [project.id])).rows;
   const already = new Set(existing.map(r => r.source_quote_line_id));
   let countRes = await pgOne('SELECT COUNT(*)::int AS n FROM gantt_tasks WHERE project_id=$1', [project.id]);
@@ -16926,6 +17007,19 @@ async function createProjectFromAcceptedQuote(quote) {
     crmMoveEntityToWonStage(quote).catch(e => console.error('Won-automatik fejlede for tilbud #' + quote.id + ':', e.message));
     const existingProject = await pgOne('SELECT id FROM projects WHERE quote_id=$1', [quote.id]);
     if (existingProject) return { projectId: existingProject.id, created: false };
+    // v2.73.0 — tilbuddet er allerede tilknyttet en eksisterende sag som
+    // ekstra tilbud: opret IKKE en ny sag, men læg tilbuddets linjer ind som
+    // opgaver på den sag (idempotent — linjer der allerede har en opgave springes over).
+    const linked = await pgOne('SELECT p.* FROM quotes q JOIN projects p ON p.id=q.project_id WHERE q.id=$1', [quote.id]);
+    if (linked) {
+      const seen = await pgOne(`SELECT 1 AS x FROM document_activity WHERE doc_type='quote' AND doc_id=$1 AND event_type='accepted' LIMIT 1`, [quote.id]).catch(() => null);
+      if (!seen) {
+        logDocActivity('quote', quote.id, 'accepted', quote.signed_name ? 'Kunde (e-signatur)' : 'System', quote.signed_name || null);
+        sendQuoteAcceptedInternalNotification(quote).catch(e => console.error('Intern "tilbud accepteret"-varsling fejlede:', e.message));
+      }
+      try { await convertQuoteLinesToTasks(linked, quote.id); } catch (e2) { console.error('Kunne ikke oprette opgaver fra ekstra tilbud:', e2.message); }
+      return { projectId: linked.id, created: false };
+    }
     // Sagsnummer (se skema-kommentaren ved quotes.job_number, sep. 2026, Martins
     // ønske): tilbuddet fik ALLEREDE sit sagsnummer ved oprettelsen (POST
     // /api/quotes) — projektet arver det samme nummer i stedet for at få sit
@@ -16955,6 +17049,7 @@ async function createProjectFromAcceptedQuote(quote) {
       VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING id
     `, [quote.id, quote.job_name || quote.quote_number, quote.customer_id, quote.customer_address, quote.customer_phone, quote.customer_email, jobNumber, projectType]);
     const projectId = p.id;
+    await pool.query('UPDATE quotes SET project_id=$1 WHERE id=$2', [projectId, quote.id]);
     // RUNDE AD, udløser B1 (se den store kommentar ved sendWonProjectEmail) —
     // "kundens projekt er lavet". crmMoveEntityToWonStage() et par linjer
     // ovenfor i denne samme funktion (udløser A) har typisk ALLEREDE sendt
@@ -17174,9 +17269,9 @@ async function recomputeProjectStatuses(opts) {
       LEFT JOIN (SELECT t.project_id, MIN(substr(b.start_date,1,10)) s, MAX(substr(COALESCE(b.end_date,b.start_date),1,10)) e
                  FROM planning_bookings b JOIN jt_tasks t ON t.id=b.task_id
                  WHERE t.project_id IS NOT NULL AND COALESCE(t.is_visit,0)=0 AND COALESCE(b.planning_mode,'daily')='daily' GROUP BY t.project_id) bk ON bk.project_id=p.id
-      LEFT JOIN (SELECT quote_id, COUNT(*) FILTER (WHERE COALESCE(line_type,'item')<>'text')::int items,
-                        COUNT(*) FILTER (WHERE COALESCE(line_type,'item')<>'text' AND invoiced_in_invoice_id IS NOT NULL)::int inv_lines
-                 FROM quote_lines GROUP BY quote_id) ql ON ql.quote_id=p.quote_id
+      LEFT JOIN LATERAL (SELECT COUNT(*) FILTER (WHERE COALESCE(l.line_type,'item')<>'text')::int items,
+                        COUNT(*) FILTER (WHERE COALESCE(l.line_type,'item')<>'text' AND l.invoiced_in_invoice_id IS NOT NULL)::int inv_lines
+                 FROM quote_lines l JOIN quotes qx ON qx.id=l.quote_id WHERE ${pqCountedSql('qx', 'p')}) ql ON true
       ${where}`, params)).rows;
     const today = copenhagenTodayIso();
     let changed = 0;
@@ -17217,7 +17312,9 @@ app.get('/api/projects', auth, asyncRoute(async (req, res) => {
   // dette samme endpoint til deres sagsliste og ikke må se priser.
   const includePrice = await isFinanceAdmin(req.user.id);
   const rows = await pool.query(`
-    SELECT p.*, q.quote_number${includePrice ? ', q.total AS quote_total, i.total AS invoice_total' : ''},
+    SELECT p.*, q.quote_number${includePrice ? `, CASE WHEN p.quote_id IS NOT NULL THEN (SELECT COALESCE(SUM(qx.total),0) FROM quotes qx WHERE ${pqCountedSql('qx', 'p')}) END AS quote_total, i.total AS invoice_total` : ''},
+      -- v2.73.0 — antal tilbud på sagen (flere tilbud pr. sag).
+      (SELECT COUNT(*)::int FROM quotes qc WHERE qc.project_id=p.id OR qc.id=p.quote_id) AS quote_count,
       (SELECT COUNT(*)::int FROM gantt_tasks WHERE project_id=p.id) AS task_count,
       (SELECT COUNT(*)::int FROM time_entries WHERE project_id=p.id) AS time_entry_count,
       (SELECT COUNT(*)::int FROM project_photos WHERE project_id=p.id) AS photo_count,
@@ -17233,7 +17330,7 @@ app.get('/api/projects', auth, asyncRoute(async (req, res) => {
       (SELECT MAX(COALESCE(NULLIF(end_date,''),start_date)) FROM gantt_tasks WHERE project_id=p.id AND start_date IS NOT NULL AND start_date<>'') AS gantt_end,
       (SELECT COUNT(*) FILTER (WHERE COALESCE(line_type,'item')<>'text') > 0
               AND COUNT(*) FILTER (WHERE COALESCE(line_type,'item')<>'text' AND invoiced_in_invoice_id IS NULL) = 0
-         FROM quote_lines WHERE quote_id=p.quote_id) AS fully_invoiced,
+         FROM quote_lines WHERE quote_id IN (SELECT qx.id FROM quotes qx WHERE ${pqCountedSql('qx', 'p')})) AS fully_invoiced,
       -- v2.67.0 — Projekter-listen (stil C): fremdrift + næste opgave.
       (SELECT COUNT(*)::int FROM gantt_tasks WHERE project_id=p.id AND (status='done' OR progress>=1)) AS done_task_count,
       (SELECT name FROM gantt_tasks WHERE project_id=p.id AND COALESCE(is_group,0)=0 AND COALESCE(NULLIF(end_date,''),start_date) >= to_char(CURRENT_DATE,'YYYY-MM-DD') AND NOT (status='done' OR progress>=1) ORDER BY start_date ASC, position ASC LIMIT 1) AS next_task_name,
@@ -17241,8 +17338,8 @@ app.get('/api/projects', auth, asyncRoute(async (req, res) => {
       -- Faktureret indtil nu på sagen: alle (ikke-kladde/annullerede) fakturaer
       -- på sagens tilbud minus kreditnotaer — eller sagens egen direkte faktura.
       CASE WHEN p.quote_id IS NOT NULL THEN
-        (SELECT COALESCE(SUM(i2.total),0) - COALESCE((SELECT SUM(cn.amount) FROM credit_notes cn JOIN invoices i3 ON i3.id=cn.invoice_id WHERE i3.quote_id=p.quote_id),0)
-           FROM invoices i2 WHERE i2.quote_id=p.quote_id AND i2.status NOT IN ('draft','void'))
+        (SELECT COALESCE(SUM(i2.total),0) - COALESCE((SELECT SUM(cn.amount) FROM credit_notes cn JOIN invoices i3 ON i3.id=cn.invoice_id WHERE i3.quote_id IN (SELECT qx.id FROM quotes qx WHERE qx.project_id=p.id OR qx.id=p.quote_id)),0)
+           FROM invoices i2 WHERE i2.quote_id IN (SELECT qx.id FROM quotes qx WHERE qx.project_id=p.id OR qx.id=p.quote_id) AND i2.status NOT IN ('draft','void'))
       WHEN p.invoice_id IS NOT NULL THEN
         (SELECT CASE WHEN i4.status NOT IN ('draft','void') THEN i4.total ELSE 0 END FROM invoices i4 WHERE i4.id=p.invoice_id)
       ELSE 0 END AS invoiced_total` : ''}
@@ -17402,11 +17499,15 @@ app.get('/api/projects/:id/dashboard', auth, asyncRoute(async (req, res) => {
   const p = await pgOne('SELECT * FROM projects WHERE id=$1', [req.params.id]);
   if (!p) return res.status(404).json({ error: 'Sagen blev ikke fundet' });
   const quote = p.quote_id ? await pgOne('SELECT id, quote_number, total, tax_amount, status, signed_at, signed_name AS signer_name, created_at FROM quotes WHERE id=$1', [p.quote_id]).catch(() => null) : null;
-  const invoices = (await pool.query(`SELECT i.id, i.invoice_number, i.total, i.status, i.created_at, i.due_date,
+  // v2.73.0 — alle tilbud på sagen; prisen er summen af dem der tæller med.
+  const pQuotes = await projectQuotes(p);
+  const pQuoteIds = pQuotes.map(q => q.id);
+  const quoteNo = {}; pQuotes.forEach(q => { quoteNo[q.id] = q.quote_number; });
+  const invoices = (await pool.query(`SELECT i.id, i.invoice_number, i.total, i.status, i.created_at, i.due_date, i.quote_id,
       COALESCE((SELECT SUM(amount) FROM invoice_payments ip WHERE ip.invoice_id=i.id),0) AS paid,
       COALESCE((SELECT SUM(amount) FROM credit_notes c WHERE c.invoice_id=i.id),0) AS credited
-    FROM invoices i WHERE i.status NOT IN ('void','draft') AND (i.project_id=$1 OR ($2::int IS NOT NULL AND i.quote_id=$2) OR ($3::text IS NOT NULL AND i.job_number=$3) OR i.id=$4)
-    ORDER BY i.created_at`, [p.id, p.quote_id || null, p.job_number || null, p.invoice_id || -1])).rows;
+    FROM invoices i WHERE i.status NOT IN ('void','draft') AND (i.project_id=$1 OR i.quote_id = ANY($2::int[]) OR ($3::text IS NOT NULL AND i.job_number=$3) OR i.id=$4)
+    ORDER BY i.created_at`, [p.id, pQuoteIds, p.job_number || null, p.invoice_id || -1])).rows;
   const taskIds = (await pool.query('SELECT id, name FROM gantt_tasks WHERE project_id=$1 AND COALESCE(is_group,0)=0', [p.id])).rows;
   const ids = taskIds.map(t => String(t.id));
   const taskName = {}; taskIds.forEach(t => { taskName[String(t.id)] = t.name; });
@@ -17418,7 +17519,7 @@ app.get('/api/projects/:id/dashboard', auth, asyncRoute(async (req, res) => {
   const time = (await pool.query(`SELECT te.minutes, te.entry_date, te.note, te.created_at, u.name AS user_name FROM time_entries te LEFT JOIN users u ON u.id=te.user_id WHERE te.project_id=$1 ORDER BY te.entry_date DESC`, [p.id])).rows;
   const qa = (await pool.query('SELECT submitted_at FROM qa_submissions WHERE project_id=$1', [p.id]).catch(() => ({ rows: [] }))).rows;
   const docAct = (await pool.query(`SELECT doc_type, doc_id, event_type, actor, detail, created_at FROM document_activity
-     WHERE (doc_type='quote' AND doc_id=$1) OR (doc_type='invoice' AND doc_id = ANY($2)) ORDER BY created_at DESC LIMIT 80`, [p.quote_id || -1, invoices.map(i => i.id)])).rows;
+     WHERE (doc_type='quote' AND doc_id = ANY($1::int[])) OR (doc_type='invoice' AND doc_id = ANY($2)) ORDER BY created_at DESC LIMIT 80`, [pQuoteIds, invoices.map(i => i.id)])).rows;
   const payments = invoices.length ? (await pool.query('SELECT ip.amount, ip.paid_at, ip.method, i.invoice_number FROM invoice_payments ip JOIN invoices i ON i.id=ip.invoice_id WHERE ip.invoice_id = ANY($1)', [invoices.map(i => i.id)])).rows : [];
   const mails = p.customer_id ? (await pool.query(`SELECT subject, direction, internal_date, from_name FROM customer_emails WHERE customer_id=$1 ORDER BY internal_date DESC LIMIT 15`, [p.customer_id]).catch(() => ({ rows: [] }))).rows : [];
 
@@ -17441,7 +17542,7 @@ app.get('/api/projects/:id/dashboard', auth, asyncRoute(async (req, res) => {
   docAct.forEach(a => {
     const isQ = a.doc_type === 'quote';
     const inv = isQ ? null : invoices.find(i => i.id === a.doc_id);
-    const name = isQ ? ('Tilbud ' + (quote && quote.quote_number || '')) : ('Faktura ' + (inv && inv.invoice_number || ''));
+    const name = isQ ? ('Tilbud ' + (quoteNo[a.doc_id] || '')) : ('Faktura ' + (inv && inv.invoice_number || ''));
     ev.push({ at: a.created_at, kind: isQ ? 'quote' : 'invoice', title: name.trim() + ' ' + (DOC_LBL[a.event_type] || a.event_type), sub: a.actor ? 'af ' + a.actor : (a.detail || '') });
   });
   if (quote && quote.signed_at && !docAct.some(a => a.doc_type === 'quote' && a.event_type === 'accepted')) ev.push({ at: quote.signed_at, kind: 'quote', title: 'Tilbud accepteret', sub: (quote.signer_name ? 'Underskrevet af ' + quote.signer_name + ' · ' : '') + krFmtServer(quote.total) });
@@ -17467,7 +17568,9 @@ app.get('/api/projects/:id/dashboard', auth, asyncRoute(async (req, res) => {
   const paid = invoices.reduce((s, i) => s + (Number(i.paid) || 0), 0);
   res.json({
     quote: quote ? { id: quote.id, number: quote.quote_number, total: Number(quote.total) || 0, tax: Number(quote.tax_amount) || 0, status: quote.status, signed_at: quote.signed_at } : null,
-    invoices: invoices.map(i => ({ id: i.id, number: i.invoice_number, total: Number(i.total) || 0, paid: Number(i.paid) || 0, status: i.status, created_at: i.created_at, due_date: i.due_date })),
+    quotes: pQuotes.map(q => ({ id: q.id, number: q.quote_number, title: q.quote_title || '', total: q.total, status: q.status, signed_at: q.signed_at, is_primary: q.is_primary, counted: q.counted })),
+    quotes_total: pQuotes.filter(q => q.counted).reduce((sum, q) => sum + q.total, 0),
+    invoices: invoices.map(i => ({ id: i.id, number: i.invoice_number, total: Number(i.total) || 0, paid: Number(i.paid) || 0, status: i.status, created_at: i.created_at, due_date: i.due_date, quote_number: quoteNo[i.quote_id] || null })),
     invoiced, paid, minutes: time.reduce((s, t) => s + (Number(t.minutes) || 0), 0),
     photo_count: photos.length, photos: photos.slice(0, 8).map(x => x.url), qa_count: qa.length,
     team: Object.values(team), completion_email_sent_at: p.completion_email_sent_at || null,
@@ -17509,9 +17612,10 @@ app.get('/api/projects/:id', auth, asyncRoute(async (req, res) => {
     pool.query('SELECT * FROM project_materials WHERE project_id=$1 ORDER BY created_at DESC', [req.params.id]).then(r => r.rows),
     pool.query('SELECT * FROM qa_submissions WHERE project_id=$1 ORDER BY submitted_at DESC', [req.params.id]).then(r => r.rows),
     pool.query('SELECT * FROM contact_form_submissions WHERE project_id=$1 ORDER BY submitted_at DESC', [req.params.id]).then(r => r.rows),
-    project.quote_id
-      ? pool.query('SELECT id, description FROM quote_lines WHERE quote_id=$1 ORDER BY position ASC, id ASC', [project.quote_id]).then(r => r.rows)
-      : Promise.resolve([]),
+    // v2.73.0 — poster fra ALLE tilbud der tæller med på sagen (primært + accepterede ekstra).
+    pool.query(`SELECT l.id, l.description, l.quote_id, l.line_type, q.quote_number FROM quote_lines l JOIN quotes q ON q.id=l.quote_id
+      JOIN projects p ON p.id=$1 WHERE ${pqCountedSql('q', 'p')}
+      ORDER BY (q.id=p.quote_id) DESC, q.created_at ASC, l.position ASC, l.id ASC`, [req.params.id]).then(r => r.rows),
     pool.query('SELECT qa_template_id FROM project_qa_templates WHERE project_id=$1', [req.params.id]).then(r => r.rows.map(x => x.qa_template_id)),
     // RUNDE EB — KS-dagbog, se skema-kommentaren ved project_qa_diary ovenfor.
     pool.query('SELECT d.*, u.name AS user_name FROM project_qa_diary d LEFT JOIN users u ON u.id = d.user_id WHERE d.project_id=$1 ORDER BY d.entry_date DESC', [req.params.id]).then(r => r.rows)
@@ -17533,7 +17637,10 @@ app.get('/api/projects/:id', auth, asyncRoute(async (req, res) => {
       if (opp) crmEntity = { type: 'opportunity', id: opp.id, name: opp.name };
     }
   }
-  res.json({ ...project, pipeline_stages: await getProjectPipelineStages(project), pipeline_stages_custom: !!(project.pipeline_stages && sanitizePipelineStages(project.pipeline_stages).length), tasks, photos, time_entries: timeEntries, materials, qa_submissions: qaSubmissions, contact_form_submissions: contactSubmissions, quote_line_options: quoteLines, qa_template_ids: qaTemplateIds, qa_diary: qaDiary, crm_entity: crmEntity });
+  const pQuotes = await projectQuotes(project);
+  const showPrices = await isFinanceAdmin(req.user.id);
+  const quotesOut = pQuotes.map(q => showPrices ? q : { id: q.id, quote_number: q.quote_number, quote_title: q.quote_title, status: q.status, is_primary: q.is_primary, counted: q.counted });
+  res.json({ ...project, quotes: quotesOut, pipeline_stages: await getProjectPipelineStages(project), pipeline_stages_custom: !!(project.pipeline_stages && sanitizePipelineStages(project.pipeline_stages).length), tasks, photos, time_entries: timeEntries, materials, qa_submissions: qaSubmissions, contact_form_submissions: contactSubmissions, quote_line_options: quoteLines, qa_template_ids: qaTemplateIds, qa_diary: qaDiary, crm_entity: crmEntity });
 }));
 
 // Projekt-budget (sep. 2026, Martins ønske #3 "Samlet budget visning under projekter"):
@@ -17552,23 +17659,106 @@ function subCostFields(b) {
     invoice_date: /^\d{4}-\d{2}-\d{2}$/.test(String(b.invoice_date || '')) ? String(b.invoice_date) : null,
     amount: isFinite(amount) ? Math.max(0, Math.round(amount * 100) / 100) : NaN,
     task_id: b.task_id ? String(b.task_id).slice(0, 100) : null,
+    quote_id: Number(b.quote_id) || null,
+    quote_line_id: Number(b.quote_line_id) || null,
+    file_url: /^https:\/\//.test(String(b.file_url || '')) ? String(b.file_url).slice(0, 1000) : null,
+    file_name: String(b.file_name || '').trim().slice(0, 200) || null,
   };
 }
 app.post('/api/projects/:id/subcontractor-costs', auth, adminOnly, asyncRoute(async (req, res) => {
   const f = subCostFields(req.body || {});
   if (!(f.amount > 0)) return res.status(400).json({ error: 'Skriv et beløb' });
   if (!f.supplier && !f.description) return res.status(400).json({ error: 'Skriv hvem underleverandøren er' });
-  const row = await pgOne(`INSERT INTO project_subcontractor_costs (project_id, supplier, description, invoice_number, invoice_date, amount, task_id, created_by)
-    VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *`, [req.params.id, f.supplier, f.description, f.invoice_number, f.invoice_date, f.amount, f.task_id, req.user.id]);
+  if (f.quote_line_id && !f.quote_id) { const l = await pgOne('SELECT quote_id FROM quote_lines WHERE id=$1', [f.quote_line_id]); f.quote_id = l ? l.quote_id : null; }
+  const row = await pgOne(`INSERT INTO project_subcontractor_costs (project_id, supplier, description, invoice_number, invoice_date, amount, task_id, created_by, quote_id, quote_line_id, file_url, file_name)
+    VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING *`, [req.params.id, f.supplier, f.description, f.invoice_number, f.invoice_date, f.amount, f.task_id, req.user.id, f.quote_id, f.quote_line_id, f.file_url, f.file_name]);
   res.json(row);
 }));
 app.put('/api/projects/:id/subcontractor-costs/:costId', auth, adminOnly, asyncRoute(async (req, res) => {
   const f = subCostFields(req.body || {});
   if (!(f.amount > 0)) return res.status(400).json({ error: 'Skriv et beløb' });
-  const row = await pgOne(`UPDATE project_subcontractor_costs SET supplier=$1, description=$2, invoice_number=$3, invoice_date=$4, amount=$5, task_id=$6, updated_at=${nowTextSQL()}
-    WHERE id=$7 AND project_id=$8 RETURNING *`, [f.supplier, f.description, f.invoice_number, f.invoice_date, f.amount, f.task_id, req.params.costId, req.params.id]);
+  if (f.quote_line_id && !f.quote_id) { const l = await pgOne('SELECT quote_id FROM quote_lines WHERE id=$1', [f.quote_line_id]); f.quote_id = l ? l.quote_id : null; }
+  const row = await pgOne(`UPDATE project_subcontractor_costs SET supplier=$1, description=$2, invoice_number=$3, invoice_date=$4, amount=$5, task_id=$6,
+      quote_id=$9, quote_line_id=$10, file_url=COALESCE($11, file_url), file_name=COALESCE($12, file_name), updated_at=${nowTextSQL()}
+    WHERE id=$7 AND project_id=$8 RETURNING *`, [f.supplier, f.description, f.invoice_number, f.invoice_date, f.amount, f.task_id, req.params.costId, req.params.id, f.quote_id, f.quote_line_id, f.file_url, f.file_name]);
   if (!row) return res.status(404).json({ error: 'Ikke fundet' });
   res.json(row);
+}));
+// v2.73.0 (Martin: "ved underleverandør kan uploade en pdf hvor den tager navn,
+// beløb og data om sagen selv ... uploade flere pdf'er og så vælge tilbuddet og
+// posten den dækker") — gemmer filen og lader AI læse fakturaen. Intet gemmes
+// som udgift her: klienten viser forslaget, man retter/vælger tilbud + post,
+// og gemmer derefter via POST .../subcontractor-costs med file_url.
+app.post('/api/projects/:id/subcontractor-costs/scan', auth, adminOnly, asyncRoute(async (req, res) => {
+  const project = await pgOne('SELECT * FROM projects WHERE id=$1', [req.params.id]);
+  if (!project) return res.status(404).json({ error: 'Sagen blev ikke fundet' });
+  const b = req.body || {};
+  const m = /^data:([\w.+\/-]+);base64,(.+)$/s.exec(String(b.data_uri || ''));
+  if (!m) return res.status(400).json({ error: 'Ingen fil modtaget' });
+  const mime = m[1].toLowerCase(), data = m[2];
+  const isPdf = mime === 'application/pdf';
+  if (!isPdf && !/^image\/(jpeg|png|webp|gif)$/.test(mime)) return res.status(400).json({ error: 'Upload en PDF eller et billede af fakturaen' });
+  const fileName = String(b.filename || (isPdf ? 'faktura.pdf' : 'faktura.jpg')).slice(0, 200);
+  let fileUrl = null, uploadError = null;
+  if (cloudinaryConfigured()) {
+    try { fileUrl = await uploadPhotoToCloudinary(b.data_uri, 'gulvmaster/underleverandoer'); }
+    catch (e) { uploadError = e.message; console.error('Underleverandør-fil upload fejlede:', e.message); }
+  } else uploadError = 'Fillager er ikke konfigureret';
+  // Sagens tilbud og poster, så AI kan foreslå hvad fakturaen dækker.
+  const pQuotes = (await projectQuotes(project));
+  const lines = pQuotes.length ? (await pool.query(`SELECT id, quote_id, description FROM quote_lines WHERE quote_id = ANY($1::int[]) AND COALESCE(line_type,'item')<>'text' ORDER BY quote_id, position, id`, [pQuotes.map(q => q.id)])).rows : [];
+  const ctx = pQuotes.map(q => `Tilbud id=${q.id} (${q.quote_number}${q.quote_title ? ' – ' + q.quote_title : ''}):\n` +
+    lines.filter(l => l.quote_id === q.id).map(l => `  post id=${l.id}: ${String(l.description || '').slice(0, 140)}`).join('\n')).join('\n');
+  let extracted = null, aiError = null;
+  try {
+    const tool = {
+      name: 'faktura',
+      description: 'Returnér felterne fra underleverandørens faktura.',
+      input_schema: {
+        type: 'object',
+        properties: {
+          supplier: { type: 'string', description: 'Firmanavnet på underleverandøren der har udstedt fakturaen (ikke Gulv Master)' },
+          invoice_number: { type: 'string', description: 'Fakturanummer' },
+          invoice_date: { type: 'string', description: 'Fakturadato som YYYY-MM-DD' },
+          amount_ex_vat: { type: 'number', description: 'Fakturaens samlede beløb EKSKL. moms i kr' },
+          amount_incl_vat: { type: 'number', description: 'Fakturaens samlede beløb inkl. moms i kr' },
+          description: { type: 'string', description: 'Kort dansk beskrivelse (max 80 tegn) af hvad fakturaen dækker' },
+          quote_id: { type: 'integer', description: 'id på det tilbud fakturaen bedst passer til, hvis det kan afgøres' },
+          quote_line_id: { type: 'integer', description: 'id på den tilbudspost fakturaen bedst passer til, hvis det kan afgøres' }
+        },
+        required: ['supplier', 'amount_ex_vat']
+      }
+    };
+    const system = 'Du læser danske leverandørfakturaer for Gulv Master (gulvfirma). Udfyld værktøjet "faktura" med fakturaens oplysninger. Beløb skal være tal i kr (fx 12500.5). Står der kun beløb inkl. moms, så beregn ekskl. moms (dansk moms 25 %). Foreslå kun tilbud/post hvis det er rimeligt tydeligt ud fra fakturaens tekst.' + (ctx ? '\n\nSagens tilbud og poster:\n' + ctx.slice(0, 8000) : '');
+    const content = [
+      isPdf ? { type: 'document', source: { type: 'base64', media_type: 'application/pdf', data } } : { type: 'image', source: { type: 'base64', media_type: mime, data } },
+      { type: 'text', text: 'Udfyld værktøjet "faktura" ud fra denne faktura.' }
+    ];
+    const out = await aiCallModelWithTools(system, [{ role: 'user', content }], [tool], { type: 'auto' });
+    const tu = (out.content || []).find(c => c.type === 'tool_use' && c.name === 'faktura');
+    if (tu) extracted = tu.input;
+    else {
+      const txt = (out.content || []).filter(c => c.type === 'text').map(c => c.text).join('\n');
+      const j = /\{[\s\S]*\}/.exec(txt); if (j) extracted = JSON.parse(j[0]);
+    }
+    if (!extracted) aiError = 'AI kunne ikke læse fakturaen';
+  } catch (e) { aiError = e.message; console.error('AI-læsning af underleverandør-faktura fejlede:', e.message); }
+  const x = extracted || {};
+  let amount = Number(x.amount_ex_vat);
+  if (!(amount > 0) && Number(x.amount_incl_vat) > 0) amount = Number(x.amount_incl_vat) / 1.25;
+  const qIds = pQuotes.map(q => q.id);
+  const line = lines.find(l => l.id === Number(x.quote_line_id));
+  const quoteId = line ? line.quote_id : (qIds.includes(Number(x.quote_id)) ? Number(x.quote_id) : null);
+  res.json({
+    ok: true, file_url: fileUrl, file_name: fileName, upload_error: uploadError, ai_error: aiError,
+    supplier: x.supplier ? String(x.supplier).slice(0, 200) : '',
+    invoice_number: x.invoice_number ? String(x.invoice_number).slice(0, 100) : '',
+    invoice_date: /^\d{4}-\d{2}-\d{2}$/.test(String(x.invoice_date || '')) ? x.invoice_date : '',
+    amount: amount > 0 ? Math.round(amount * 100) / 100 : null,
+    amount_incl_vat: Number(x.amount_incl_vat) > 0 ? Number(x.amount_incl_vat) : null,
+    description: x.description ? String(x.description).slice(0, 300) : '',
+    quote_id: quoteId, quote_line_id: line ? line.id : null
+  });
 }));
 app.delete('/api/projects/:id/subcontractor-costs/:costId', auth, adminOnly, asyncRoute(async (req, res) => {
   await pool.query('DELETE FROM project_subcontractor_costs WHERE id=$1 AND project_id=$2', [req.params.costId, req.params.id]);
@@ -17578,55 +17768,44 @@ app.get('/api/projects/:id/budget', auth, adminOnly, asyncRoute(async (req, res)
   const project = await pgOne('SELECT id, quote_id, invoice_id FROM projects WHERE id=$1', [req.params.id]);
   if (!project) return res.status(404).json({ error: 'Projektet blev ikke fundet' });
 
-  const quote = project.quote_id ? await pgOne('SELECT id, total FROM quotes WHERE id=$1', [project.quote_id]) : null;
-  const approved = quote ? Number(quote.total) || 0 : 0;
+  // v2.73.0 — sagen kan have flere tilbud. Godkendt pris = summen af de
+  // tilbud der tæller med (primært + accepterede ekstra), og alt fordeles
+  // også pr. tilbud, så man kan se hvad hvert tilbud giver.
+  const pQuotes = await projectQuotes(project);
+  const counted = pQuotes.filter(q => q.counted);
+  const countedIds = counted.map(q => q.id);
+  const approved = counted.reduce((sum, q) => sum + q.total, 0);
 
-  // Opkrævet: betalinger på alle fakturaer der hører til sagen — både den direkte kobling
-  // (projects.invoice_id) og evt. andre fakturaer lavet på samme tilbud (quote_id).
-  const invoiceIds = new Set();
-  if (project.invoice_id) invoiceIds.add(project.invoice_id);
-  if (project.quote_id) {
-    const rows = await pool.query('SELECT id FROM invoices WHERE quote_id=$1', [project.quote_id]).then(r => r.rows);
-    rows.forEach(r => invoiceIds.add(r.id));
-  }
-  let collected = 0;
-  if (invoiceIds.size) {
-    const ids = [...invoiceIds];
-    const ph = ids.map((_, i) => `$${i + 1}`).join(',');
-    collected = await pool.query(`SELECT COALESCE(SUM(amount),0) AS s FROM invoice_payments WHERE invoice_id IN (${ph})`, ids)
-      .then(r => Number(r.rows[0].s) || 0);
-  }
+  // Opkrævet: betalinger på alle fakturaer der hører til sagen.
+  const invRows = (await pool.query(`SELECT i.id, i.quote_id, COALESCE((SELECT SUM(amount) FROM invoice_payments ip WHERE ip.invoice_id=i.id),0) AS paid
+    FROM invoices i WHERE i.id=$1 OR i.project_id=$2 OR i.quote_id = ANY($3::int[])`, [project.invoice_id || -1, project.id, pQuotes.map(q => q.id)])).rows;
+  const collected = invRows.reduce((sum, r) => sum + (Number(r.paid) || 0), 0);
 
-  // Forventet omkostning ("cost to complete"): budgetteret kostpris fra tilbudslinjerne.
-  // Vi har ikke løbende indkøbs-/materiale-tracking pr. sag, så dette er den bedste
-  // tilgængelige proxy for de forventede materialeomkostninger.
-  let costToComplete = 0;
-  if (project.quote_id) {
-    costToComplete = await pgOne(
-      `SELECT COALESCE(SUM(cost_price * quantity), 0) AS s FROM quote_lines WHERE quote_id=$1 AND line_type='item'`,
-      [project.quote_id]
-    ).then(r => Number(r.s) || 0);
-  }
+  // Forventet materiale-omkostning: kostpris fra tilbudslinjerne, pr. tilbud.
+  const matRows = countedIds.length ? (await pool.query(
+    `SELECT quote_id, COALESCE(SUM(cost_price * quantity), 0) AS s FROM quote_lines WHERE quote_id = ANY($1::int[]) AND line_type='item' GROUP BY quote_id`, [countedIds])).rows : [];
+  const matByQuote = {}; matRows.forEach(r => { matByQuote[r.quote_id] = Number(r.s) || 0; });
+  const costToComplete = Object.values(matByQuote).reduce((a, v) => a + v, 0);
 
-  // Løn-/akkord-omkostning: hver tidsregistrering på sagen omregnes til kr ud fra
-  // medarbejderens NUVÆRENDE timeløn (for timeansatte), men for akkord bruges nu
-  // (RUNDE BB) det PRISSNAPSHOT der blev gemt på selve linjen ved oprettelsen
-  // (te.akkord_rate — medarbejderens aftalte pris dengang, se
-  // user_akkord_rates), så en senere prisændring ikke ændrer allerede
-  // beregnede/udbetalte linjer. COALESCE til listens nuværende standardpris
-  // dækker gamle rækker fra før denne kolonne fandtes (altid NULL der).
+  // Løn-/akkord-omkostning: hver tidsregistrering omregnes til kr ud fra
+  // medarbejderens NUVÆRENDE timeløn (timeansatte) eller det gemte
+  // akkord-prissnapshot (te.akkord_rate). Er registreringen tagget med en
+  // tilbudspost, ved vi hvilket tilbud den hører til (ql.quote_id).
   const laborRows = await pool.query(`
     SELECT te.id, te.user_id, te.minutes, te.akkord_item_id, te.akkord_quantity,
            u.name AS user_name, u.pay_type, u.hourly_wage,
-           ai.name AS akkord_name, COALESCE(te.akkord_rate, ai.rate) AS akkord_rate
+           ai.name AS akkord_name, COALESCE(te.akkord_rate, ai.rate) AS akkord_rate,
+           ql.quote_id AS line_quote_id
     FROM time_entries te
     LEFT JOIN users u ON u.id = te.user_id
     LEFT JOIN akkord_items ai ON ai.id = te.akkord_item_id
+    LEFT JOIN quote_lines ql ON ql.id = te.quote_line_id
     WHERE te.project_id=$1
   `, [req.params.id]).then(r => r.rows);
 
   const byEmployee = new Map();
-  let laborTotal = 0;
+  const laborByQuote = {};
+  let laborTotal = 0, laborShared = 0;
   for (const row of laborRows) {
     const isAkkord = !!(row.akkord_item_id && Number(row.akkord_quantity) > 0);
     const minutes = Number(row.minutes) || 0;
@@ -17634,6 +17813,8 @@ app.get('/api/projects/:id/budget', auth, adminOnly, asyncRoute(async (req, res)
       ? (Number(row.akkord_quantity) || 0) * (Number(row.akkord_rate) || 0)
       : (minutes / 60) * (Number(row.hourly_wage) || 0);
     laborTotal += cost;
+    if (row.line_quote_id && countedIds.includes(row.line_quote_id)) laborByQuote[row.line_quote_id] = (laborByQuote[row.line_quote_id] || 0) + cost;
+    else laborShared += cost;
     const key = row.user_id || 0;
     if (!byEmployee.has(key)) {
       byEmployee.set(key, { user_id: row.user_id, name: row.user_name || 'Ukendt medarbejder', pay_type: row.pay_type || 'hourly', minutes: 0, akkord_lines: [], cost: 0 });
@@ -17644,23 +17825,51 @@ app.get('/api/projects/:id/budget', auth, adminOnly, asyncRoute(async (req, res)
     if (isAkkord) emp.akkord_lines.push({ time_entry_id: row.id, item: row.akkord_name || '—', quantity: Number(row.akkord_quantity) || 0, rate: Number(row.akkord_rate) || 0, cost });
   }
 
-  // RUNDE S (Martins ønske: "hvis en underleverandør har lavet opgave at lægge
-  // deres faktura ind på opgaven ... i stedet for den bruger medarbejdernes
-  // timer") — en underleverandør-opgave har typisk INGEN medarbejder-
-  // timeregistreringer at regne løn-omkostningen ud fra ovenfor (laborRows),
-  // så den reelle omkostning trækkes fra avancen her i stedet, sat direkte pr.
-  // opgave (gantt_tasks.subcontractor_cost, se opgave-detaljerne).
-  // v2.56.0 — udgifterne ligger nu pr. sag (project_subcontractor_costs).
+  // Underleverandør-udgifter pr. sag (v2.56.0). v2.73.0: kan være koblet
+  // direkte til et tilbud/en tilbudspost — ellers via opgavens tilbudslinje.
   const subRows = await pool.query(
-    `SELECT c.*, g.name AS task_name FROM project_subcontractor_costs c
+    `SELECT c.*, g.name AS task_name, ql.description AS quote_line_desc, q.quote_number,
+            COALESCE(c.quote_id, ql.quote_id, tql.quote_id) AS eff_quote_id
+     FROM project_subcontractor_costs c
      LEFT JOIN gantt_tasks g ON g.id = c.task_id
+     LEFT JOIN quote_lines ql ON ql.id = c.quote_line_id
+     LEFT JOIN quote_lines tql ON tql.id = g.source_quote_line_id
+     LEFT JOIN quotes q ON q.id = COALESCE(c.quote_id, ql.quote_id, tql.quote_id)
      WHERE c.project_id=$1 ORDER BY COALESCE(c.invoice_date, c.created_at) ASC, c.id ASC`,
     [req.params.id]
   ).then(r => r.rows);
   const subcontractorTotal = subRows.reduce((sum, r) => sum + (Number(r.amount) || 0), 0);
+  const subByQuote = {};
+  let subShared = 0;
+  subRows.forEach(r => {
+    const amt = Number(r.amount) || 0;
+    if (r.eff_quote_id && countedIds.includes(r.eff_quote_id)) subByQuote[r.eff_quote_id] = (subByQuote[r.eff_quote_id] || 0) + amt;
+    else subShared += amt;
+  });
 
   const profit = approved - costToComplete - laborTotal - subcontractorTotal;
   const margin = approved > 0 ? (profit / approved) * 100 : 0;
+
+  // Pr. tilbud: direkte omkostninger + en andel af de fælles omkostninger
+  // (timer/udgifter der ikke er tagget til et bestemt tilbud), fordelt efter
+  // tilbuddenes værdi — så tallene pr. tilbud altid summer op til hele sagen.
+  const sharedTotal = laborShared + subShared;
+  const collectedByQuote = {};
+  invRows.forEach(r => { if (r.quote_id) collectedByQuote[r.quote_id] = (collectedByQuote[r.quote_id] || 0) + (Number(r.paid) || 0); });
+  const perQuote = pQuotes.map(q => {
+    if (!q.counted) return { id: q.id, quote_number: q.quote_number, title: q.quote_title || q.job_name || '', status: q.status, is_primary: q.is_primary, counted: false, approved: q.total };
+    const share = approved > 0 ? q.total / approved : (counted.length ? 1 / counted.length : 0);
+    const materials = matByQuote[q.id] || 0, labor = laborByQuote[q.id] || 0, sub = subByQuote[q.id] || 0;
+    const sharedPart = sharedTotal * share;
+    const cost = materials + labor + sub + sharedPart;
+    const p2 = q.total - cost;
+    return {
+      id: q.id, quote_number: q.quote_number, title: q.quote_title || q.job_name || '', status: q.status, is_primary: q.is_primary, counted: true,
+      approved: q.total, collected: collectedByQuote[q.id] || 0,
+      materials, labor, subcontractor: sub, shared_cost: sharedPart, cost,
+      profit: p2, margin: q.total > 0 ? (p2 / q.total) * 100 : 0
+    };
+  });
 
   res.json({
     approved_price: approved,
@@ -17669,9 +17878,11 @@ app.get('/api/projects/:id/budget', auth, adminOnly, asyncRoute(async (req, res)
     cost_to_complete: costToComplete,
     labor_cost: laborTotal,
     subcontractor_cost: subcontractorTotal,
-    subcontractor_costs: subRows.map(r => ({ id: r.id, supplier: r.supplier || '', description: r.description || '', invoice_number: r.invoice_number || '', invoice_date: r.invoice_date || '', amount: Number(r.amount) || 0, task_id: r.task_id || null, task_name: r.task_name || '' })),
+    subcontractor_costs: subRows.map(r => ({ id: r.id, supplier: r.supplier || '', description: r.description || '', invoice_number: r.invoice_number || '', invoice_date: r.invoice_date || '', amount: Number(r.amount) || 0, task_id: r.task_id || null, task_name: r.task_name || '', quote_id: r.quote_id || null, quote_line_id: r.quote_line_id || null, quote_number: r.quote_number || '', quote_line_desc: r.quote_line_desc || '', file_url: r.file_url || null, file_name: r.file_name || null })),
     projected_profit: profit,
     projected_margin: margin,
+    shared_cost: sharedTotal,
+    quotes: perQuote,
     employees: [...byEmployee.values()]
   });
 }));
@@ -18011,30 +18222,59 @@ app.put('/api/projects/:id', auth, panelAccess('projects'), asyncRoute(async (re
 // ellers ville to sager dele samme pris/redigeringsknap, hvilket ville være
 // mere forvirrende end den manglende kobling er i dag.
 app.put('/api/projects/:id/attach-quote', auth, panelAccess('projects'), asyncRoute(async (req, res) => {
-  const project = await pgOne('SELECT * FROM projects WHERE id=$1', [req.params.id]);
+  let project = await pgOne('SELECT * FROM projects WHERE id=$1', [req.params.id]);
   if (!project) return res.status(404).json({ error: 'Projektet blev ikke fundet' });
   const quoteId = Number((req.body || {}).quote_id);
   if (!quoteId) return res.status(400).json({ error: 'Angiv hvilket tilbud der skal kobles på' });
   const quote = await pgOne('SELECT * FROM quotes WHERE id=$1', [quoteId]);
   if (!quote) return res.status(404).json({ error: 'Tilbuddet blev ikke fundet' });
-  const other = await pgOne('SELECT id, name FROM projects WHERE quote_id=$1 AND id<>$2', [quoteId, req.params.id]);
-  if (other) return res.status(400).json({ error: `Dette tilbud er allerede koblet på sagen "${other.name}"` });
-  // Sagsnummer (se skema-kommentaren ved quotes.job_number) — projektet fik sit
-  // eget sagsnummer ved den manuelle oprettelse ("+ Nyt projekt"), men tilbuddet
-  // har OGSÅ sit eget (fra POST /api/quotes). Nu hvor de to kobles sammen som
-  // ÉN sag, er det tilbuddets nummer der vinder — det er der numrene "starter"
-  // i den normale arbejdsgang. Projektets gamle nummer forlades (ingen fejl af
-  // det, blot et "hul" i tælleserien), og sagens allerede-spejlede opgaver i
-  // Opgavepoolen/sags-Gantt'et rettes til det nye nummer med det samme, så alt
-  // stemmer overens uden at Martin selv skal rette hver opgave.
-  const finalJobNumber = quote.job_number || project.job_number;
-  await pool.query(`UPDATE projects SET quote_id=$1, job_number=$2, updated_at=${nowTextSQL()} WHERE id=$3`, [quoteId, finalJobNumber, req.params.id]);
-  if (finalJobNumber && finalJobNumber !== project.job_number) {
-    await pool.query('UPDATE jt_tasks SET job_number=$1 WHERE project_id=$2', [finalJobNumber, req.params.id]);
-    await pool.query('UPDATE gantt_tasks SET job_number=$1 WHERE project_id=$2', [finalJobNumber, req.params.id]);
+  if (project.quote_id === quoteId || quote.project_id === project.id) return res.json({ ok: true, already: true });
+  // v2.73.0 — tilbuddet har allerede sin EGEN sag (fx fordi det blev
+  // accepteret før det blev koblet her): den sag flettes ind i denne, men kun
+  // når brugeren har bekræftet det (merge:true).
+  const other = await pgOne('SELECT * FROM projects WHERE id<>$2 AND (quote_id=$1 OR id=$3)', [quoteId, project.id, quote.project_id || -1]);
+  if (other && other.quote_id === quoteId) {
+    if (!(req.body || {}).merge) {
+      const cnt = await pgOne(`SELECT (SELECT COUNT(*)::int FROM gantt_tasks WHERE project_id=$1) AS tasks,
+          (SELECT COUNT(*)::int FROM time_entries WHERE project_id=$1) AS time_entries,
+          (SELECT COUNT(*)::int FROM project_photos WHERE project_id=$1) AS photos`, [other.id]);
+      return res.status(409).json({ error: `Tilbuddet har allerede sin egen sag "${other.name}"`, needs_merge: true, other: { id: other.id, name: other.name, job_number: other.job_number, ...cnt } });
+    }
+    await mergeProjectInto(other, project);
+    project = await pgOne('SELECT * FROM projects WHERE id=$1', [project.id]);
   }
-  if (!quote.job_number && finalJobNumber) {
-    await pool.query('UPDATE quotes SET job_number=$1 WHERE id=$2', [finalJobNumber, quoteId]);
+  if (!project.quote_id) {
+    // Sagen har intet tilbud endnu → det bliver sagens primære tilbud (som før).
+    // Sagsnummer: tilbuddets nummer vinder, og sagens opgaver rettes til det.
+    const finalJobNumber = quote.job_number || project.job_number;
+    await pool.query(`UPDATE projects SET quote_id=$1, job_number=$2, updated_at=${nowTextSQL()} WHERE id=$3`, [quoteId, finalJobNumber, project.id]);
+    await pool.query('UPDATE quotes SET project_id=$1, job_number=COALESCE(job_number,$2) WHERE id=$3', [project.id, finalJobNumber, quoteId]);
+    if (finalJobNumber && finalJobNumber !== project.job_number) {
+      await pool.query('UPDATE jt_tasks SET job_number=$1 WHERE project_id=$2', [finalJobNumber, project.id]);
+      await pool.query('UPDATE gantt_tasks SET job_number=$1 WHERE project_id=$2', [finalJobNumber, project.id]);
+    }
+    return res.json({ ok: true, primary: true });
+  }
+  // Ekstra tilbud på sagen — får sagens sagsnummer, så alt hænger sammen.
+  await pool.query('UPDATE quotes SET project_id=$1, job_number=COALESCE($2, job_number) WHERE id=$3', [project.id, project.job_number || null, quoteId]);
+  if (project.job_number) await pool.query('UPDATE invoices SET job_number=$1 WHERE quote_id=$2', [project.job_number, quoteId]);
+  let created = 0;
+  if (PQ_COUNTED_STATUSES.includes(quote.status)) {
+    const r = await convertQuoteLinesToTasks(project, quoteId).catch(() => ({ created: 0 }));
+    created = r.created || 0;
+  }
+  res.json({ ok: true, primary: false, tasks_created: created, merged: !!(other && other.quote_id === quoteId) });
+}));
+// v2.73.0 — fjern et tilbud fra sagen (tilbuddet slettes ikke). Er det sagens
+// primære tilbud, bliver det næste tilbud på sagen det primære.
+app.delete('/api/projects/:id/quotes/:quoteId', auth, panelAccess('projects'), asyncRoute(async (req, res) => {
+  const project = await pgOne('SELECT * FROM projects WHERE id=$1', [req.params.id]);
+  if (!project) return res.status(404).json({ error: 'Projektet blev ikke fundet' });
+  const qid = Number(req.params.quoteId);
+  await pool.query('UPDATE quotes SET project_id=NULL WHERE id=$1 AND project_id=$2', [qid, project.id]);
+  if (project.quote_id === qid) {
+    const next = await pgOne(`SELECT id FROM quotes WHERE project_id=$1 ORDER BY (status IN ('accepted','converted')) DESC, created_at ASC, id ASC LIMIT 1`, [project.id]);
+    await pool.query(`UPDATE projects SET quote_id=$1, updated_at=${nowTextSQL()} WHERE id=$2`, [next ? next.id : null, project.id]);
   }
   res.json({ ok: true });
 }));
@@ -18075,13 +18315,15 @@ app.delete('/api/projects/:id', auth, panelAccess('projects'), asyncRoute(async 
 app.post('/api/projects/:id/convert-quote-lines', auth, panelAccess('projects'), asyncRoute(async (req, res) => {
   const project = await pgOne('SELECT * FROM projects WHERE id=$1', [req.params.id]);
   if (!project) return res.status(404).json({ error: 'Projektet blev ikke fundet' });
-  if (!project.quote_id) return res.status(400).json({ error: 'Dette projekt har intet tilknyttet tilbud' });
+  const pqs = (await projectQuotes(project)).filter(q => q.counted);
+  if (!pqs.length) return res.status(400).json({ error: 'Dette projekt har intet tilknyttet tilbud' });
   // Denne knap er nu et MANUELT fallback/genkør (fx hvis en linje er tilføjet
   // til tilbuddet efter projektet blev oprettet) — selve oprettelsen sker
   // normalt automatisk allerede når projektet bliver til, se
   // convertQuoteLinesToTasks() og /api/public/quotes/:token/accept.
-  const result = await convertQuoteLinesToTasks(project);
-  res.json(result);
+  let created = 0;
+  for (const q of pqs) { const r = await convertQuoteLinesToTasks(project, q.id); created += r.created || 0; }
+  res.json({ ok: true, created });
 }));
 
 // RUNDE H #24 — "📊 Book alt i Kapacitetsbordet" på projekt-siden (Martins
@@ -24070,7 +24312,7 @@ async function loadQuoteFull(id) {
   // Handlen?") — modstykket til crm_entity_* ovenfor, men den anden vej: hvilken
   // SAG (projekt) blev tilbuddet til, hvis det er accepteret. Ingen sag endnu
   // (tilbuddet er stadig draft/sendt) = project_id null, helt normalt.
-  const project = await pgOne('SELECT id, job_number FROM projects WHERE quote_id=$1', [id]);
+  const project = await projectForQuote(id, 'id, job_number, name, quote_id');
   // v2.66.0 — Martin: "man kan se om det kunden eller os der har accepteret?"
   // Kunden = underskrevet via tilbudslinket (signed_at/signed_name). Os = status
   // sat til "Godkendt" manuelt i admin (document_activity 'status_changed').
@@ -24082,7 +24324,7 @@ async function loadQuoteFull(id) {
       acceptedInfo = a ? { by: 'staff', name: a.actor || null, at: a.created_at } : { by: 'staff', name: null, at: null };
     }
   }
-  return { ...quote, accepted_info: acceptedInfo, lines: lines.rows, attachments: attachments.rows, crm_entity_note: crmEntityNote, crm_entity_name: crmEntityName, crm_entity_type: crmEntityType, project_id: project ? project.id : null, project_job_number: project ? project.job_number : null };
+  return { ...quote, accepted_info: acceptedInfo, lines: lines.rows, attachments: attachments.rows, crm_entity_note: crmEntityNote, crm_entity_name: crmEntityName, crm_entity_type: crmEntityType, project_id: project ? project.id : null, project_job_number: project ? project.job_number : null, project_name: project ? project.name : null, project_is_primary: !!(project && project.quote_id === quote.id) };
 }
 
 app.get('/api/quotes', auth, panelAccess('quotes'), asyncRoute(async (req, res) => {
@@ -24133,7 +24375,7 @@ app.get('/api/quotes/pending-invoicing', auth, panelAccess('quotes'), asyncRoute
            ov.override_amount::float AS override_amount
     FROM quotes q
     LEFT JOIN customers c ON c.id = q.customer_id
-    LEFT JOIN projects p ON p.quote_id = q.id
+    LEFT JOIN projects p ON p.id = COALESCE(q.project_id, (SELECT px.id FROM projects px WHERE px.quote_id=q.id LIMIT 1))
     LEFT JOIN LATERAL (
       SELECT SUM(i.total) AS invoiced_total FROM invoices i WHERE i.quote_id = q.id AND i.status <> 'void'
     ) inv ON true
@@ -24649,7 +24891,7 @@ async function invoiceLinks(inv) {
   let project = null;
   if (inv.project_id) project = await pgOne('SELECT id, name, job_number, status, quote_id FROM projects WHERE id=$1', [inv.project_id]);
   if (!project) project = await pgOne('SELECT id, name, job_number, status, quote_id FROM projects WHERE invoice_id=$1 ORDER BY id LIMIT 1', [inv.id]);
-  if (!project && inv.quote_id) project = await pgOne('SELECT id, name, job_number, status, quote_id FROM projects WHERE quote_id=$1 ORDER BY id LIMIT 1', [inv.quote_id]);
+  if (!project && inv.quote_id) project = await projectForQuote(inv.quote_id, 'id, name, job_number, status, quote_id');
   if (!project && inv.job_number) project = await pgOne('SELECT id, name, job_number, status, quote_id FROM projects WHERE job_number=$1 ORDER BY id LIMIT 1', [inv.job_number]);
   if (project) {
     const st = await pgOne('SELECT label, color FROM project_stages WHERE key=$1', [project.status]);
@@ -24945,10 +25187,10 @@ app.get('/api/document-job-photos/:docType/:docId', auth, panelAccess('quotes'),
     project = await pgOne('SELECT id, name FROM projects WHERE invoice_id=$1', [docId]);
     if (!project) {
       const inv = await pgOne('SELECT quote_id FROM invoices WHERE id=$1', [docId]);
-      if (inv && inv.quote_id) project = await pgOne('SELECT id, name FROM projects WHERE quote_id=$1', [inv.quote_id]);
+      if (inv && inv.quote_id) project = await projectForQuote(inv.quote_id, 'id, name');
     }
   } else {
-    project = await pgOne('SELECT id, name FROM projects WHERE quote_id=$1', [docId]);
+    project = await projectForQuote(docId, 'id, name');
   }
   if (!project) return res.json({ project: null, photos: [] });
   // RUNDE BS (Martin: "billeder fra kundebesøg kommer ind under Filer på
@@ -29517,6 +29759,7 @@ async function start() {
   await migrateAutoProjectStages();
   await migrateKbPriorityProfession();
   await migrateKbFagEnterprise();
+  await syncQuoteProjectLinks();
   await migrateNotPerformedStage();
   await migrateSubcontractorCosts();
   await syncProjectTaskMirrorDates();

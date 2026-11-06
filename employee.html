@@ -863,7 +863,12 @@ async function pmOpenTimeForm(){
     const r=await api('/api/akkord-items');
     pmState.akkordItems=(r&&r.ok&&Array.isArray(r.data))?r.data:[];
   }
-  const lineOptions=(p.quote_line_options||[]).map(l=>`<option value="${l.id}">${esc(l.description)}</option>`).join('');
+  // v2.73.0 — flere tilbud på sagen: posterne grupperes pr. tilbud.
+  const qlo=(p.quote_line_options||[]).filter(l=>l.line_type!=='text');
+  const qnums=[...new Set(qlo.map(l=>l.quote_number||''))];
+  const lineOptions=qnums.length>1
+    ? qnums.map(n=>`<optgroup label="Tilbud ${esc(n)}">`+qlo.filter(l=>(l.quote_number||'')===n).map(l=>`<option value="${l.id}">${esc(l.description)}</option>`).join('')+'</optgroup>').join('')
+    : qlo.map(l=>`<option value="${l.id}">${esc(l.description)}</option>`).join('');
   // RUNDE H #31 — flueben-liste i stedet for ét enkelt <select>, se CSS-
   // kommentaren ved .akkord-check-row for baggrunden. Antal-feltet vises/
   // aktiveres kun for de poster der rent faktisk er sat flueben ved, se
