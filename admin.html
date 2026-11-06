@@ -5054,6 +5054,11 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
 .pdx-selects{display:flex;flex-direction:column;gap:6px}
 .pdx-selects select{width:100%!important;border:1px solid #E5E7EB;border-radius:10px;padding:8px 10px;font:600 13px Inter,system-ui,sans-serif;background:#fff}
 .pdx-dd-row{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:8px}
+.pdx-noaddr-btn{padding:9px 11px;border-radius:10px;border:1.5px dashed #D1D5DB;background:#FAFAFB;cursor:pointer;width:100%;text-align:left;font:inherit;color:#6B7280}
+.pdx-noaddr-btn:hover{border-color:#6366F1;color:#4338CA}
+.pdx-addlink{border:0;background:none;padding:0;font:inherit;color:#9CA3AF;cursor:pointer;text-align:left}.pdx-addlink:hover{color:#4338CA}
+.pdxc-cust{display:flex;gap:10px;align-items:flex-start;background:#F5F7FF;border:1px solid #E0E7FF;border-radius:12px;padding:10px 12px;margin-top:4px;cursor:pointer}
+.pdxc-cust b{display:block;font-size:13px}.pdxc-cust small{display:block;font-size:12px;color:#6B7280;margin-top:2px}
 .pdx-qs{display:flex;flex-direction:column;gap:6px;margin-top:4px}
 .pdx-q{display:flex;align-items:center;gap:8px;padding:8px 10px;border:1px solid #EEF0F3;border-radius:11px;text-decoration:none;color:inherit;background:#FAFAFB}
 .pdx-q:hover{border-color:#C7D2FE;background:#F5F7FF}
@@ -5823,7 +5828,7 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
        i browseren faktisk ER det nyeste deploy, eller om Render/GitHub bare
        ikke er nået at opdatere endnu — i stedet for at skulle gætte om en
        rettelse "stadig ikke virker" eller bare endnu ikke er live. -->
-  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build v2.75.1 · 2026-11-02</span></div>
+  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build v2.75.2 · 2026-11-02</span></div>
 </aside>
 <div class="app-content">
 <!-- RUNDE FB — AI-ASSISTENTEN (Martin: "en ai der er nede i venstre hjørne af
@@ -36247,9 +36252,9 @@ function renderPdSide(){
       +'<button type="button" class="pdx-mini-b" data-pdx="invoice"'+(d.quote_id?'':' disabled')+' title="Fakturér">🧾</button>'
     +'</div>'
     +'<div class="pdx-card pdx-cust">'
-    +'<div class="pdx-cust-top"><span class="pdx-av">'+esc(ini)+'</span><div style="flex:1;min-width:0"><b>'+esc(name)+'</b><div>'+esc([d.job_number,d.project_type].filter(Boolean).join(' · ')||'Sag')+'</div></div><button type="button" class="pdx-collapse" data-pdx-side="close" title="Klap kundekortet sammen — mere plads til sagen">⇤</button></div>'
-    +(addr?'<a class="pdx-map" href="https://maps.google.com/?q='+encodeURIComponent(addr)+'" target="_blank" rel="noopener"><iframe loading="lazy" tabindex="-1" src="https://maps.google.com/maps?q='+encodeURIComponent(addr)+'&z=15&output=embed"></iframe><span>📍 '+esc(addr)+'</span></a>':'<div class="pdx-noaddr">Ingen adresse på sagen</div>')
-    +'<div class="pdx-contact">'+(phone?'<a href="tel:'+esc(String(phone).replace(/[^+\d]/g,''))+'">📞 '+esc(phone)+'</a>':'<span>📞 Intet telefonnummer</span>')+(mail?'<a href="mailto:'+esc(mail)+'">✉ '+esc(mail)+'</a>':'<span>✉ Ingen e-mail</span>')+'</div>'
+    +'<div class="pdx-cust-top"><span class="pdx-av">'+esc(ini)+'</span><div style="flex:1;min-width:0"><b>'+esc(name)+'</b><div>'+esc([d.job_number,d.project_type].filter(Boolean).join(' · ')||'Sag')+'</div></div><button type="button" class="pdx-collapse" data-pdx="editcontact" title="Ret sagens navn, adresse, telefon og e-mail">✎</button><button type="button" class="pdx-collapse" data-pdx-side="close" title="Klap kundekortet sammen — mere plads til sagen">⇤</button></div>'
+    +(addr?'<a class="pdx-map" href="https://maps.google.com/?q='+encodeURIComponent(addr)+'" target="_blank" rel="noopener"><iframe loading="lazy" tabindex="-1" src="https://maps.google.com/maps?q='+encodeURIComponent(addr)+'&z=15&output=embed"></iframe><span>📍 '+esc(addr)+'</span></a>':'<button type="button" class="pdx-noaddr pdx-noaddr-btn" data-pdx="editcontact">📍 Ingen adresse på sagen — <u>tilføj</u></button>')
+    +'<div class="pdx-contact">'+(phone?'<a href="tel:'+esc(String(phone).replace(/[^+\d]/g,''))+'">📞 '+esc(phone)+'</a>':'<button type="button" class="pdx-addlink" data-pdx="editcontact">📞 Intet telefonnummer — <u>tilføj</u></button>')+(mail?'<a href="mailto:'+esc(mail)+'">✉ '+esc(mail)+'</a>':'<button type="button" class="pdx-addlink" data-pdx="editcontact">✉ Ingen e-mail — <u>tilføj</u></button>')+'</div>'
     +'<div class="pdx-qa">'
       +(phone?'<a class="pdx-btn" href="tel:'+esc(String(phone).replace(/[^+\d]/g,''))+'">📞 Ring</a>':'<span class="pdx-btn off">📞 Ring</span>')
       +'<button type="button" class="pdx-btn" data-pdx="mail"'+(mail?'':' disabled')+'>✉ Mail</button>'
@@ -36276,6 +36281,35 @@ function renderPdSide(){
   var c3=document.getElementById('pdx-cnt-time');if(c3)c3.textContent=mins?(Math.round(mins/60))+' t':'';
 }
 // v2.73.0 — flere tilbud pr. sag: kort med alle sagens tilbud (åbner i ny fane).
+// v2.75.2 — ret sagens kontaktoplysninger; spejles ud på alle sagens opgaver,
+// og kan samtidig gemmes på kunden.
+async function pdxEditContact(){
+  if(!pjCurrent)return;var d=pjCurrent;
+  var m=document.getElementById('pdx-contact-modal');
+  if(!m){m=document.createElement('div');m.className='mo';m.id='pdx-contact-modal';document.body.appendChild(m);m.addEventListener('click',function(e){if(e.target===m)closeModal('pdx-contact-modal');});}
+  var cust=null;
+  if(d.customer_id){var r=await api('/api/crm/customers/'+d.customer_id);cust=r&&r.customer?r.customer:null;}
+  function same(a,b){return String(a||'').trim()===String(b||'').trim();}
+  var defCust=!!cust&&(!cust.address||same(cust.address,d.customer_address))&&(!cust.phone||same(cust.phone,d.customer_phone))&&(!cust.email||same(cust.email,d.customer_email));
+  m.innerHTML='<div class="modal" style="max-width:520px;width:94vw"><h3 style="margin:0 0 4px">✎ Sagens kontaktoplysninger</h3>'
+    +'<p class="sub" style="margin-top:0">Gemmes på sagen og opdateres med det samme på alle sagens opgaver, så medarbejderne ser den rigtige adresse og telefon.</p>'
+    +'<div class="form-group"><label class="form-label">Navn på sagen</label><input class="input" id="pdxc-name" value="'+esc(d.name||'')+'"></div>'
+    +'<div class="form-group"><label class="form-label">Adresse (hvor arbejdet udføres)</label><input class="input" id="pdxc-addr" value="'+esc(d.customer_address||'')+'" placeholder="Fx Østerbrogade 118, 2100 København Ø"></div>'
+    +'<div class="form-row"><div class="form-group"><label class="form-label">Telefon</label><input class="input" id="pdxc-phone" value="'+esc(d.customer_phone||'')+'"></div>'
+    +'<div class="form-group"><label class="form-label">E-mail</label><input class="input" id="pdxc-mail" value="'+esc(d.customer_email||'')+'"></div></div>'
+    +(cust?'<label class="pdxc-cust"><input type="checkbox" id="pdxc-cust"'+(defCust?' checked':'')+'> <span><b>Gem også på kunden '+esc(cust.name||'')+'</b><small>'+(cust.address&&!same(cust.address,d.customer_address)?'Kunden har en anden adresse ('+esc(cust.address)+') — sæt kun kryds, hvis kundens adresse også skal ændres.':'Så har kundekortet og kundens andre sager de samme oplysninger.')+'</small></span></label>':'')
+    +'<div class="modal-actions"><button class="btn" type="button" onclick="closeModal(\'pdx-contact-modal\')">Annullér</button><button class="btn primary" type="button" id="pdxc-save">Gem</button></div></div>';
+  m.classList.add('open');
+  setTimeout(function(){var f=document.getElementById(d.customer_address?'pdxc-phone':'pdxc-addr');if(f)f.focus();},40);
+  document.getElementById('pdxc-save').onclick=async function(){
+    var cb=document.getElementById('pdxc-cust');
+    var body={name:document.getElementById('pdxc-name').value.trim()||d.name,customer_address:document.getElementById('pdxc-addr').value.trim()||null,customer_phone:document.getElementById('pdxc-phone').value.trim()||null,customer_email:document.getElementById('pdxc-mail').value.trim()||null,update_customer:!!(cb&&cb.checked)};
+    this.disabled=true;
+    var r=await api('/api/projects/'+d.id,{method:'PUT',body:JSON.stringify(body)});
+    if(r&&r.ok){closeModal('pdx-contact-modal');toast('Gemt — opdateret på alle sagens opgaver'+(body.update_customer?' og på kunden':''),'✓');await openProjectDetail(d.id);}
+    else{this.disabled=false;toast((r&&r.error)||'Kunne ikke gemme','❌');}
+  };
+}
 function pdxQuoteStatus(q){
   if(q.status==='accepted'||q.status==='converted')return '<span class="st ok">'+(q.status==='converted'?'Faktureret':'Godkendt')+'</span>';
   if(q.status==='declined')return '<span class="st">Afvist</span>';
@@ -36390,6 +36424,7 @@ function renderPdDashboard(){
   function act(a,el){
     if(!pjCurrent)return;
     if(a==='invoice'){pdxPickQuote(el,function(qid){openQuoteEditorSafe(qid);});return;}
+    if(a==='editcontact'){pdxEditContact();return;}
     if(a==='mail'){if(typeof mailOpenCompose==='function')mailOpenCompose({to:pjCurrent.customer_email||'',customerId:pjCurrent.customer_id||null,subject:pjCurrent.job_number?'Vedr. sag '+pjCurrent.job_number:''});}
     else if(a==='portal'){var b=document.getElementById('pd-send-portal-btn');if(b)b.click();}
     else if(a==='invoice'||a==='quote'){if(pjCurrent.quote_id){if(a==='quote'){var ql=document.getElementById('pd-quote-link');if(ql)ql.click();}else openQuoteEditorSafe(pjCurrent.quote_id);}}

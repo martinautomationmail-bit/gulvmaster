@@ -11728,6 +11728,22 @@ app.put('/api/crm/customers/:id', auth, panelAccess('customers'), asyncRoute(asy
       await pool.query('INSERT INTO customer_notes (customer_id,body,user_id) VALUES ($1,$2,$3)', [req.params.id, trimmedNew, req.user.id]);
     }
   }
+  // v2.75.2 — kundens nye adresse/tlf/mail følger med ud på kundens sager
+  // (og deres opgaver) — men kun hvor sagen ikke har sin EGEN, anderledes
+  // værdi (fx en arbejdsadresse der er forskellig fra kundens hjemadresse).
+  try {
+    const map = [['address', 'customer_address'], ['phone', 'customer_phone'], ['email', 'customer_email']];
+    const projs = (await pool.query('SELECT id, customer_address, customer_phone, customer_email FROM projects WHERE customer_id=$1', [req.params.id])).rows;
+    for (const p of projs) {
+      const sets = [], vals = [];
+      for (const [cf, pf] of map) {
+        if (b[cf] === undefined) continue;
+        const pv = String(p[pf] || '').trim(), oldv = String(current[cf] || '').trim();
+        if (String(b[cf] || '').trim() !== pv && (!pv || pv === oldv)) { vals.push(b[cf] || null); sets.push(pf + '=$' + vals.length); }
+      }
+      if (sets.length) { vals.push(p.id); await pool.query(`UPDATE projects SET ${sets.join(', ')}, updated_at=${nowTextSQL()} WHERE id=$${vals.length}`, vals); await syncProjectContactToTasks(p.id); }
+    }
+  } catch (e) { console.error('Kunne ikke opdatere kundens sager:', e.message); }
   res.json({ ok: true });
 }));
 app.delete('/api/crm/customers/:id', auth, panelAccess('customers'), asyncRoute(async (req, res) => {
@@ -18218,6 +18234,14 @@ app.post('/api/projects', auth, panelAccess('projects'), asyncRoute(async (req, 
   }
 }));
 
+// v2.75.2 — sagens kontaktoplysninger (navn/adresse/tlf/mail) spejles ud på
+// alle sagens opgaver (opgavepool + Gantt), så medarbejderne altid ser de rigtige.
+async function syncProjectContactToTasks(projectId) {
+  const p = await pgOne('SELECT id, name, customer_address, customer_phone, customer_email FROM projects WHERE id=$1', [projectId]);
+  if (!p) return;
+  await pool.query('UPDATE jt_tasks SET job_name=$1, job_address=$2, customer_phone=$3, customer_email=$4 WHERE project_id=$5', [p.name, p.customer_address || null, p.customer_phone || null, p.customer_email || null, p.id]);
+  await pool.query('UPDATE gantt_tasks SET job_name=$1, job_address=$2, job_phone=$3, job_email=$4 WHERE project_id=$5', [p.name, p.customer_address || null, p.customer_phone || null, p.customer_email || null, p.id]);
+}
 app.put('/api/projects/:id', auth, panelAccess('projects'), asyncRoute(async (req, res) => {
   const current = await pgOne('SELECT * FROM projects WHERE id=$1', [req.params.id]);
   if (!current) return res.status(404).json({ error: 'Projektet blev ikke fundet' });
@@ -18247,6 +18271,23 @@ app.put('/api/projects/:id', auth, panelAccess('projects'), asyncRoute(async (re
   ]);
   // RUNDE FM — trækkes sagen til et automatisk stadie, placeres den straks
   // efter sine datoer (kan altså lande i en anden auto-kolonne end den man slap i).
+  // v2.75.2 — "Gem også på kunden": samme adresse/tlf/mail på kundekortet.
+  const custId = b.customer_id !== undefined ? (b.customer_id || null) : current.customer_id;
+  if (b.update_customer && custId) {
+    const sets = [], vals = [];
+    if (b.customer_address !== undefined) { vals.push(b.customer_address || null); sets.push('address=$' + vals.length); }
+    if (b.customer_phone !== undefined) { vals.push(b.customer_phone || null); sets.push('phone=$' + vals.length); }
+    if (b.customer_email !== undefined) { vals.push(b.customer_email || null); sets.push('email=$' + vals.length); }
+    if (sets.length) {
+      vals.push(custId);
+      await pool.query(`UPDATE customers SET ${sets.join(', ')}, updated_at=${nowTextSQL()} WHERE id=$${vals.length}`, vals);
+      try {
+        if (b.customer_phone !== undefined) await upsertPrimaryContactChannel('customer', custId, 'phone', b.customer_phone);
+        if (b.customer_email !== undefined) await upsertPrimaryContactChannel('customer', custId, 'email', b.customer_email);
+        if (b.customer_address !== undefined) await upsertPrimaryContactChannel('customer', custId, 'address', b.customer_address);
+      } catch (e) { console.error('Kontaktkanal-opdatering fejlede:', e.message); }
+    }
+  }
   let finalStatus = newStatus;
   if (b.status !== undefined) {
     try {
