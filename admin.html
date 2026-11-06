@@ -5406,6 +5406,17 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
 .pdl-modal h4{font-size:13px;margin:16px 0 6px}
 .pdl-inv{display:flex;align-items:center;gap:10px;padding:7px 0;border-top:1px solid #F3F4F6;font-size:13px}.pdl-inv span{flex:1;min-width:0}.pdl-inv small{display:block;color:#6B7280;font-size:11.5px}.pdl-inv a{color:#4338CA;font-weight:600;text-decoration:none;font-size:12px}
 .pdl-ents>div{display:grid;grid-template-columns:80px 1fr auto;gap:10px;padding:7px 0;border-top:1px solid #F3F4F6;font-size:12.5px}.pdl-ents .d{color:#6B7280}.pdl-ents small{display:block;color:#6B7280;font-size:11.5px;white-space:pre-line}.pdl-ents .c{font-weight:700}
+.rw-modal{max-width:620px;width:94vw;max-height:90vh;overflow:auto}
+.rw-lines{max-height:220px;overflow:auto;border:1px solid #E5E7EB;border-radius:12px;padding:4px 10px}
+.rw-line{display:flex;gap:10px;align-items:flex-start;padding:7px 0;border-top:1px solid #F3F4F6;font-size:13px;cursor:pointer}.rw-line:first-child{border-top:0}.rw-line em{font-style:normal;font-size:11px;font-weight:700;color:#4338CA}
+.rw-chosen{display:flex;align-items:center;gap:10px;background:#F5F7FF;border:1px solid #E0E7FF;border-radius:12px;padding:9px 12px}.rw-chosen span{flex:1;min-width:0}.rw-chosen small{display:block;color:#6B7280;font-size:12px}
+.rw-h{display:flex;align-items:center;justify-content:space-between;gap:10px}.rw-h h3{margin:0;font-size:15px}.pdl:not(.collapsed) .rw-h{margin-bottom:10px}
+.rw-sum{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:10px}.rw-sum>div{background:#FFFBEB;border:1px solid #FDE68A;border-radius:12px;padding:10px 12px}.rw-sum small{display:block;font-size:11.5px;color:#92400E}.rw-sum b{font-size:18px}
+.rw-row{display:flex;align-items:center;gap:12px;padding:10px 4px;border-top:1px solid #F3F4F6;cursor:pointer}.rw-row:hover{background:#F9FAFB}
+.rw-row .m{flex:1;min-width:0}.rw-row .m b{display:block;font-size:13.5px}.rw-row .m small{display:block;font-size:12px;color:#6B7280;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.rw-row .n{text-align:right}.rw-row .n span{display:block;font-size:11.5px;color:#6B7280}.rw-row .n b{color:#B91C1C}
+.rw-st{border:1px solid #FDE68A;background:#FFFBEB;color:#92400E;border-radius:999px;padding:4px 10px;font:700 11.5px Inter,system-ui,sans-serif;cursor:pointer;white-space:nowrap}
+.rw-row.done .rw-st{border-color:#BBF7D0;background:#DCFCE7;color:#15803D}.rw-row.done .m b{text-decoration:line-through;color:#6B7280}
 .pdb-sec-h{cursor:pointer;user-select:none}
 .pdb-chev{display:inline-block;font-style:normal;color:#9CA3AF;font-size:12px;margin-right:6px;transition:transform .15s}
 .pdb-sec.collapsed .pdb-chev{transform:rotate(-90deg)}
@@ -5828,7 +5839,7 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
        i browseren faktisk ER det nyeste deploy, eller om Render/GitHub bare
        ikke er nået at opdatere endnu — i stedet for at skulle gætte om en
        rettelse "stadig ikke virker" eller bare endnu ikke er live. -->
-  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build v2.75.2 · 2026-11-02</span></div>
+  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build v2.76.0 · 2026-11-02</span></div>
 </aside>
 <div class="app-content">
 <!-- RUNDE FB — AI-ASSISTENTEN (Martin: "en ai der er nede i venstre hjørne af
@@ -9861,6 +9872,8 @@ body.ai-has-reply #ai-fab{animation:ai-nudge 1.4s ease-in-out 3}
         <div id="pd-budget-quotes"></div>
         <!-- v2.74.5 — fortjeneste pr. post (ud fra tidsregistrering + fakturaer) -->
         <div id="pd-budget-lines"></div>
+        <!-- v2.76.0 — fejl & mangler på sagen -->
+        <div id="pd-budget-rework"></div>
         <div class="pdb-sec pdb-emp" data-pdb-sec="emp">
           <div class="pdb-sec-h pdb-emp-h" data-pdb-toggle="emp"><h3><i class="pdb-chev">▾</i>👷 Løn &amp; akkord pr. medarbejder <span class="pdb-sec-sum" id="pdb-sum-emp"></span></h3></div>
           <div class="pdb-sec-b">
@@ -10098,6 +10111,7 @@ body.ai-has-reply #ai-fab{animation:ai-nudge 1.4s ease-in-out 3}
             <div class="navdrop-menu" id="pool-add-menu" style="left:0;right:auto;width:100%;min-width:0">
               <a class="navdrop-item" href="#" id="pool-add-manual-item">📝 Manuel opgave</a>
               <a class="navdrop-item" href="#" id="pool-add-visit-item">📅 Book kundebesøg</a>
+              <a class="navdrop-item" href="#" id="pool-add-rework-item">🔧 Fejl &amp; mangler på en sag</a>
               <!-- RETTELSE (okt. 2026, Martins ønske: "kan jeg få en Manuel
                    Task? Hvor den så ikke oprettes i Opgavepool") — en bevidst
                    MINDRE formular end "Manuel opgave" (kun titel+medarbejder+
@@ -27779,6 +27793,7 @@ async function bind(){
     document.getElementById('pool-add-btn').addEventListener('click',function(e){e.stopPropagation();document.getElementById('pool-add-menu').classList.toggle('open');});
     document.getElementById('pool-add-manual-item').addEventListener('click',function(e){e.preventDefault();document.getElementById('pool-add-menu').classList.remove('open');openManual();});
     document.getElementById('pool-add-visit-item').addEventListener('click',function(e){e.preventDefault();document.getElementById('pool-add-menu').classList.remove('open');openVisitBookModal();});
+    document.getElementById('pool-add-rework-item').addEventListener('click',function(e){e.preventDefault();document.getElementById('pool-add-menu').classList.remove('open');openReworkModal({});});
     document.getElementById('pool-add-quick-item').addEventListener('click',function(e){e.preventDefault();document.getElementById('pool-add-menu').classList.remove('open');openQuickTaskModal();});
   })();
   // Samme mønster for "🔍 Filtre"-dropdownen (Fag/uge/status-filtrene, som før
@@ -35862,7 +35877,7 @@ function renderPdBudget(){
       ['Godkendt pris ekskl. moms',krFmt(exP),null,'Inkl. moms '+krFmt(d.approved_price)],
       ['Opkrævet',krFmt(d.collected),null,'Betalt af kunden, inkl. moms'],
       ['Restsaldo',krFmt(d.remaining_balance),null,'Mangler at blive betalt, inkl. moms'],
-      ['Omkostninger',krFmt(d.cost_to_complete+d.labor_cost+subTotal+matInvTotal),null,'Kostpris + løn + fakturaer'],
+      ['Omkostninger',krFmt(d.cost_to_complete+d.labor_cost+subTotal+matInvTotal+(Number(d.rework_extra_cost)||0)),null,'Kostpris + løn + fakturaer'],
       ['Forventet fortjeneste',krFmt(d.projected_profit),profitColor,'Ekskl. moms'],
       ['Forventet margin',Number(d.projected_margin).toFixed(1).replace('.',',')+' %',profitColor,'Af prisen ekskl. moms']
     ];
@@ -35876,6 +35891,7 @@ function renderPdBudget(){
       ['Godkendt pris ekskl. moms','Summen af '+((d.quotes||[]).filter(function(q){return q.counted;}).length>1?'de godkendte tilbud':'det godkendte tilbud')+' uden moms ('+krFmt(d.vat_amount||0)+' i moms er trukket fra — den er ikke jeres penge)',exP,'+'],
       ['Kostpris fra tilbuddets poster','Kost-prisen × antal på hver post i tilbuddet (materialer m.m.)'+(d.materials_replaced>0?'. '+krFmt(d.materials_replaced)+' er IKKE medregnet, fordi en faktura er fordelt på posten og erstatter overslaget':''),d.cost_to_complete,'−'],
       ['Løn til medarbejdere','Registrerede timer × medarbejderens timeløn (+ akkord) — '+(Math.round(hrs*10)/10).toString().replace('.',',')+' t fordelt på '+nEmp+' medarbejder'+(nEmp===1?'':'e')+' indtil nu',d.labor_cost,'−'],
+      ['Fejl & mangler — ekstra udgifter','Fx materialer til rettelser (lønnen til rettelser er med i lønnen ovenfor'+(d.rework_total?': '+krFmt((d.rework_total||0)-(d.rework_extra_cost||0)):'')+')',Number(d.rework_extra_cost)||0,'−'],
       ['Materialefakturaer','Uploadede materialefakturaer ekskl. moms ('+(d.subcontractor_costs||[]).filter(function(x){return x.kind==='material';}).length+' stk.)',matInvTotal,'−'],
       ['Underleverandører','Uploadede fakturaer ekskl. moms ('+(d.subcontractor_costs||[]).filter(function(x){return (x.kind||'sub')==='sub';}).length+' stk.)',subTotal,'−']
     ];
@@ -35889,6 +35905,7 @@ function renderPdBudget(){
   }
   renderPdBudgetQuotes(d);
   renderPdBudgetLines(d);
+  renderPdBudgetRework(d);
   var body=document.getElementById('pd-budget-employees-body');
   if(!d.employees||!d.employees.length)body.innerHTML='<tr><td colspan="5" style="text-align:center;color:var(--bly-sub);padding:20px">Ingen tidsregistreringer på sagen endnu</td></tr>';
   else body.innerHTML=d.employees.map(function(e){
@@ -35907,6 +35924,106 @@ function renderPdBudget(){
   pdbApplyCollapsed();
 }
 // v2.73.0 — fortjeneste pr. tilbud (vises når sagen har mere end ét tilbud).
+// ── v2.76.0 — FEJL & MANGLER: book et besøg på en sag for at rette noget.
+// Opretter en opgave på sagen (vises i Opgavepool/Daglig plan) + evt. booking,
+// og kobler den til de poster der skal rettes, så Budget kan vise hvad fejl &
+// mangler har kostet (timer registreret på rettelsen + evt. ekstra udgift).
+var rwCtx={};
+async function openReworkModal(opts){
+  opts=opts||{};rwCtx={projectId:opts.projectId||null,project:null,lines:[],editId:opts.editId||null};
+  var m=document.getElementById('rw-modal');
+  if(!m){m=document.createElement('div');m.className='mo';m.id='rw-modal';document.body.appendChild(m);}
+  var ppl=(typeof users!=='undefined'&&users.length?users:((await api('/api/users'))||[])).filter(function(u){return u.active&&(typeof userBookable!=='function'||userBookable(u));});
+  m.innerHTML='<div class="modal rw-modal"><h3 style="margin:0 0 4px">🔧 Fejl &amp; mangler</h3><p class="sub" style="margin-top:0">Book et besøg for at rette noget på en sag. Tiden medarbejderen registrerer på rettelsen tælles som fejl &amp; mangler i sagens budget.</p>'
+    +'<div class="form-group" id="rw-proj-wrap"><label class="form-label">Sag</label><div class="qe-customer-pop"><input class="input" id="rw-proj-search" placeholder="Søg på kunde, sagsnummer eller adresse..."><div class="qe-customer-results" id="rw-proj-results"></div></div><div id="rw-proj-chosen"></div></div>'
+    +'<div class="form-group"><label class="form-label">Hvad skal rettes</label><input class="input" id="rw-title" placeholder="Fx Knirk i gulv ved vindue, lak skaller af i stue"></div>'
+    +'<div class="form-group"><label class="form-label">Beskrivelse <span style="font-weight:400;color:#9CA3AF">valgfri</span></label><textarea class="input" id="rw-desc" rows="2" placeholder="Hvad har kunden meldt, hvad skal medarbejderen gøre..."></textarea></div>'
+    +'<div class="form-group"><label class="form-label">Hvilke poster i tilbuddet drejer det sig om? <span style="font-weight:400;color:#9CA3AF">valgfri</span></label><div id="rw-lines" class="rw-lines"><div class="sub">Vælg sagen først.</div></div></div>'
+    +'<div class="form-row"><div class="form-group"><label class="form-label">Dato</label><input class="input" type="date" id="rw-date" value="'+iso(new Date())+'"></div>'
+    +'<div class="form-group"><label class="form-label">Medarbejder <span style="font-weight:400;color:#9CA3AF">valgfri</span></label><select class="input" id="rw-user"><option value="">— Læg i opgavepoolen —</option>'+ppl.map(function(u){return '<option value="'+u.id+'">'+esc(u.name)+'</option>';}).join('')+'</select></div></div>'
+    +'<div class="form-row"><div class="form-group"><label class="form-label">Varighed</label><select class="input" id="rw-days"><option value="0.25">2 timer</option><option value="0.5">½ dag</option><option value="1" selected>1 dag</option><option value="2">2 dage</option></select></div>'
+    +'<div class="form-group"><label class="form-label">Ekstra udgift <span style="font-weight:400;color:#9CA3AF">fx materialer, valgfri</span></label><input class="input" id="rw-extra" inputmode="decimal" placeholder="0 kr ekskl. moms"></div></div>'
+    +'<div class="modal-actions"><button class="btn" type="button" onclick="closeModal(\'rw-modal\')">Annullér</button><button class="btn primary" type="button" id="rw-save">Opret fejl &amp; mangler</button></div></div>';
+  m.classList.add('open');
+  var inp=document.getElementById('rw-proj-search');
+  inp.addEventListener('input',function(){rwSearch(inp.value);});
+  document.getElementById('rw-save').onclick=rwSave;
+  if(rwCtx.projectId)await rwPickProject(rwCtx.projectId);else{rwSearch('');setTimeout(function(){inp.focus();},40);}
+}
+var rwProjects=null;
+async function rwSearch(q){
+  var box=document.getElementById('rw-proj-results');if(!box)return;
+  if(!rwProjects){var r=await api('/api/projects');rwProjects=Array.isArray(r)?r:[];}
+  var ql=String(q||'').toLowerCase().trim();
+  var rows=rwProjects.filter(function(p){return !ql||[p.name,p.job_number,p.customer_address].some(function(v){return String(v||'').toLowerCase().indexOf(ql)>-1;});});
+  if(!ql)rows=rows.filter(function(p){return p.status!=='done';});
+  rows=rows.slice(0,12);
+  box.innerHTML=rows.length?rows.map(function(p,i){return '<div class="qe-customer-result" data-idx="'+i+'"><b>'+esc(p.name||'Sag')+'</b>'+(p.job_number?' · '+esc(p.job_number):'')+'<br><span style="color:var(--bly-sub)">'+esc(p.customer_address||'Ingen adresse')+'</span></div>';}).join(''):'<div class="qe-customer-result" style="color:var(--bly-sub);cursor:default">Ingen sager matcher</div>';
+  box.style.display='block';
+  Array.prototype.forEach.call(box.querySelectorAll('[data-idx]'),function(el){el.onclick=function(){rwPickProject(rows[Number(el.dataset.idx)].id);};});
+}
+async function rwPickProject(pid){
+  var r=await api('/api/projects/'+pid);if(!r||r.error){toast('Kunne ikke hente sagen','❌');return;}
+  rwCtx.projectId=pid;rwCtx.project=r;
+  document.getElementById('rw-proj-results').style.display='none';
+  document.getElementById('rw-proj-search').style.display='none';
+  document.getElementById('rw-proj-chosen').innerHTML='<div class="rw-chosen"><span>📁 <b>'+esc(r.name||'')+'</b>'+(r.job_number?' · '+esc(r.job_number):'')+'<small>'+esc(r.customer_address||'Ingen adresse på sagen')+'</small></span><button type="button" class="btn small" id="rw-proj-change">Skift</button></div>';
+  document.getElementById('rw-proj-change').onclick=function(){document.getElementById('rw-proj-search').style.display='';document.getElementById('rw-proj-chosen').innerHTML='';rwCtx.projectId=null;document.getElementById('rw-lines').innerHTML='<div class="sub">Vælg sagen først.</div>';rwSearch('');};
+  var L=(r.quote_line_options||[]).filter(function(l){return l.line_type!=='text';});
+  var multi=new Set(L.map(function(l){return l.quote_number;})).size>1;
+  document.getElementById('rw-lines').innerHTML=L.length?L.map(function(l){return '<label class="rw-line"><input type="checkbox" value="'+l.id+'"><span>'+(multi&&l.quote_number?'<em>'+esc(l.quote_number)+'</em> ':'')+esc(String(l.description||'').split('\n')[0].slice(0,110))+'</span></label>';}).join(''):'<div class="sub">Sagen har ingen tilbudsposter — fejl &amp; mangler gælder så hele sagen.</div>';
+}
+async function rwSave(){
+  if(!rwCtx.projectId){toast('Vælg sagen','⚠');return;}
+  var title=document.getElementById('rw-title').value.trim();if(!title){toast('Skriv hvad der skal rettes','⚠');document.getElementById('rw-title').focus();return;}
+  var body={title:title,description:document.getElementById('rw-desc').value.trim(),line_ids:Array.prototype.map.call(document.querySelectorAll('#rw-lines input:checked'),function(x){return Number(x.value);}),
+    date:document.getElementById('rw-date').value,user_id:document.getElementById('rw-user').value||null,days:document.getElementById('rw-days').value,extra_cost:document.getElementById('rw-extra').value};
+  var b=document.getElementById('rw-save');b.disabled=true;
+  var r=await api('/api/projects/'+rwCtx.projectId+'/rework',{method:'POST',body:JSON.stringify(body)});
+  if(r&&r.ok){
+    closeModal('rw-modal');toast(r.warning||('Fejl & mangler oprettet'+(body.user_id?' og booket ✓':' — ligger i opgavepoolen')),'🔧');
+    rwProjects=null;
+    if(typeof loadAll==='function'&&document.getElementById('page-plan')&&document.getElementById('page-plan').classList.contains('active'))await loadAll();
+    if(pjCurrent&&pjCurrent.id===rwCtx.projectId){await openProjectDetail(pjCurrent.id);}
+  }else{b.disabled=false;toast((r&&r.error)||'Kunne ikke oprette','❌');}
+}
+// Budget-sektion: hvad har fejl & mangler kostet på sagen.
+function renderPdBudgetRework(d){
+  var el=document.getElementById('pd-budget-rework');if(!el)return;
+  var L=d.rework||[];
+  if(pdBudgetHidden){el.innerHTML='';return;}
+  var open=L.filter(function(r){return r.status!=='done';}).length;
+  el.innerHTML='<div class="pdl pdb-sec" data-pdb-sec="rework"><div class="pdb-sec-h rw-h" data-pdb-toggle="rework"><h3><i class="pdb-chev">▾</i>🔧 Fejl &amp; mangler <span class="pdb-sec-sum">'+(L.length?L.length+' stk · '+negKr(d.rework_total||0):'ingen')+'</span></h3><button type="button" class="pdsub-add pdsub-man" data-rw-new>＋ Registrér fejl &amp; mangler</button></div>'
+    +'<div class="pdb-sec-b">'+(L.length?'<div class="rw-sum"><div><small>Fejl &amp; mangler i alt</small><b>'+negKr(d.rework_total||0)+'</b></div><div><small>Timer brugt på rettelser</small><b>'+pdlHours(L.reduce(function(a,r){return a+r.minutes;},0))+'</b></div><div><small>Åbne</small><b>'+open+'</b></div></div>'
+      +L.map(function(r){
+        return '<div class="rw-row'+(r.status==='done'?' done':'')+'" data-rw-open="'+r.id+'"><div class="m"><b>'+esc(r.title)+'</b><small>'+(r.lines.length?'Poster: '+r.lines.map(function(l){return esc(l.description);}).join(' · '):'Hele sagen')+'</small></div>'
+          +'<div class="n"><span>'+pdlHours(r.minutes)+' · '+krFmt(r.labor)+(r.extra_cost?' + '+krFmt(r.extra_cost)+' udgift':'')+'</span><b>'+negKr(r.total)+'</b></div>'
+          +'<button type="button" class="rw-st" data-rw-toggle="'+r.id+'" title="'+(r.status==='done'?'Genåbn':'Markér som rettet')+'">'+(r.status==='done'?'✓ Rettet':'Åben')+'</button></div>';
+      }).join('')+'<div class="pdbq-note">Lønnen til rettelser er allerede med i "Løn til medarbejdere" — her kan du se hvor meget af den der gik til fejl &amp; mangler. Ekstra udgifter trækkes fra fortjenesten. Medarbejderne vælger "Fejl &amp; mangler" når de registrerer tid (den er valgt på forhånd hvis de åbner tidsregistreringen fra rettelses-opgaven).</div>'
+      :'<div class="pdsub-empty">Ingen fejl &amp; mangler registreret på sagen 👍</div>')+'</div></div>';
+  pdbApplyCollapsed();
+}
+function rwOpenDetail(id){
+  var r=((pdBudgetData||{}).rework||[]).find(function(x){return x.id===id;});if(!r)return;
+  var m=document.getElementById('pdl-modal');if(!m){pdlOpen('un');m=document.getElementById('pdl-modal');}
+  document.getElementById('pdl-body').innerHTML='<div class="pdl-mh"><span class="pdsub-tag'+(r.status==='done'?'':' warn')+'">'+(r.status==='done'?'✓ Rettet':'Åben')+'</span><h3>🔧 '+esc(r.title)+'</h3>'+(r.description?'<div class="sub" style="white-space:pre-line">'+esc(r.description)+'</div>':'')+'</div>'
+    +'<div class="pdl-calc"><div><span>Løn til rettelsen</span><small>'+pdlHours(r.minutes)+' registreret som fejl &amp; mangler</small><b class="neg">'+negKr(r.labor)+'</b></div>'
+    +'<div><span>Ekstra udgift</span><small><a href="#" data-rw-extra="'+r.id+'">✎ ret beløb</a></small><b class="neg">'+negKr(r.extra_cost)+'</b></div>'
+    +'<div class="tot"><span>= Fejl &amp; mangler har kostet</span><small>'+(r.lines.length?'Fordelt på '+r.lines.length+' post'+(r.lines.length===1?'':'er'):'Hele sagen')+'</small><b style="color:#B91C1C">'+negKr(r.total)+'</b></div></div>'
+    +(r.lines.length?'<h4>📋 Poster</h4>'+r.lines.map(function(l){return '<div class="pdl-inv"><span>'+esc(l.description)+'</span></div>';}).join(''):'')
+    +'<h4>👷 Hvem har været der</h4>'+(r.employees.length?'<table class="bly-table"><thead><tr><th>Medarbejder</th><th class="num">Dage</th><th class="num">Timer</th><th class="num">Løn</th></tr></thead><tbody>'+r.employees.map(function(e){return '<tr><td>'+esc(e.name)+'</td><td class="num">'+e.days+'</td><td class="num">'+pdlHours(e.minutes)+'</td><td class="num">'+krFmt(e.cost)+'</td></tr>';}).join('')+'</tbody></table>':'<div class="sub">Ingen har registreret tid på rettelsen endnu.</div>')
+    +(r.entries.length?'<h4>📅 Registreringer</h4><div class="pdl-ents">'+r.entries.map(function(e){return '<div><span class="d">'+esc(e.date?fmtDaDate(e.date):'')+'</span><span class="n"><b>'+esc(e.name)+'</b> · '+pdlHours(e.minutes)+(e.note?'<small>'+esc(e.note)+'</small>':'')+'</span><span class="c">'+krFmt(e.cost)+'</span></div>';}).join('')+'</div>':'')
+    +'<div style="display:flex;gap:8px;margin-top:14px"><button type="button" class="btn small" data-rw-toggle="'+r.id+'">'+(r.status==='done'?'↺ Genåbn':'✓ Markér som rettet')+'</button><button type="button" class="btn small" data-rw-del="'+r.id+'" style="color:#B91C1C">Slet</button></div>';
+  m.classList.add('open');
+}
+document.addEventListener('click',async function(e){
+  if(!e.target.closest)return;
+  var nw=e.target.closest('[data-rw-new]');if(nw){e.stopPropagation();openReworkModal({projectId:pjCurrent&&pjCurrent.id});return;}
+  var tg=e.target.closest('[data-rw-toggle]');if(tg){e.stopPropagation();var id=Number(tg.dataset.rwToggle);var r0=((pdBudgetData||{}).rework||[]).find(function(x){return x.id===id;});await api('/api/rework/'+id,{method:'PUT',body:JSON.stringify({status:r0&&r0.status==='done'?'open':'done'})});closeModal('pdl-modal');await loadPdBudget();return;}
+  var ex=e.target.closest('[data-rw-extra]');if(ex){e.preventDefault();var id2=Number(ex.dataset.rwExtra);var r1=((pdBudgetData||{}).rework||[]).find(function(x){return x.id===id2;});var v=await gmPrompt('Ekstra udgift til rettelsen (kr ekskl. moms, fx materialer)',r1?String(r1.extra_cost||''):'');if(v===null||v===undefined)return;await api('/api/rework/'+id2,{method:'PUT',body:JSON.stringify({extra_cost:v})});closeModal('pdl-modal');await loadPdBudget();rwOpenDetail(id2);return;}
+  var dl=e.target.closest('[data-rw-del]');if(dl){if(!await gmConfirm('Slet denne fejl & mangel? Opgaven på sagen bliver liggende, men tiden tælles ikke længere som fejl & mangler.','Slet'))return;await api('/api/rework/'+dl.dataset.rwDel,{method:'DELETE'});closeModal('pdl-modal');await loadPdBudget();return;}
+  var op=e.target.closest('[data-rw-open]');if(op&&op.closest('#pd-budget-rework')){rwOpenDetail(Number(op.dataset.rwOpen));}
+});
 // ── v2.74.5 — FORTJENESTE PR. POST: hvad tjener vi reelt på hver post, ud fra
 // det medarbejderne tracker og de fakturaer der er fordelt på posten. ──
 var pdlSort='order';
@@ -35927,7 +36044,7 @@ function renderPdBudgetLines(d){
     if(pdlSort==='order'){var h=(multiQ?l.quote_number+(l.heading?' · ':''):'')+(l.heading||'');if(h&&h!==lastHead){head='<tr class="pdl-hd"><td colspan="6">'+esc(h)+'</td></tr>';}lastHead=h;}
     var neg=l.profit<0,warn=!neg&&l.margin!=null&&l.margin<15;
     return head+'<tr class="pdl-r'+(neg?' neg':'')+(warn?' warn':'')+'" data-pdl="'+l.id+'">'
-      +'<td><b>'+esc(String(l.description||'').split('\n')[0].slice(0,80))+'</b><small>'+l.quantity+' '+esc(l.unit||'')+(l.invoiced?' · faktureret':'')+'</small></td>'
+      +'<td><b>'+esc(String(l.description||'').split('\n')[0].slice(0,80))+'</b><small>'+l.quantity+' '+esc(l.unit||'')+(l.invoiced?' · faktureret':'')+((l.rework||[]).length?' · <span style="color:#B45309;font-weight:700">🔧 fejl &amp; mangler '+negKr((l.rework_labor||0)+(l.rework_extra||0))+'</span>':'')+'</small></td>'
       +'<td class="num">'+krFmt(l.sale)+'</td>'
       +'<td class="num">'+negKr(l.cost_used)+'<small>'+(l.has_invoices?'faktura':'overslag')+'</small></td>'
       +'<td class="num">'+negKr(l.labor)+'<small>'+(l.minutes?pdlHours(l.minutes):'ingen timer')+'</small></td>'
@@ -35952,13 +36069,15 @@ function pdlOpen(id){
     +(l.has_invoices
       ?(l.materials_actual?'<div><span>− Materialefakturaer</span><small>Fordelt på posten</small><b class="neg">'+negKr(l.materials_actual)+'</b></div>':'')+(l.sub_actual?'<div><span>− Underleverandører</span><small>Fordelt på posten</small><b class="neg">'+negKr(l.sub_actual)+'</b></div>':'')+'<div class="muted"><span>Kostpris i tilbuddet (overslag)</span><small>Erstattet af fakturaerne — tælles ikke med</small><b>'+krFmt(l.est_cost)+'</b></div>'
       :'<div><span>− Kostpris (overslag)</span><small>Ingen fakturaer fordelt på posten endnu</small><b class="neg">'+negKr(l.est_cost)+'</b></div>')
-    +'<div><span>− Løn</span><small>'+pdlHours(l.minutes)+' registreret på posten</small><b class="neg">'+negKr(l.labor)+'</b></div>'
+    +'<div><span>− Løn</span><small>'+pdlHours(l.minutes)+' registreret på posten'+(l.rework_labor?' — heraf '+krFmt(l.rework_labor)+' til fejl &amp; mangler':'')+'</small><b class="neg">'+negKr(l.labor)+'</b></div>'
+    +(l.rework_extra?'<div><span>− Fejl &amp; mangler, ekstra udgift</span><small>Andel af rettelsernes udgifter</small><b class="neg">'+negKr(l.rework_extra)+'</b></div>':'')
     +'<div class="tot"><span>= Fortjeneste</span><small>'+(l.margin!=null?pdlPct(l.margin)+' af salgsprisen':'')+'</small><b style="color:'+(l.profit<0?'#B91C1C':'#15803D')+'">'+krFmt(l.profit)+'</b></div></div>';
   if(!l.un&&l.minutes&&l.quantity&&l.unit){var perUnit=l.minutes/60/l.quantity;calc+='<div class="pdl-kpi">⏱ '+(Math.round(perUnit*100)/100).toString().replace('.',',')+' t pr. '+esc(l.unit)+' · løn '+krFmt(l.labor/l.quantity)+' pr. '+esc(l.unit)+'</div>';}
   var empH=emps.length?'<h4>👷 Hvem har været der</h4><table class="bly-table"><thead><tr><th>Medarbejder</th><th class="num">Dage</th><th class="num">Timer</th><th class="num">Løn</th></tr></thead><tbody>'+emps.map(function(e){return '<tr><td>'+esc(e.name)+'</td><td class="num">'+e.days+'</td><td class="num">'+pdlHours(e.minutes)+'</td><td class="num">'+(e.minutes&&!e.cost?'<span style="color:#B45309;font-weight:700" title="Medarbejderen har ingen timeløn sat — lønnen tælles som 0 kr">⚠ ingen timeløn</span>':krFmt(e.cost))+'</td></tr>';}).join('')+'</tbody></table>':'<h4>👷 Hvem har været der</h4><div class="sub">Ingen har registreret tid på '+(l.un?'sagen uden post':'denne post')+' endnu.</div>';
+  var rwH=(l.rework||[]).length?'<h4>🔧 Fejl &amp; mangler på posten</h4>'+l.rework.map(function(x){return '<div class="pdl-inv"><span><b>'+esc(x.title)+'</b><small>'+(x.status==='done'?'Rettet':'Åben')+' · '+pdlHours(x.minutes)+(x.shared_with>1?' (delt med '+(x.shared_with-1)+' andre poster)':'')+'</small></span><b>'+negKr(x.labor+x.extra)+'</b></div>';}).join(''):'';
   var invH=invs.length?'<h4>🧾 Fakturaer</h4>'+invs.map(function(x){return '<div class="pdl-inv"><span>'+(x.kind==='material'?'🧱':'🧾')+' <b>'+esc(x.supplier||'Faktura')+'</b>'+(x.invoice_number?' · '+esc(x.invoice_number):'')+(x.description?'<small>'+esc(x.description)+'</small>':'')+'</span>'+(x.file_url?'<a href="'+esc(x.file_url)+'" target="_blank" rel="noopener">📎 PDF</a>':'')+'<b>'+krFmt(x.amount)+'</b></div>';}).join(''):'';
   var entH=ents.length?'<h4>📅 Registreringer</h4><div class="pdl-ents">'+ents.map(function(e){return '<div><span class="d">'+esc(e.date?fmtDaDate(e.date):'')+'</span><span class="n"><b>'+esc(e.name)+'</b> · '+(e.akkord?esc(e.akkord):pdlHours(e.minutes))+(e.note?'<small>'+esc(e.note)+'</small>':'')+'</span><span class="c">'+krFmt(e.cost)+'</span></div>';}).join('')+'</div>':'';
-  document.getElementById('pdl-body').innerHTML='<div class="pdl-mh">'+(l.quote_number?'<span class="pdsub-tag">'+esc(l.quote_number)+'</span>':'')+'<h3>'+esc(String(l.description||'').split('\n')[0])+'</h3>'+(l.heading?'<div class="sub">'+esc(l.heading)+'</div>':'')+'</div>'+calc+empH+invH+entH;
+  document.getElementById('pdl-body').innerHTML='<div class="pdl-mh">'+(l.quote_number?'<span class="pdsub-tag">'+esc(l.quote_number)+'</span>':'')+'<h3>'+esc(String(l.description||'').split('\n')[0])+'</h3>'+(l.heading?'<div class="sub">'+esc(l.heading)+'</div>':'')+'</div>'+calc+empH+rwH+invH+entH;
   m.classList.add('open');
 }
 document.addEventListener('click',function(e){
@@ -36214,6 +36333,7 @@ function pdxOpenDd(btn){
     ?[['pd-quote-link','📄 Se tilbud (PDF)'],['pd-quote-edit-btn','✎ Rediger tilbud / lav faktura'],['pd-attach-quote-btn','🔗 Tilknyt tilbud'],['pd-invoice-link','🧾 Se faktura']]
     :[['pd-crm-link-btn',lbl('pd-crm-link-btn','Åbn handel')],['pd-send-portal-btn','🔗 Send kundeportal'],['pd-delete-btn','🗑 Slet sagen']];
   items=items.filter(function(it){return vis(it[0]);});
+  if(btn.dataset.pdxDd==='more')items.unshift(['__rework','🔧 Registrér fejl & mangler']);
   var m=document.createElement('div');m.id='pdx-dd-menu';m.className='pdx-dd-menu';m.dataset.for=btn.dataset.pdxDd;
   m.innerHTML=items.length?items.map(function(it){return '<button type="button" data-pdx-proxy="'+it[0]+'"'+(it[0]==='pd-delete-btn'?' class="danger"':'')+'>'+esc(it[1])+'</button>';}).join(''):'<div class="pdx-empty" style="padding:8px 10px">Intet at vise</div>';
   document.body.appendChild(m);
@@ -36434,7 +36554,7 @@ function renderPdDashboard(){
   document.addEventListener('click',function(e){
     var page=document.getElementById('page-project-detail');if(!page||(!page.contains(e.target)&&!e.target.closest('#pdx-dd-menu')))return;
     var dd=e.target.closest('[data-pdx-dd]');if(dd){e.preventDefault();pdxOpenDd(dd);return;}
-    var mi=e.target.closest('[data-pdx-proxy]');if(mi){var o=document.getElementById(mi.dataset.pdxProxy);pdxCloseDd();if(o)o.click();return;}
+    var mi=e.target.closest('[data-pdx-proxy]');if(mi){if(mi.dataset.pdxProxy==='__rework'){pdxCloseDd();openReworkModal({projectId:pjCurrent.id});return;}var o=document.getElementById(mi.dataset.pdxProxy);pdxCloseDd();if(o)o.click();return;}
     var qx=e.target.closest('[data-pdx-qunlink]');if(qx){e.preventDefault();e.stopPropagation();pdxUnlinkQuote(Number(qx.dataset.pdxQunlink));return;}
     var b=e.target.closest('[data-pdx]');if(b){e.preventDefault();act(b.dataset.pdx,b);return;}
     var t=e.target.closest('[data-pdx-act]');if(t){act(t.dataset.pdxAct,t);return;}

@@ -2632,6 +2632,26 @@ async function initSchema() {
     -- (allocations = [{quote_line_id, amount}]).
     ALTER TABLE project_subcontractor_costs ADD COLUMN IF NOT EXISTS kind TEXT NOT NULL DEFAULT 'sub';
     ALTER TABLE project_subcontractor_costs ADD COLUMN IF NOT EXISTS allocations JSONB;
+    -- v2.76.0 (Martin: "booke et besøg når der er fejl og mangler på et projekt
+    -- der skal rettes ... se i budget og på projektet ... hvad fejl og mangler
+    -- har kostet") — en fejl/mangel er en egen opgave på sagen (gantt_task_id),
+    -- evt. koblet til de tilbudsposter der skal rettes. Tid der registreres med
+    -- rework_id tælles som fejl & mangler; extra_cost er fx materialer til rettelsen.
+    CREATE TABLE IF NOT EXISTS project_rework (
+      id SERIAL PRIMARY KEY,
+      project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+      gantt_task_id TEXT,
+      title TEXT NOT NULL,
+      description TEXT,
+      line_ids JSONB NOT NULL DEFAULT '[]',
+      extra_cost NUMERIC NOT NULL DEFAULT 0,
+      status TEXT NOT NULL DEFAULT 'open',
+      created_by INTEGER,
+      created_at TEXT DEFAULT ${nowTextSQL()},
+      updated_at TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_project_rework_project ON project_rework(project_id);
+    ALTER TABLE time_entries ADD COLUMN IF NOT EXISTS rework_id INTEGER;
     CREATE INDEX IF NOT EXISTS idx_project_subcontractor_costs ON project_subcontractor_costs(project_id);
     -- RUNDE H: Færdig-mailen til kunden sendes nu automatisk når SAGEN sættes til
     -- "Afsluttet" (status='done'), ikke længere manuelt pr. opgave i Opgavepool.
@@ -17664,7 +17684,8 @@ app.get('/api/projects/:id', auth, asyncRoute(async (req, res) => {
   const pQuotes = await projectQuotes(project);
   const showPrices = await isFinanceAdmin(req.user.id);
   const quotesOut = pQuotes.map(q => showPrices ? q : { id: q.id, quote_number: q.quote_number, quote_title: q.quote_title, status: q.status, is_primary: q.is_primary, counted: q.counted });
-  res.json({ ...project, quotes: quotesOut, pipeline_stages: await getProjectPipelineStages(project), pipeline_stages_custom: !!(project.pipeline_stages && sanitizePipelineStages(project.pipeline_stages).length), tasks, photos, time_entries: timeEntries, materials, qa_submissions: qaSubmissions, contact_form_submissions: contactSubmissions, quote_line_options: quoteLines, qa_template_ids: qaTemplateIds, qa_diary: qaDiary, crm_entity: crmEntity });
+  const reworkList = (await pool.query('SELECT id, title, status, gantt_task_id, line_ids FROM project_rework WHERE project_id=$1 ORDER BY (status=\'open\') DESC, created_at DESC', [project.id])).rows;
+  res.json({ ...project, quotes: quotesOut, rework: reworkList, pipeline_stages: await getProjectPipelineStages(project), pipeline_stages_custom: !!(project.pipeline_stages && sanitizePipelineStages(project.pipeline_stages).length), tasks, photos, time_entries: timeEntries, materials, qa_submissions: qaSubmissions, contact_form_submissions: contactSubmissions, quote_line_options: quoteLines, qa_template_ids: qaTemplateIds, qa_diary: qaDiary, crm_entity: crmEntity });
 }));
 
 // Projekt-budget (sep. 2026, Martins ønske #3 "Samlet budget visning under projekter"):
@@ -17858,7 +17879,7 @@ app.get('/api/projects/:id/budget', auth, adminOnly, asyncRoute(async (req, res)
   // akkord-prissnapshot (te.akkord_rate). Er registreringen tagget med en
   // tilbudspost, ved vi hvilket tilbud den hører til (ql.quote_id).
   const laborRows = await pool.query(`
-    SELECT te.id, te.user_id, te.minutes, te.akkord_item_id, te.akkord_quantity, te.quote_line_id, te.entry_date, te.note,
+    SELECT te.id, te.user_id, te.minutes, te.akkord_item_id, te.akkord_quantity, te.quote_line_id, te.entry_date, te.note, te.rework_id,
            u.name AS user_name, u.pay_type, u.hourly_wage,
            ai.name AS akkord_name, COALESCE(te.akkord_rate, ai.rate) AS akkord_rate,
            ql.quote_id AS line_quote_id
@@ -17926,7 +17947,12 @@ app.get('/api/projects/:id/budget', auth, adminOnly, asyncRoute(async (req, res)
     }
   });
 
-  const profit = approvedEx - costToComplete - laborTotal - subcontractorTotal - materialInvoiceTotal;
+  // v2.76.0 — fejl & mangler: ekstra udgifter (fx materialer til rettelsen)
+  // trækkes fra; lønnen ligger allerede i laborTotal (alle tidsregistreringer).
+  const reworkRows = (await pool.query('SELECT * FROM project_rework WHERE project_id=$1 ORDER BY created_at ASC, id ASC', [req.params.id])).rows;
+  const reworkExtraTotal = reworkRows.reduce((x, r) => x + (Number(r.extra_cost) || 0), 0);
+  subShared += reworkExtraTotal;
+  const profit = approvedEx - costToComplete - laborTotal - subcontractorTotal - materialInvoiceTotal - reworkExtraTotal;
   const margin = approvedEx > 0 ? (profit / approvedEx) * 100 : 0;
 
   // Pr. tilbud: direkte omkostninger + en andel af de fælles omkostninger
@@ -17960,7 +17986,8 @@ app.get('/api/projects/:id/budget', auth, adminOnly, asyncRoute(async (req, res)
   qLines.forEach(l => { if (l.line_type === 'text') return; const g = (Number(l.quantity) || 0) * (Number(l.sell_price) || 0); rawByQuote[l.quote_id] = (rawByQuote[l.quote_id] || 0) + g - lineDiscountAmount(l, g); });
   const invByLine = {};
   subRows.forEach(r => allocOf(r).forEach(a => { (invByLine[a.quote_line_id] = invByLine[a.quote_line_id] || []).push({ id: r.id, kind: r.kind || 'sub', supplier: r.supplier || '', description: r.description || '', invoice_number: r.invoice_number || '', invoice_date: r.invoice_date || '', amount: Number(a.amount) || 0, file_url: r.file_url || null }); }));
-  const fmtEntry = r => ({ date: String(r.entry_date || '').slice(0, 10), name: r.user_name || 'Ukendt', minutes: Number(r.minutes) || 0, cost: Math.round((r._cost || 0) * 100) / 100, note: r.note || '', akkord: r._akkord ? ((r.akkord_name || '') + ' × ' + (Number(r.akkord_quantity) || 0)) : null });
+  const reworkTitle = {}; (await pool.query('SELECT id, title FROM project_rework WHERE project_id=$1', [req.params.id])).rows.forEach(r => { reworkTitle[r.id] = r.title; });
+  const fmtEntry = r => ({ rework: r.rework_id ? (reworkTitle[r.rework_id] || 'Fejl & mangler') : null, date: String(r.entry_date || '').slice(0, 10), name: r.user_name || 'Ukendt', minutes: Number(r.minutes) || 0, cost: Math.round((r._cost || 0) * 100) / 100, note: r.note || '', akkord: r._akkord ? ((r.akkord_name || '') + ' × ' + (Number(r.akkord_quantity) || 0)) : null });
   let lastHeading = '';
   const perLine = [];
   qLines.forEach(l => {
@@ -17975,24 +18002,38 @@ app.get('/api/projects/:id/budget', auth, adminOnly, asyncRoute(async (req, res)
     const matAct = invs.filter(x => x.kind === 'material').reduce((x, y) => x + y.amount, 0);
     const subAct = invs.filter(x => x.kind !== 'material').reduce((x, y) => x + y.amount, 0);
     const costUsed = invs.length ? matAct + subAct : est;
-    const entries = laborRows.filter(r => r.quote_line_id === l.id);
-    const labor = entries.reduce((x, r) => x + (r._cost || 0), 0), minutes = entries.reduce((x, r) => x + (Number(r.minutes) || 0), 0);
+    // Fejl & mangler koblet til posten: tid registreret på rettelsen (uden
+    // egen post) + rettelsens ekstra udgift fordeles ligeligt på dens poster.
+    let rwLabor = 0, rwMinutes = 0, rwExtra = 0; const rwItems = [];
+    reworkRows.forEach(rw => {
+      const ids = (rw.line_ids || []).map(Number); if (!ids.includes(l.id)) return;
+      const share = 1 / ids.length;
+      const ents = laborRows.filter(r => r.rework_id === rw.id && !r.quote_line_id);
+      const lc = ents.reduce((x, r) => x + (r._cost || 0), 0) * share, mn = ents.reduce((x, r) => x + (Number(r.minutes) || 0), 0) * share, ex = (Number(rw.extra_cost) || 0) * share;
+      rwLabor += lc; rwMinutes += mn; rwExtra += ex;
+      rwItems.push({ id: rw.id, title: rw.title, status: rw.status, labor: Math.round(lc * 100) / 100, minutes: Math.round(mn), extra: Math.round(ex * 100) / 100, shared_with: ids.length });
+    });
+    const entries = laborRows.filter(r => r.quote_line_id === l.id || (r.rework_id && !r.quote_line_id && reworkRows.some(rw => rw.id === r.rework_id && (rw.line_ids || []).map(Number).includes(l.id))));
+    const directEntries = laborRows.filter(r => r.quote_line_id === l.id);
+    const labor = directEntries.reduce((x, r) => x + (r._cost || 0), 0) + rwLabor, minutes = directEntries.reduce((x, r) => x + (Number(r.minutes) || 0), 0) + rwMinutes;
     const emp = {};
-    entries.forEach(r => { const k = r.user_id || 0; const e = emp[k] = emp[k] || { name: r.user_name || 'Ukendt', minutes: 0, cost: 0, days: new Set() }; e.minutes += Number(r.minutes) || 0; e.cost += r._cost || 0; if (r.entry_date) e.days.add(String(r.entry_date).slice(0, 10)); });
-    const profit2 = sale - costUsed - labor;
+    directEntries.forEach(r => { const k = r.user_id || 0; const e = emp[k] = emp[k] || { name: r.user_name || 'Ukendt', minutes: 0, cost: 0, days: new Set() }; e.minutes += Number(r.minutes) || 0; e.cost += r._cost || 0; if (r.entry_date) e.days.add(String(r.entry_date).slice(0, 10)); });
+    const profit2 = sale - costUsed - labor - rwExtra;
     perLine.push({
       id: l.id, quote_id: l.quote_id, quote_number: l.quote_number, heading: lastHeading, description: l.description || '', quantity: Number(l.quantity) || 0, unit: l.unit || '',
       sell_price: Number(l.sell_price) || 0, sale: Math.round(sale * 100) / 100, est_cost: Math.round(est * 100) / 100,
       has_invoices: invs.length > 0, materials_actual: matAct, sub_actual: subAct, cost_used: Math.round(costUsed * 100) / 100,
       labor: Math.round(labor * 100) / 100, minutes, profit: Math.round(profit2 * 100) / 100, margin: sale > 0 ? profit2 / sale * 100 : null,
       invoiced: !!l.invoiced_in_invoice_id,
+      rework_labor: Math.round(rwLabor * 100) / 100, rework_minutes: Math.round(rwMinutes), rework_extra: Math.round(rwExtra * 100) / 100, rework: rwItems,
       employees: Object.values(emp).map(e => ({ name: e.name, minutes: e.minutes, cost: Math.round(e.cost * 100) / 100, days: e.days.size })).sort((x, y) => y.minutes - x.minutes),
       entries: entries.map(fmtEntry).sort((x, y) => y.date.localeCompare(x.date)),
       invoices: invs
     });
   });
   const lineIdSet = new Set(qLines.map(l => l.id));
-  const unEntries = laborRows.filter(r => !r.quote_line_id || !lineIdSet.has(r.quote_line_id));
+  const rwWithLines = new Set(reworkRows.filter(rw => (rw.line_ids || []).some(id => lineIdSet.has(Number(id)))).map(rw => rw.id));
+  const unEntries = laborRows.filter(r => (!r.quote_line_id || !lineIdSet.has(r.quote_line_id)) && !(r.rework_id && !r.quote_line_id && rwWithLines.has(r.rework_id)));
   const unInvoices = subRows.map(r => { const al = allocOf(r).filter(a => lineIdSet.has(a.quote_line_id)).reduce((x, a) => x + a.amount, 0); return { id: r.id, kind: r.kind || 'sub', supplier: r.supplier || '', description: r.description || '', invoice_number: r.invoice_number || '', amount: Math.max(0, Math.round(((Number(r.amount) || 0) - al) * 100) / 100), file_url: r.file_url || null }; }).filter(x => x.amount > 0.005);
   const unEmp = {};
   unEntries.forEach(r => { const k = r.user_id || 0; const e = unEmp[k] = unEmp[k] || { name: r.user_name || 'Ukendt', minutes: 0, cost: 0, days: new Set() }; e.minutes += Number(r.minutes) || 0; e.cost += r._cost || 0; if (r.entry_date) e.days.add(String(r.entry_date).slice(0, 10)); });
@@ -18003,7 +18044,25 @@ app.get('/api/projects/:id/budget', auth, adminOnly, asyncRoute(async (req, res)
     entries: unEntries.map(fmtEntry).sort((x, y) => y.date.localeCompare(x.date))
   };
 
+  const lineDesc = {}; qLines.forEach(l => { lineDesc[l.id] = String(l.description || '').split('\n')[0].slice(0, 90); });
+  const reworkOut = reworkRows.map(rw => {
+    const ents = laborRows.filter(r => r.rework_id === rw.id);
+    const emp = {};
+    ents.forEach(r => { const k = r.user_id || 0; const e = emp[k] = emp[k] || { name: r.user_name || 'Ukendt', minutes: 0, cost: 0, days: new Set() }; e.minutes += Number(r.minutes) || 0; e.cost += r._cost || 0; if (r.entry_date) e.days.add(String(r.entry_date).slice(0, 10)); });
+    const lab = ents.reduce((x, r) => x + (r._cost || 0), 0);
+    return {
+      id: rw.id, title: rw.title, description: rw.description || '', status: rw.status, created_at: rw.created_at, gantt_task_id: rw.gantt_task_id,
+      line_ids: (rw.line_ids || []).map(Number), lines: (rw.line_ids || []).map(id => ({ id: Number(id), description: lineDesc[Number(id)] || 'Post' })),
+      minutes: ents.reduce((x, r) => x + (Number(r.minutes) || 0), 0), labor: Math.round(lab * 100) / 100, extra_cost: Number(rw.extra_cost) || 0,
+      total: Math.round((lab + (Number(rw.extra_cost) || 0)) * 100) / 100,
+      employees: Object.values(emp).map(e => ({ name: e.name, minutes: e.minutes, cost: Math.round(e.cost * 100) / 100, days: e.days.size })),
+      entries: ents.map(fmtEntry).sort((x, y) => y.date.localeCompare(x.date))
+    };
+  });
   res.json({
+    rework: reworkOut,
+    rework_total: reworkOut.reduce((x, r) => x + r.total, 0),
+    rework_extra_cost: reworkExtraTotal,
     lines: perLine,
     unassigned,
     approved_price: approved,
@@ -18607,6 +18666,72 @@ app.post('/api/projects/:id/tasks', auth, panelAccess('projects'), asyncRoute(as
 // registreret senere (fundet under test: PUT .../tasks/reorder endte i
 // :taskId-routen og gav 404 "Opgaven blev ikke fundet", fordi den ledte
 // efter en opgave med id='reorder').
+// ── v2.76.0 — FEJL & MANGLER ──────────────────────────────────────────
+// Opretter en opgave på sagen ("🔧 Fejl & mangler: …") og evt. en booking på
+// en medarbejder, så den kan planlægges i Dagligplanlægning som alt andet.
+async function reworkLineDescs(lineIds) {
+  if (!lineIds.length) return [];
+  return (await pool.query('SELECT id, description FROM quote_lines WHERE id = ANY($1::int[])', [lineIds])).rows;
+}
+function reworkTaskDescription(title, description, lines) {
+  return [description || '', lines.length ? 'Poster der skal rettes:\n' + lines.map(l => '• ' + String(l.description || '').split('\n')[0].slice(0, 120)).join('\n') : ''].filter(Boolean).join('\n\n');
+}
+app.post('/api/projects/:id/rework', auth, panelAccessAny(['plan', 'projects']), asyncRoute(async (req, res) => {
+  const project = await pgOne('SELECT * FROM projects WHERE id=$1', [req.params.id]);
+  if (!project) return res.status(404).json({ error: 'Sagen blev ikke fundet' });
+  const b = req.body || {};
+  const title = String(b.title || '').trim().slice(0, 160);
+  if (!title) return res.status(400).json({ error: 'Skriv hvad der skal rettes' });
+  const date = validDate(b.date) ? b.date : new Date().toISOString().slice(0, 10);
+  const lineIds = (Array.isArray(b.line_ids) ? b.line_ids : []).map(Number).filter(Boolean).slice(0, 50);
+  const lines = await reworkLineDescs(lineIds);
+  const description = String(b.description || '').trim().slice(0, 2000);
+  const extra = Math.max(0, Number(String(b.extra_cost || '0').replace(/\./g, '').replace(',', '.')) || 0);
+  const id = 'p' + crypto.randomBytes(12).toString('hex');
+  const name = '🔧 Fejl & mangler: ' + title;
+  const desc = reworkTaskDescription(title, description, lines);
+  const countRes = await pgOne('SELECT COUNT(*)::int AS n FROM gantt_tasks WHERE project_id=$1', [project.id]);
+  await pool.query(`
+    INSERT INTO gantt_tasks (id,job_id,job_name,name,description,start_date,end_date,progress,is_group,position,project_id,synced_at)
+    VALUES ($1,$2,$3,$4,$5,$6,$6,0,0,$7,$8,${nowTextSQL()})
+  `, [id, 'project-' + project.id, project.name, name, desc, date, String(countRes ? countRes.n : 0), project.id]);
+  await mirrorProjectTaskToPool(id, project, { name, start_date: date, end_date: date, description: desc });
+  const rw = await pgOne(`INSERT INTO project_rework (project_id, gantt_task_id, title, description, line_ids, extra_cost, created_by, updated_at)
+    VALUES ($1,$2,$3,$4,$5,$6,$7,${nowTextSQL()}) RETURNING id`, [project.id, id, title, description || null, JSON.stringify(lines.map(l => l.id)), extra, req.user.id]);
+  let bookingId = null, warning = null;
+  if (b.user_id) {
+    try {
+      const booking = await normalizeBooking({ task_id: id, user_id: b.user_id, start_date: date, days: Number(b.days) > 0 ? Number(b.days) : 1, notes: null, start_time: b.time || null }, true);
+      const r = await pool.query(`INSERT INTO planning_bookings (task_id,user_id,week_key,days,notes,start_time,start_date,end_date,updated_at)
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,${nowTextSQL()}) RETURNING id`, [booking.task_id, booking.user_id, booking.week_key, booking.days, booking.notes, booking.start_time, booking.start_date, booking.end_date]);
+      bookingId = r.rows[0].id;
+    } catch (e) { warning = 'Fejl & mangler er oprettet, men kunne ikke bookes på medarbejderen: ' + e.message; }
+  }
+  res.json({ ok: true, id: rw.id, task_id: id, booking_id: bookingId, warning });
+}));
+app.put('/api/rework/:id', auth, panelAccessAny(['plan', 'projects']), asyncRoute(async (req, res) => {
+  const cur = await pgOne('SELECT * FROM project_rework WHERE id=$1', [req.params.id]);
+  if (!cur) return res.status(404).json({ error: 'Ikke fundet' });
+  const b = req.body || {};
+  const title = b.title !== undefined ? String(b.title || '').trim().slice(0, 160) || cur.title : cur.title;
+  const description = b.description !== undefined ? String(b.description || '').trim().slice(0, 2000) || null : cur.description;
+  const lineIds = b.line_ids !== undefined ? (Array.isArray(b.line_ids) ? b.line_ids : []).map(Number).filter(Boolean).slice(0, 50) : (cur.line_ids || []);
+  const extra = b.extra_cost !== undefined ? Math.max(0, Number(String(b.extra_cost || '0').replace(/\./g, '').replace(',', '.')) || 0) : Number(cur.extra_cost) || 0;
+  const status = b.status === 'done' ? 'done' : (b.status === 'open' ? 'open' : cur.status);
+  await pool.query(`UPDATE project_rework SET title=$1, description=$2, line_ids=$3, extra_cost=$4, status=$5, updated_at=${nowTextSQL()} WHERE id=$6`, [title, description, JSON.stringify(lineIds), extra, status, cur.id]);
+  if (cur.gantt_task_id && (title !== cur.title || b.description !== undefined || b.line_ids !== undefined)) {
+    const desc = reworkTaskDescription(title, description, await reworkLineDescs(lineIds));
+    await pool.query('UPDATE gantt_tasks SET name=$1, description=$2 WHERE id=$3', ['🔧 Fejl & mangler: ' + title, desc, cur.gantt_task_id]);
+    await pool.query('UPDATE jt_tasks SET name=$1, description=$2 WHERE id=$3', ['🔧 Fejl & mangler: ' + title, desc, cur.gantt_task_id]);
+  }
+  res.json({ ok: true });
+}));
+app.delete('/api/rework/:id', auth, panelAccessAny(['plan', 'projects']), asyncRoute(async (req, res) => {
+  await pool.query('UPDATE time_entries SET rework_id=NULL WHERE rework_id=$1', [req.params.id]);
+  await pool.query('DELETE FROM project_rework WHERE id=$1', [req.params.id]);
+  res.json({ ok: true });
+}));
+
 app.put('/api/projects/:id/tasks/reorder', auth, panelAccess('projects'), asyncRoute(async (req, res) => {
   const order = Array.isArray((req.body || {}).order) ? req.body.order.map(String) : null;
   if (!order || !order.length) return res.status(400).json({ error: 'Ingen rækkefølge angivet' });
@@ -18941,9 +19066,9 @@ app.post('/api/projects/:id/time-entries', auth, asyncRoute(async (req, res) => 
     akkordRate = rateRow ? Number(rateRow.rate) : null;
   }
   const r = await pool.query(`
-    INSERT INTO time_entries (project_id,user_id,minutes,note,photo_url,photo_urls,bought_materials,quote_line_id,entry_date,created_by,akkord_item_id,akkord_quantity,akkord_rate)
-    VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) RETURNING id
-  `, [req.params.id, targetUserId, Math.max(0, Math.round(minutes) || 0), note, photoUrls[0] || null, JSON.stringify(photoUrls), b.bought_materials || null, b.quote_line_id || null, entryDate, req.user.id, hasAkkord ? akkordItemId : null, hasAkkord ? akkordQuantity : 0, akkordRate]);
+    INSERT INTO time_entries (project_id,user_id,minutes,note,photo_url,photo_urls,bought_materials,quote_line_id,entry_date,created_by,akkord_item_id,akkord_quantity,akkord_rate,rework_id)
+    VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14) RETURNING id
+  `, [req.params.id, targetUserId, Math.max(0, Math.round(minutes) || 0), note, photoUrls[0] || null, JSON.stringify(photoUrls), b.bought_materials || null, b.quote_line_id || null, entryDate, req.user.id, hasAkkord ? akkordItemId : null, hasAkkord ? akkordQuantity : 0, akkordRate, Number(b.rework_id) || null]);
   res.json({ ok: true, id: r.rows[0].id });
 }));
 
@@ -18977,9 +19102,10 @@ app.put('/api/projects/:id/time-entries/:entryId', auth, panelAccess('projects')
   }
   await pool.query(`
     UPDATE time_entries SET user_id=$1, minutes=$2, note=$3, photo_url=$4, photo_urls=$5,
-      bought_materials=$6, quote_line_id=$7, entry_date=$8, updated_at=${nowTextSQL()}, akkord_item_id=$9, akkord_quantity=$10, akkord_rate=$11
+      bought_materials=$6, quote_line_id=$7, entry_date=$8, updated_at=${nowTextSQL()}, akkord_item_id=$9, akkord_quantity=$10, akkord_rate=$11,
+      rework_id=${b.rework_id !== undefined ? '$14' : 'rework_id'}
     WHERE id=$12 AND project_id=$13
-  `, [Number(b.user_id), Math.max(0, Math.round(minutes) || 0), note, photoUrls[0] || null, JSON.stringify(photoUrls), b.bought_materials || null, b.quote_line_id || null, entryDate, hasAkkord ? akkordItemId : null, hasAkkord ? akkordQuantity : 0, hasAkkord ? akkordRate : null, req.params.entryId, req.params.id]);
+  `, [Number(b.user_id), Math.max(0, Math.round(minutes) || 0), note, photoUrls[0] || null, JSON.stringify(photoUrls), b.bought_materials || null, b.quote_line_id || null, entryDate, hasAkkord ? akkordItemId : null, hasAkkord ? akkordQuantity : 0, hasAkkord ? akkordRate : null, req.params.entryId, req.params.id].concat(b.rework_id !== undefined ? [Number(b.rework_id) || null] : []));
   res.json({ ok: true });
 }));
 

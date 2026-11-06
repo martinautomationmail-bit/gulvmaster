@@ -863,6 +863,12 @@ async function pmOpenTimeForm(){
     const r=await api('/api/akkord-items');
     pmState.akkordItems=(r&&r.ok&&Array.isArray(r.data))?r.data:[];
   }
+  // v2.76.0 — åbne fejl & mangler på sagen; vælges automatisk hvis tids-
+  // registreringen er åbnet fra selve rettelses-opgaven.
+  const rwOpen=(p.rework||[]).filter(r=>r.status!=='done');
+  const rwPre=pmState.preTaskId?rwOpen.find(r=>r.gantt_task_id===pmState.preTaskId):null;
+  const rwOpts=rwOpen.map(r=>`<option value="${r.id}"${rwPre&&rwPre.id===r.id?' selected':''}>🔧 ${esc(r.title)}</option>`).join('');
+  pmState.preTaskId=null;
   // v2.73.0 — flere tilbud på sagen: posterne grupperes pr. tilbud.
   const qlo=(p.quote_line_options||[]).filter(l=>l.line_type!=='text');
   const qnums=[...new Set(qlo.map(l=>l.quote_number||''))];
@@ -902,6 +908,8 @@ async function pmOpenTimeForm(){
     <label class="small-btn primary" style="cursor:pointer;display:inline-flex;margin-bottom:10px">+ Tilføj billeder/video<input type="file" accept="image/*,video/*" multiple id="pmt-photo" style="display:none" onchange="pmAddTimePhoto(event)"></label>
     <label class="req-label">Post fra tilbud — valgfrit</label>
     <select class="req-input" id="pmt-line"><option value="">Ingen valgt</option>${lineOptions}</select>
+    ${rwOpts?`<label class="req-label">🔧 Fejl &amp; mangler — er det en rettelse?</label>
+    <select class="req-input" id="pmt-rework"><option value="">Nej — almindeligt arbejde</option>${rwOpts}</select>`:''}
     <label class="req-label">Købt materialer — valgfrit</label>
     <input class="req-input" id="pmt-materials" placeholder="Fx 'Lim, 2 spande, Bilka, 340 kr'">
     <div id="pmt-feedback" class="req-feedback"></div>
@@ -1012,7 +1020,8 @@ async function pmSubmitTime(){
         if(up&&up.ok&&up.data&&up.data.url)photoUrls.push(up.data.url);else photoFails++;
       }catch(_){photoFails++}
     }
-    const baseBody={note,photo_urls:photoUrls,bought_materials:materials||null,quote_line_id:lineId||null,entry_date:date};
+    const rwSel=document.getElementById('pmt-rework');
+    const baseBody={note,photo_urls:photoUrls,bought_materials:materials||null,quote_line_id:lineId||null,entry_date:date,rework_id:rwSel&&rwSel.value?Number(rwSel.value):null};
     if(isAkkord){
       // Databasen gemmer ét akkord-item pr. tidsregistrerings-række (se
       // akkord_item_id/akkord_quantity i server.js) — flere fluebenede poster
@@ -1199,8 +1208,9 @@ async function openProjectDashboard(projectId){
   document.getElementById('pm-body').innerHTML='<p style="color:var(--muted)">Henter…</p>';
   if(await pmOpenProjectFor(projectId))pmRenderDetail();
 }
-async function openTimeFormForTask(projectId){
+async function openTimeFormForTask(projectId,taskId){
   if(!projectId){toast('Denne opgave er ikke koblet til en sag endnu');return}
+  pmState.preTaskId=taskId||null;
   document.getElementById('projects-modal').classList.add('open');
   document.getElementById('pm-title').textContent='Henter…';
   document.getElementById('pm-body').innerHTML='<p style="color:var(--muted)">Henter…</p>';
@@ -1880,7 +1890,7 @@ function render(){
       // den i stedet "🔍 Find projekt" (samme modul som topbar-genvejen), så
       // medarbejderen selv kan vælge/søge den rigtige sag at registrere tid på.
       const timeButton=isCaseTask
-        ?`<button class="action time" type="button" onclick="openTimeFormForTask(${a.task_project_id})" style="grid-column:1/-1">⏱ Registrér tid</button>`
+        ?`<button class="action time" type="button" onclick="openTimeFormForTask(${a.task_project_id},'${esc(String(a.task_id||'')).replace(/'/g,'')}')" style="grid-column:1/-1">⏱ Registrér tid</button>`
         :`<button class="action time" type="button" onclick="openProjectsModal()" style="grid-column:1/-1">⏱ Registrér tid</button>`;
       out+=`<article class="task ${hasTime?'':'untimed'} ${isDone?'done':''}"><div class="task-head"><div><div class="task-title">${esc(a.job_name||'Task')}</div><div class="task-sub">${esc(a.task_name||'')}${a.job_number?' · Job #'+esc(a.job_number):''}</div></div><div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px">${timeChip}${caseIcon}${quoteIcon}</div></div>${taskTimelineHtml(a,date)}<div class="job-details"><div class="detail-line">📍 <span>${addressMarkup}</span></div><div class="detail-line">📞 ${phoneMarkup}</div><div class="detail-line weather-line loading" data-weather-id="${weatherId}">🌦️ Loading weather…</div><div class="detail-line planned">⏱ Antal timer: ${hoursLabel}</div></div>${descBlock}<div class="task-checklist" data-checklist-task-id="${esc(a.task_id)}"></div><div class="actions">${mapButton}<button class="action note" type="button" onclick="openBookingNote(${noteId})">📝 Task note</button>${caseActions}${timeButton}${doneBtn}</div></article>`;
     });}
