@@ -5380,6 +5380,29 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
 @keyframes pdsubspin{to{transform:rotate(360deg)}}
 .pdsub-saveall{display:flex;justify-content:flex-end;margin:-2px 0 12px}
 .pdsub-file{font-size:12px;color:#4338CA;font-weight:600;text-decoration:none;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pdb-sec-h{cursor:pointer;user-select:none}
+.pdb-chev{display:inline-block;font-style:normal;color:#9CA3AF;font-size:12px;margin-right:6px;transition:transform .15s}
+.pdb-sec.collapsed .pdb-chev{transform:rotate(-90deg)}
+.pdb-sec.collapsed>.pdb-sec-b{display:none}
+.pdb-sec.collapsed .pdsub-sub{display:none}
+.pdb-sec.collapsed>.pdsub-head{margin-bottom:0}
+.pdb-sec-sum{font-size:12.5px;font-weight:700;color:#6B7280;margin-left:6px}
+.pdb-sec:not(.collapsed) .pdb-sec-sum{display:none}
+.pdb-emp{margin-top:22px;background:#fff;border:1px solid #E5E7EB;border-radius:16px;padding:14px 18px}
+.pdb-emp-h h3{font-size:15px;margin:0}
+.pdb-emp:not(.collapsed) .pdb-emp-h{margin-bottom:10px}
+.pdsub-av.mat{background:#ECFDF5;color:#047857}
+.pc-al{margin-top:12px;background:#fff;border:1px solid #E5E7EB;border-radius:12px;padding:10px 12px}
+.pc-al-h b{font-size:12.5px;display:block}.pc-al-h small{font-size:11.5px;color:#6B7280}
+.pc-al-row{display:grid;grid-template-columns:1fr 150px 30px;gap:8px;align-items:center;margin-top:8px}
+.pc-al-row select{border:1.5px solid #E5E7EB;border-radius:10px;padding:8px 10px;font:500 13px Inter,system-ui,sans-serif;background:#fff;min-width:0}
+.pc-al-why{grid-column:1/-1;font-size:11px;color:#6366F1;margin-top:-4px}
+.pc-al-row .pdsub-amt input{border:0;outline:0;width:100%;min-width:0;padding:8px 10px;font:700 13px Inter,system-ui,sans-serif;background:transparent}
+.pc-al-x{border:0;background:transparent;color:#9CA3AF;cursor:pointer;border-radius:8px;height:30px}.pc-al-x:hover{background:#FEE2E2;color:#B91C1C}
+.pc-al-foot{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:10px}
+.pc-al-add{border:1.5px dashed #C7D2FE;background:#F5F7FF;color:#4338CA;border-radius:10px;padding:6px 11px;font:700 12px Inter,system-ui,sans-serif;cursor:pointer}
+.pc-al-info{font-size:12px;color:#6B7280}.pc-al-info.ok{color:#047857}.pc-al-info.warn{color:#B91C1C;font-weight:600}
+.pc-al-list{display:flex;flex-wrap:wrap;gap:4px;margin-top:4px}.pc-al-list span{font-size:11px;font-weight:600;color:#0369A1;background:#F0F9FF;border-radius:999px;padding:2px 8px}
 .pdb-kpi-sub{font-size:11.5px;color:#9CA3AF;margin-top:4px}
 .pdb-ex{margin:16px 0 4px;background:#fff;border:1.5px solid var(--bly-border);border-radius:var(--bly-r-lg);padding:14px 18px}
 .pdb-ex-h{font-size:14px;font-weight:800;margin-bottom:6px}
@@ -5779,7 +5802,7 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
        i browseren faktisk ER det nyeste deploy, eller om Render/GitHub bare
        ikke er nået at opdatere endnu — i stedet for at skulle gætte om en
        rettelse "stadig ikke virker" eller bare endnu ikke er live. -->
-  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build v2.74.2 · 2026-11-02</span></div>
+  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build v2.74.3 · 2026-11-02</span></div>
 </aside>
 <div class="app-content">
 <!-- RUNDE FB — AI-ASSISTENTEN (Martin: "en ai der er nede i venstre hjørne af
@@ -9807,43 +9830,45 @@ body.ai-has-reply #ai-fab{animation:ai-nudge 1.4s ease-in-out 3}
           <div class="bly-toolbar-right"><button class="bly-btn outline small" id="pd-budget-toggle-btn" type="button">Skjul oversigt</button></div>
         </div>
         <div id="pd-budget-summary" class="pd-budget-grid"></div>
+        <div id="pd-budget-explain"></div>
         <!-- v2.73.0 — fortjeneste pr. tilbud når sagen har flere tilbud -->
         <div id="pd-budget-quotes"></div>
-        <h3 style="font-size:14px;margin:22px 0 10px">👷 Løn &amp; akkord pr. medarbejder</h3>
-        <table class="bly-table">
-          <thead><tr><th>Medarbejder</th><th>Løntype</th><th class="num">Timer</th><th>Akkord-poster</th><th class="num">Omkostning</th></tr></thead>
-          <tbody id="pd-budget-employees-body"></tbody>
-        </table>
-        <!-- RUNDE S (Martins ønske: "underleverandør ... faktura ind på
-             opgaven ... viser det vi så har tjent") — kun synlig når mindst én
-             opgave rent faktisk har et underleverandør-beløb sat, se
-             renderPdBudget(). -->
-        <!-- v2.56.0 — underleverandør-udgifter pr. sag (tidligere pr. opgave i opgave-popuppen). -->
-        <div class="pdsub" id="pd-budget-sub-wrap">
-          <div class="pdsub-head">
-            <div><h3>🧾 Underleverandører</h3><div class="pdsub-sub">Fakturaer fra underleverandører på sagen, ekskl. moms. Trækkes fra fortjenesten.</div></div>
+        <div class="pdb-sec pdb-emp" data-pdb-sec="emp">
+          <div class="pdb-sec-h pdb-emp-h" data-pdb-toggle="emp"><h3><i class="pdb-chev">▾</i>👷 Løn &amp; akkord pr. medarbejder <span class="pdb-sec-sum" id="pdb-sum-emp"></span></h3></div>
+          <div class="pdb-sec-b">
+            <table class="bly-table">
+              <thead><tr><th>Medarbejder</th><th>Løntype</th><th class="num">Timer</th><th>Akkord-poster</th><th class="num">Omkostning</th></tr></thead>
+              <tbody id="pd-budget-employees-body"></tbody>
+            </table>
+          </div>
+        </div>
+        <div class="pdsub pdb-sec" data-pdb-sec="material" id="pd-budget-mat-wrap">
+          <div class="pdsub-head pdb-sec-h" data-pdb-toggle="material">
+            <div><h3><i class="pdb-chev">▾</i>🧱 Materialefakturaer <span class="pdb-sec-sum" id="pdb-sum-material"></span></h3><div class="pdsub-sub">Fakturaer for materialer købt til sagen, ekskl. moms. Fordel dem på tilbuddets poster — så erstatter de postens kostpris.</div></div>
             <div class="pdsub-btns">
-              <label class="pdsub-add pdsub-pdf" title="Upload én eller flere fakturaer (PDF eller billede) — AI udfylder leverandør, fakturanr., dato og beløb">📄 Upload faktura-PDF'er<input type="file" id="pdsub-files" accept="application/pdf,image/*" multiple hidden></label>
-              <button type="button" class="pdsub-add pdsub-man" id="pdsub-add-btn">＋ Tilføj manuelt</button>
+              <label class="pdsub-add pdsub-pdf" title="Upload én eller flere fakturaer (PDF eller billede) — AI udfylder leverandør, fakturanr., dato, beløb og foreslår hvilke poster den dækker">📄 Upload faktura-PDF'er<input type="file" data-pc-files="material" accept="application/pdf,image/*" multiple hidden></label>
+              <button type="button" class="pdsub-add pdsub-man" data-pc-add="material">＋ Tilføj manuelt</button>
             </div>
           </div>
-          <div id="pdsub-drop" class="pdsub-drop">Træk faktura-PDF'er herind — eller brug knappen ovenfor</div>
-          <div id="pdsub-drafts"></div>
-          <div class="pdsub-form" id="pdsub-form" hidden>
-            <div class="pdsub-grid">
-              <label class="pdsub-f pdsub-wide"><span>Underleverandør</span><input id="pdsub-supplier" placeholder="Fx VVS Hansen ApS"></label>
-              <label class="pdsub-f"><span>Fakturanr.</span><input id="pdsub-invno" placeholder="Valgfri"></label>
-              <label class="pdsub-f"><span>Fakturadato</span><input id="pdsub-date" type="date"></label>
-              <label class="pdsub-f pdsub-wide"><span>Hvad dækker den</span><input id="pdsub-desc" placeholder="Fx omlægning af radiatorer"></label>
-              <label class="pdsub-f"><span>Opgave <em>valgfri</em></span><select id="pdsub-task"></select></label>
-              <label class="pdsub-f"><span>Beløb ekskl. moms</span><div class="pdsub-amt"><input id="pdsub-amount" inputmode="decimal" placeholder="0"><em>kr</em></div></label>
-              <label class="pdsub-f"><span>Tilbud <em>valgfri</em></span><select id="pdsub-quote"></select></label>
-              <label class="pdsub-f pdsub-wide"><span>Post i tilbuddet <em>valgfri</em></span><select id="pdsub-line"></select></label>
-              <div class="pdsub-f" id="pdsub-file-wrap" style="justify-content:flex-end"></div>
-            </div>
-            <div class="pdsub-foot"><button type="button" class="pdsub-cancel" id="pdsub-cancel">Annullér</button><button type="button" class="pdsub-save" id="pdsub-save">Gem udgift</button></div>
+          <div class="pdb-sec-b">
+            <div class="pdsub-drop" data-pc-dropzone="material">Træk faktura-PDF'er herind — eller brug knappen ovenfor</div>
+            <div id="pc-material-drafts"></div>
+            <div id="pc-material-list" class="pdsub-list"></div>
           </div>
-          <div id="pd-budget-sub-body" class="pdsub-list"></div>
+        </div>
+        <div class="pdsub pdb-sec" data-pdb-sec="sub" id="pd-budget-sub-wrap">
+          <div class="pdsub-head pdb-sec-h" data-pdb-toggle="sub">
+            <div><h3><i class="pdb-chev">▾</i>🧾 Underleverandører <span class="pdb-sec-sum" id="pdb-sum-sub"></span></h3><div class="pdsub-sub">Fakturaer fra underleverandører på sagen, ekskl. moms. Trækkes fra fortjenesten.</div></div>
+            <div class="pdsub-btns">
+              <label class="pdsub-add pdsub-pdf" title="Upload én eller flere fakturaer (PDF eller billede) — AI udfylder leverandør, fakturanr., dato, beløb og foreslår hvilke poster den dækker">📄 Upload faktura-PDF'er<input type="file" data-pc-files="sub" accept="application/pdf,image/*" multiple hidden></label>
+              <button type="button" class="pdsub-add pdsub-man" data-pc-add="sub">＋ Tilføj manuelt</button>
+            </div>
+          </div>
+          <div class="pdb-sec-b">
+            <div class="pdsub-drop" data-pc-dropzone="sub">Træk faktura-PDF'er herind — eller brug knappen ovenfor</div>
+            <div id="pc-sub-drafts"></div>
+            <div id="pc-sub-list" class="pdsub-list"></div>
+          </div>
         </div>
       </div>
 
@@ -35803,13 +35828,13 @@ function renderPdBudget(){
     var profitColor=d.projected_profit>=0?'#16A34A':'#DC2626';
     // RUNDE S — underleverandør-omkostning tælles med i "Forventet omkostning"
     // ligesom løn og materialer, se GET /api/projects/:id/budget i server.js.
-    var subTotal=Number(d.subcontractor_cost)||0;
+    var subTotal=Number(d.subcontractor_cost)||0,matInvTotal=Number(d.material_invoice_cost)||0;
     var exP=d.approved_price_ex!=null?d.approved_price_ex:d.approved_price;
     var cards=[
       ['Godkendt pris ekskl. moms',krFmt(exP),null,'Inkl. moms '+krFmt(d.approved_price)],
       ['Opkrævet',krFmt(d.collected),null,'Betalt af kunden, inkl. moms'],
       ['Restsaldo',krFmt(d.remaining_balance),null,'Mangler at blive betalt, inkl. moms'],
-      ['Omkostninger',krFmt(d.cost_to_complete+d.labor_cost+subTotal),null,'Kostpris + løn + underleverandører'],
+      ['Omkostninger',krFmt(d.cost_to_complete+d.labor_cost+subTotal+matInvTotal),null,'Kostpris + løn + fakturaer'],
       ['Forventet fortjeneste',krFmt(d.projected_profit),profitColor,'Ekskl. moms'],
       ['Forventet margin',Number(d.projected_margin).toFixed(1).replace('.',',')+' %',profitColor,'Af prisen ekskl. moms']
     ];
@@ -35821,16 +35846,18 @@ function renderPdBudget(){
     var nEmp=(d.employees||[]).length,nSub=(d.subcontractor_costs||[]).length;
     var rows=[
       ['Godkendt pris ekskl. moms','Summen af '+((d.quotes||[]).filter(function(q){return q.counted;}).length>1?'de godkendte tilbud':'det godkendte tilbud')+' uden moms ('+krFmt(d.vat_amount||0)+' i moms er trukket fra — den er ikke jeres penge)',exP,'+'],
-      ['Kostpris fra tilbuddets poster','Kost-prisen × antal på hver post i tilbuddet (materialer m.m.)'+(d.materials_replaced>0?'. '+krFmt(d.materials_replaced)+' er IKKE medregnet, fordi en underleverandør-faktura er koblet til posten og erstatter overslaget':''),d.cost_to_complete,'−'],
+      ['Kostpris fra tilbuddets poster','Kost-prisen × antal på hver post i tilbuddet (materialer m.m.)'+(d.materials_replaced>0?'. '+krFmt(d.materials_replaced)+' er IKKE medregnet, fordi en faktura er fordelt på posten og erstatter overslaget':''),d.cost_to_complete,'−'],
       ['Løn til medarbejdere','Registrerede timer × medarbejderens timeløn (+ akkord) — '+(Math.round(hrs*10)/10).toString().replace('.',',')+' t fordelt på '+nEmp+' medarbejder'+(nEmp===1?'':'e')+' indtil nu',d.labor_cost,'−'],
-      ['Underleverandører','Uploadede fakturaer ekskl. moms ('+nSub+' stk.)',subTotal,'−']
+      ['Materialefakturaer','Uploadede materialefakturaer ekskl. moms ('+(d.subcontractor_costs||[]).filter(function(x){return x.kind==='material';}).length+' stk.)',matInvTotal,'−'],
+      ['Underleverandører','Uploadede fakturaer ekskl. moms ('+(d.subcontractor_costs||[]).filter(function(x){return (x.kind||'sub')==='sub';}).length+' stk.)',subTotal,'−']
     ];
     var expl=document.getElementById('pd-budget-explain');
     if(!expl){expl=document.createElement('div');expl.id='pd-budget-explain';summaryEl.insertAdjacentElement('afterend',expl);}
-    expl.innerHTML='<div class="pdb-ex"><div class="pdb-ex-h">🧮 Sådan er fortjenesten regnet</div>'
+    expl.innerHTML='<div class="pdb-ex pdb-sec" data-pdb-sec="explain"><div class="pdb-ex-h pdb-sec-h" data-pdb-toggle="explain"><i class="pdb-chev">▾</i>🧮 Sådan er fortjenesten regnet <span class="pdb-sec-sum">= '+krFmt(d.projected_profit)+'</span></div><div class="pdb-sec-b">'
       +rows.map(function(r){return '<div class="pdb-ex-r"><span class="op">'+r[3]+'</span><div class="t"><b>'+esc(r[0])+'</b><small>'+esc(r[1])+'</small></div><span class="v'+(r[3]==='−'?' neg':'')+'">'+(r[3]==='−'?negKr(r[2]):krFmt(r[2]))+'</span></div>';}).join('')
       +'<div class="pdb-ex-r tot"><span class="op">=</span><div class="t"><b>Forventet fortjeneste</b><small>'+Number(d.projected_margin).toFixed(1).replace('.',',')+' % af prisen ekskl. moms</small></div><span class="v" style="color:'+profitColor+'">'+krFmt(d.projected_profit)+'</span></div>'
-      +'<div class="pdb-ex-note">💡 Løn tæller kun de timer der er registreret indtil nu, så fortjenesten falder efterhånden som der registreres flere timer. Er underleverandørens pris allerede regnet med i kostprisen på en post, så vælg posten på udgiften (Tilbud + Post) — så erstatter fakturaen postens kostpris i stedet for at blive lagt oveni.</div></div>';
+      +'<div class="pdb-ex-note">💡 Løn tæller kun de timer der er registreret indtil nu, så fortjenesten falder efterhånden som der registreres flere timer. Fordel materiale- og underleverandørfakturaer på de poster de dækker — så erstatter fakturaen postens kostpris (overslaget) i stedet for at blive lagt oveni.</div></div></div>';
+    pdbApplyCollapsed();
   }
   renderPdBudgetQuotes(d);
   var body=document.getElementById('pd-budget-employees-body');
@@ -35845,8 +35872,10 @@ function renderPdBudget(){
       +'<td>'+akkordTxt+'</td>'
       +'<td class="num">'+krFmt(e.cost)+'</td>'
       +'</tr>';
-  }).join('')+((d.employees||[]).length?'<tr class="pdb-emp-tot"><td colspan="4"><b>Løn i alt</b> <span class="sub">— trækkes fra fortjenesten</span></td><td class="num"><b>−'+krFmt(d.labor_cost)+'</b></td></tr>':'');
+  }).join('')+((d.employees||[]).length?'<tr class="pdb-emp-tot"><td colspan="4"><b>Løn i alt</b> <span class="sub">— trækkes fra fortjenesten</span></td><td class="num"><b>'+negKr(d.labor_cost)+'</b></td></tr>':'');
+  var es=document.getElementById('pdb-sum-emp');if(es)es.textContent=(d.employees||[]).length?negKr(d.labor_cost):'';
   renderPdSubCosts();
+  pdbApplyCollapsed();
 }
 // v2.73.0 — fortjeneste pr. tilbud (vises når sagen har mere end ét tilbud).
 function negKr(v){return (Math.round(Number(v)||0)?'−':'')+krFmt(v);}
@@ -35861,15 +35890,16 @@ function renderPdBudgetQuotes(d){
     if(!q.counted)return '<a class="pdbq-c off" href="/admin#quotes/tilbud/'+q.id+'" target="_blank" rel="noopener">'+head+'<div class="r"><span>Tilbudspris</span><b>'+krFmt(q.approved)+'</b></div><div class="pdbq-note">Tæller med i sagen, når tilbuddet er godkendt.</div></a>';
     return '<a class="pdbq-c" href="/admin#quotes/tilbud/'+q.id+'" target="_blank" rel="noopener" title="Åbn tilbuddet i en ny fane">'+head
       +'<div class="r"><span>Pris ekskl. moms</span><b>'+krFmt(q.approved_ex!=null?q.approved_ex:q.approved)+'</b></div>'
-      +'<div class="r"><span>Kostpris på poster</span><b>−'+krFmt(q.materials)+'</b></div>'
-      +'<div class="r"><span>Løn på tilbuddets poster</span><b>−'+krFmt(q.labor)+'</b></div>'
-      +(q.subcontractor?'<div class="r"><span>Underleverandører</span><b>−'+krFmt(q.subcontractor)+'</b></div>':'')
-      +(q.shared_cost?'<div class="r"><span>Andel af fælles løn/udgifter</span><b>−'+krFmt(q.shared_cost)+'</b></div>':'')
+      +'<div class="r"><span>Kostpris på poster</span><b>'+negKr(q.materials)+'</b></div>'
+      +'<div class="r"><span>Løn på tilbuddets poster</span><b>'+negKr(q.labor)+'</b></div>'
+      +(q.material_invoices?'<div class="r"><span>Materialefakturaer</span><b>'+negKr(q.material_invoices)+'</b></div>':'')
+      +(q.subcontractor?'<div class="r"><span>Underleverandører</span><b>'+negKr(q.subcontractor)+'</b></div>':'')
+      +(q.shared_cost?'<div class="r"><span>Andel af fælles løn/udgifter</span><b>'+negKr(q.shared_cost)+'</b></div>':'')
       +'<div class="p"><span style="color:'+col(q.profit)+'">Fortjeneste · '+pc(q.margin)+'</span><b style="color:'+col(q.profit)+'">'+krFmt(q.profit)+'</b></div></a>';
   });
   cards.push('<div class="pdbq-c tot"><div class="h"><b>Hele sagen</b></div><div class="t">'+L.filter(function(q){return q.counted;}).length+' godkendte tilbud</div>'
     +'<div class="r"><span>Pris ekskl. moms</span><b>'+krFmt(d.approved_price_ex!=null?d.approved_price_ex:d.approved_price)+'</b></div>'
-    +'<div class="r"><span>Omkostninger i alt</span><b>'+krFmt(d.cost_to_complete+d.labor_cost+(Number(d.subcontractor_cost)||0))+'</b></div>'
+    +'<div class="r"><span>Omkostninger i alt</span><b>'+krFmt(d.cost_to_complete+d.labor_cost+(Number(d.subcontractor_cost)||0)+(Number(d.material_invoice_cost)||0))+'</b></div>'
     +'<div class="r"><span>Opkrævet</span><b>'+krFmt(d.collected)+'</b></div>'
     +'<div class="p"><span style="color:'+col(d.projected_profit)+'">Fortjeneste · '+pc(d.projected_margin)+'</span><b style="color:'+col(d.projected_profit)+'">'+krFmt(d.projected_profit)+'</b></div></div>');
   el.innerHTML='<div class="pdbq"><h3>📄 Fortjeneste pr. tilbud</h3><div class="pdbq-grid">'+cards.join('')+'</div>'
@@ -35887,123 +35917,146 @@ function pdSubLineOpts(qid,sel){
   return '<option value="">— Ingen bestemt post —</option>'+L.map(function(l){return '<option value="'+l.id+'"'+(Number(sel)===l.id?' selected':'')+'>'+esc((many&&l.quote_number?l.quote_number+': ':'')+String(l.description||'').slice(0,90))+'</option>';}).join('');
 }
 function pdSubLineQuote(lineId){var l=((pjCurrent&&pjCurrent.quote_line_options)||[]).find(function(x){return x.id===Number(lineId);});return l?l.quote_id:null;}
-// ── Flere faktura-PDF'er på én gang: AI læser dem, man retter/vælger og gemmer.
-var pdSubDrafts=[],pdSubDraftSeq=0;
-function pdSubReadFile(f){return new Promise(function(res,rej){var r=new FileReader();r.onload=function(){res(r.result);};r.onerror=rej;r.readAsDataURL(f);});}
-async function pdSubHandleFiles(files){
+// ── v2.74.3 — FAKTURAER PÅ SAGEN: underleverandører (kind 'sub') og
+// materialer (kind 'material'). Samme komponent for begge: upload flere
+// PDF'er (AI udfylder + foreslår fordeling på poster), tilføj manuelt, ret,
+// og fordel beløbet på én eller flere tilbudsposter med beløb pr. post.
+var pcDrafts=[],pcSeq=0;
+var PC_KINDS={sub:{label:'Underleverandør',noun:'underleverandør-faktura'},material:{label:'Leverandør',noun:'materialefaktura'}};
+function pcReadFile(f){return new Promise(function(res,rej){var r=new FileReader();r.onload=function(){res(r.result);};r.onerror=rej;r.readAsDataURL(f);});}
+function pcNum(v){var n=Number(String(v==null?'':v).replace(/\s/g,'').replace(/\.(?=\d{3}(\D|$))/g,'').replace(',','.'));return isFinite(n)?n:0;}
+function pcLineLabel(id){var l=((pjCurrent&&pjCurrent.quote_line_options)||[]).find(function(x){return x.id===Number(id);});return l?((pdSubQuotes().length>1&&l.quote_number?l.quote_number+': ':'')+String(l.description||'').slice(0,70)):'';}
+async function pcHandleFiles(kind,files){
   files=Array.prototype.slice.call(files||[]).filter(function(f){return /pdf$|^image\//.test(f.type)||/\.pdf$/i.test(f.name);});
   if(!files.length){toast('Vælg PDF-filer eller billeder af fakturaerne','⚠️');return;}
   var pid=pjCurrent.id;
-  var jobs=files.map(function(f){var dr={key:++pdSubDraftSeq,pid:pid,state:'loading',file_name:f.name,supplier:'',invoice_number:'',invoice_date:'',amount:'',description:'',quote_id:null,quote_line_id:null};pdSubDrafts.push(dr);return {f:f,dr:dr};});
-  renderPdSubDrafts();
-  // To ad gangen, så mange PDF'er ikke rammer AI'en samtidig.
+  var jobs=files.map(function(f){var dr={key:++pcSeq,pid:pid,kind:kind,state:'loading',file_name:f.name,supplier:'',invoice_number:'',invoice_date:'',amount:'',description:'',task_id:null,allocations:[]};pcDrafts.push(dr);return {f:f,dr:dr};});
+  pcRenderDrafts(kind);
   var i=0;
   async function worker(){
     while(i<jobs.length){
       var j=jobs[i++];
       try{
         if(j.f.size>15*1024*1024)throw new Error('Filen er over 15 MB');
-        var uri=await pdSubReadFile(j.f);
+        var uri=await pcReadFile(j.f);
         if(/\.pdf$/i.test(j.f.name)&&!/^data:application\/pdf/.test(uri))uri=uri.replace(/^data:[^;]*;/,'data:application/pdf;');
-        var r=await api('/api/projects/'+pid+'/subcontractor-costs/scan',{method:'POST',body:JSON.stringify({data_uri:uri,filename:j.f.name})});
+        var r=await api('/api/projects/'+pid+'/subcontractor-costs/scan',{method:'POST',body:JSON.stringify({data_uri:uri,filename:j.f.name,kind:kind})});
         if(!r||r.ok===false)throw new Error((r&&r.error)||'Kunne ikke læse filen');
-        Object.assign(j.dr,{state:'ready',file_url:r.file_url,file_name:r.file_name||j.f.name,supplier:r.supplier||'',invoice_number:r.invoice_number||'',invoice_date:r.invoice_date||new Date().toISOString().slice(0,10),amount:r.amount!=null?String(r.amount).replace('.',','):'',description:r.description||'',quote_id:r.quote_id||null,quote_line_id:r.quote_line_id||null,ai_error:r.ai_error||null,upload_error:r.upload_error||null,incl:r.amount_incl_vat});
+        var al=(r.allocations||[]).map(function(a){return {quote_line_id:a.quote_line_id,amount:String(a.amount).replace('.',','),reason:a.reason||''};});
+        if(!al.length&&r.quote_line_id)al=[{quote_line_id:r.quote_line_id,amount:''}];
+        Object.assign(j.dr,{state:'ready',file_url:r.file_url,file_name:r.file_name||j.f.name,supplier:r.supplier||'',invoice_number:r.invoice_number||'',invoice_date:r.invoice_date||new Date().toISOString().slice(0,10),amount:r.amount!=null?String(r.amount).replace('.',','):'',description:r.description||'',allocations:al,ai_error:r.ai_error||null,incl:r.amount_incl_vat,ai:!r.ai_error});
       }catch(e){Object.assign(j.dr,{state:'ready',ai_error:e.message||'Fejl',invoice_date:new Date().toISOString().slice(0,10)});}
-      if(pjCurrent&&pjCurrent.id===pid)renderPdSubDrafts();
+      if(pjCurrent&&pjCurrent.id===pid)pcRenderDrafts(kind);
     }
   }
   await Promise.all([worker(),worker()]);
 }
-function pdSubDraftSync(){
-  pdSubDrafts.forEach(function(dr){
-    var box=document.querySelector('[data-pdsub-draft="'+dr.key+'"]');if(!box||dr.state!=='ready'||!box.querySelector('[data-f]'))return;
+function pcNewDraft(kind,item,taskId){
+  pcSync();
+  if(item&&pcDrafts.some(function(d){return d.id===item.id;}))return;
+  var dr={key:++pcSeq,pid:pjCurrent.id,kind:kind,state:'ready',manual:!item,id:item?item.id:null,file_url:item?item.file_url:null,file_name:item?item.file_name:null,
+    supplier:item?item.supplier:'',invoice_number:item?item.invoice_number:'',invoice_date:item?(item.invoice_date||''):new Date().toISOString().slice(0,10),
+    amount:item?String(item.amount).replace('.',','):'',description:item?item.description:'',task_id:item?item.task_id:(taskId||null),
+    allocations:item?(item.allocations||[]).map(function(a){return {quote_line_id:a.quote_line_id,amount:String(a.amount).replace('.',',')};}):[]};
+  pcDrafts.unshift(dr);pcRenderDrafts(kind);
+  setTimeout(function(){var b=document.querySelector('[data-pc-draft="'+dr.key+'"] [data-f="supplier"]');if(b)b.focus();},30);
+}
+function pcSync(){
+  pcDrafts.forEach(function(dr){
+    var box=document.querySelector('[data-pc-draft="'+dr.key+'"]');if(!box||dr.state!=='ready'||!box.querySelector('[data-f]'))return;
     ['supplier','invoice_number','invoice_date','amount','description'].forEach(function(k){var x=box.querySelector('[data-f="'+k+'"]');if(x)dr[k]=x.value;});
-    var q=box.querySelector('[data-f="quote_id"]'),l=box.querySelector('[data-f="quote_line_id"]');
-    dr.quote_id=q&&q.value?Number(q.value):null;dr.quote_line_id=l&&l.value?Number(l.value):null;
+    var t=box.querySelector('[data-f="task_id"]');if(t)dr.task_id=t.value||null;
+    dr.allocations=Array.prototype.map.call(box.querySelectorAll('.pc-al-row'),function(row,i){var old=dr.allocations[i]||{};return {quote_line_id:Number(row.querySelector('select').value)||null,amount:row.querySelector('input').value,reason:old.reason||''};});
   });
 }
-function renderPdSubDrafts(){
-  var el=document.getElementById('pdsub-drafts');if(!el)return;
-  pdSubDraftSync();
-  if(pjCurrent)pdSubDrafts=pdSubDrafts.filter(function(d){return d.pid===pjCurrent.id;});
-  if(!pdSubDrafts.length){el.innerHTML='';return;}
-  var ready=pdSubDrafts.filter(function(d){return d.state==='ready';}).length;
-  el.innerHTML=(ready>1?'<div class="pdsub-saveall"><button type="button" class="pdsub-save" data-pdsub-saveall>Gem alle '+ready+' udgifter</button></div>':'')+pdSubDrafts.map(function(dr){
-    if(dr.state==='loading')return '<div class="pdsub-draft" data-pdsub-draft="'+dr.key+'"><div class="pdsub-dhead"><span class="pdsub-spin"></span><b>'+esc(dr.file_name)+'</b><span class="pdsub-tag">AI læser fakturaen…</span></div></div>';
-    var tag=dr.ai_error?'<span class="pdsub-tag warn" title="'+esc(dr.ai_error)+'">Udfyld selv — AI kunne ikke læse den</span>':'<span class="pdsub-tag">✨ Udfyldt af AI — tjek tallene</span>';
-    return '<div class="pdsub-draft'+(dr.ai_error?' err':'')+'" data-pdsub-draft="'+dr.key+'"><div class="pdsub-dhead">📄 <b>'+(dr.file_url?'<a href="'+esc(dr.file_url)+'" target="_blank" rel="noopener">'+esc(dr.file_name)+' ↗</a>':esc(dr.file_name))+'</b>'+tag+'</div>'
+function pcAllocSummary(dr){
+  var total=pcNum(dr.amount),fixed=0,blanks=0;
+  (dr.allocations||[]).forEach(function(a){if(!a.quote_line_id)return;if(String(a.amount||'').trim()==='')blanks++;else fixed+=pcNum(a.amount);});
+  var used=blanks?total:Math.min(total,fixed);
+  if(!(dr.allocations||[]).some(function(a){return a.quote_line_id;}))return '<span class="pc-al-info">Ikke fordelt på poster — tæller som en fælles udgift for hele sagen.</span>';
+  var rest=Math.round((total-(blanks?total:fixed))*100)/100;
+  if(fixed>total+0.5)return '<span class="pc-al-info warn">Der er fordelt '+krFmt(fixed)+' — mere end fakturaens '+krFmt(total)+'.</span>';
+  return '<span class="pc-al-info ok">Fordelt '+krFmt(used)+' af '+krFmt(total)+(rest>0.5?' · <b>'+krFmt(rest)+' ufordelt</b> (tæller for hele sagen)':' ✓')+'</span>';
+}
+function pcAllocHtml(dr){
+  return '<div class="pc-al"><div class="pc-al-h"><b>Hvilke poster dækker fakturaen?</b><small>Fakturaen erstatter postens kostpris i budgettet. Tomt beløb = resten.</small></div>'
+    +(dr.allocations||[]).map(function(a,i){
+      return '<div class="pc-al-row"><select>'+pdSubLineOpts(null,a.quote_line_id).replace('— Ingen bestemt post —','— Vælg post —')+'</select>'
+        +'<div class="pdsub-amt"><input inputmode="decimal" placeholder="Resten" value="'+esc(a.amount||'')+'"><em>kr</em></div>'
+        +'<button type="button" class="pc-al-x" data-pc-alx="'+i+'" title="Fjern">✕</button>'
+        +(a.reason?'<div class="pc-al-why">✨ '+esc(a.reason)+'</div>':'')+'</div>';
+    }).join('')
+    +'<div class="pc-al-foot"><button type="button" class="pc-al-add" data-pc-aladd>＋ Fordel på en post</button>'+pcAllocSummary(dr)+'</div></div>';
+}
+function pcRenderDrafts(kind){
+  var el=document.getElementById('pc-'+kind+'-drafts');if(!el)return;
+  pcSync();
+  if(pjCurrent)pcDrafts=pcDrafts.filter(function(d){return d.pid===pjCurrent.id;});
+  var L=pcDrafts.filter(function(d){return d.kind===kind;});
+  var newReady=L.filter(function(d){return d.state==='ready'&&!d.id;}).length;
+  var K=PC_KINDS[kind];
+  var tasks=((pjCurrent&&pjCurrent.tasks)||[]).filter(function(t){return !t.is_group;});
+  el.innerHTML=(newReady>1?'<div class="pdsub-saveall"><button type="button" class="pdsub-save" data-pc-saveall="'+kind+'">Gem alle '+newReady+'</button></div>':'')+L.map(function(dr){
+    if(dr.state==='loading')return '<div class="pdsub-draft" data-pc-draft="'+dr.key+'"><div class="pdsub-dhead"><span class="pdsub-spin"></span><b>'+esc(dr.file_name)+'</b><span class="pdsub-tag">AI læser fakturaen…</span></div></div>';
+    var tag=dr.id?'<span class="pdsub-tag">✎ Retter gemt '+esc(K.noun)+'</span>':(dr.manual?'<span class="pdsub-tag">Ny '+esc(K.noun)+'</span>':(dr.ai_error?'<span class="pdsub-tag warn" title="'+esc(dr.ai_error)+'">Udfyld selv — AI kunne ikke læse den</span>':'<span class="pdsub-tag">✨ Udfyldt af AI — tjek tallene</span>'));
+    var fileLbl=dr.file_name?(dr.file_url?'<a href="'+esc(dr.file_url)+'" target="_blank" rel="noopener">📄 '+esc(dr.file_name)+' ↗</a>':'📄 '+esc(dr.file_name)):'✍️ Manuel';
+    return '<div class="pdsub-draft'+(dr.ai_error&&!dr.id&&!dr.manual?' err':'')+'" data-pc-draft="'+dr.key+'"><div class="pdsub-dhead"><b>'+fileLbl+'</b>'+tag+'</div>'
       +'<div class="pdsub-grid">'
-      +'<label class="pdsub-f pdsub-wide"><span>Underleverandør</span><input data-f="supplier" value="'+esc(dr.supplier)+'" placeholder="Fx VVS Hansen ApS"></label>'
-      +'<label class="pdsub-f"><span>Fakturanr.</span><input data-f="invoice_number" value="'+esc(dr.invoice_number)+'"></label>'
-      +'<label class="pdsub-f"><span>Fakturadato</span><input data-f="invoice_date" type="date" value="'+esc(dr.invoice_date)+'"></label>'
-      +'<label class="pdsub-f pdsub-wide"><span>Hvad dækker den</span><input data-f="description" value="'+esc(dr.description)+'"></label>'
-      +'<label class="pdsub-f"><span>Beløb ekskl. moms'+(dr.incl?' <em>(inkl. '+krFmt(dr.incl)+')</em>':'')+'</span><div class="pdsub-amt"><input data-f="amount" inputmode="decimal" value="'+esc(dr.amount)+'" placeholder="0"><em>kr</em></div></label>'
-      +'<label class="pdsub-f"><span>Tilbud</span><select data-f="quote_id">'+pdSubQuoteOpts(dr.quote_id)+'</select></label>'
-      +'<label class="pdsub-f" style="grid-column:span 4"><span>Post i tilbuddet</span><select data-f="quote_line_id">'+pdSubLineOpts(dr.quote_id,dr.quote_line_id)+'</select></label>'
-      +'</div><div class="pdsub-foot"><button type="button" class="pdsub-cancel" data-pdsub-drop="'+dr.key+'">Fjern</button><button type="button" class="pdsub-save" data-pdsub-dsave="'+dr.key+'">Gem udgift</button></div></div>';
+      +'<label class="pdsub-f pdsub-wide"><span>'+K.label+'</span><input data-f="supplier" value="'+esc(dr.supplier||'')+'" placeholder="'+(kind==='material'?'Fx STARK, Scandinova':'Fx VVS Hansen ApS')+'"></label>'
+      +'<label class="pdsub-f"><span>Fakturanr.</span><input data-f="invoice_number" value="'+esc(dr.invoice_number||'')+'" placeholder="Valgfri"></label>'
+      +'<label class="pdsub-f"><span>Fakturadato</span><input data-f="invoice_date" type="date" value="'+esc(dr.invoice_date||'')+'"></label>'
+      +'<label class="pdsub-f pdsub-wide"><span>Hvad dækker den</span><input data-f="description" value="'+esc(dr.description||'')+'" placeholder="'+(kind==='material'?'Fx sildebensparket, lim og olie':'Fx omlægning af radiatorer')+'"></label>'
+      +'<label class="pdsub-f"><span>Opgave <em>valgfri</em></span><select data-f="task_id"><option value="">— Hele sagen —</option>'+tasks.map(function(t){return '<option value="'+esc(t.id)+'"'+(String(dr.task_id)===String(t.id)?' selected':'')+'>'+esc(t.name||'(uden navn)')+'</option>';}).join('')+'</select></label>'
+      +'<label class="pdsub-f"><span>Beløb ekskl. moms'+(dr.incl?' <em>(inkl. '+krFmt(dr.incl)+')</em>':'')+'</span><div class="pdsub-amt"><input data-f="amount" inputmode="decimal" value="'+esc(dr.amount||'')+'" placeholder="0"><em>kr</em></div></label>'
+      +'</div>'+pcAllocHtml(dr)
+      +'<div class="pdsub-foot"><button type="button" class="pdsub-cancel" data-pc-drop="'+dr.key+'">'+(dr.id?'Annullér':'Fjern')+'</button><button type="button" class="pdsub-save" data-pc-dsave="'+dr.key+'">'+(dr.id?'Gem ændringer':'Gem')+'</button></div></div>';
   }).join('');
 }
-async function pdSubSaveDraft(key,quiet){
-  pdSubDraftSync();
-  var dr=pdSubDrafts.find(function(d){return d.key===key;});if(!dr||dr.state!=='ready')return false;
-  var body={supplier:dr.supplier,invoice_number:dr.invoice_number,invoice_date:dr.invoice_date,description:dr.description,amount:dr.amount,quote_id:dr.quote_id||(dr.quote_line_id?pdSubLineQuote(dr.quote_line_id):null),quote_line_id:dr.quote_line_id,file_url:dr.file_url||null,file_name:dr.file_name||null};
-  var r=await api('/api/projects/'+pjCurrent.id+'/subcontractor-costs',{method:'POST',body:JSON.stringify(body)});
-  if(!r||r.ok===false||r.error){toast(((r&&r.error)||'Kunne ikke gemme')+' — '+dr.file_name,'❌');return false;}
-  pdSubDrafts=pdSubDrafts.filter(function(d){return d.key!==key;});
-  if(!quiet){toast('Udgift gemt','✓');renderPdSubDrafts();loadPdBudget();}
+async function pcSaveDraft(key,quiet){
+  pcSync();
+  var dr=pcDrafts.find(function(d){return d.key===key;});if(!dr||dr.state!=='ready')return false;
+  var al=(dr.allocations||[]).filter(function(a){return a.quote_line_id;}).map(function(a){return {quote_line_id:a.quote_line_id,amount:String(a.amount||'').trim()===''?null:a.amount};});
+  var body={kind:dr.kind,supplier:dr.supplier,invoice_number:dr.invoice_number,invoice_date:dr.invoice_date,description:dr.description,amount:dr.amount,task_id:dr.task_id||null,allocations:al,quote_id:null,quote_line_id:null,file_url:dr.file_url||null,file_name:dr.file_name||null};
+  var r=await api('/api/projects/'+pjCurrent.id+'/subcontractor-costs'+(dr.id?'/'+dr.id:''),{method:dr.id?'PUT':'POST',body:JSON.stringify(body)});
+  if(!r||r.ok===false||r.error){toast(((r&&r.error)||'Kunne ikke gemme')+(dr.file_name?' — '+dr.file_name:''),'❌');return false;}
+  pcDrafts=pcDrafts.filter(function(d){return d.key!==key;});
+  if(!quiet){toast('Gemt','✓');pcRenderDrafts(dr.kind);loadPdBudget();}
   return true;
 }
-async function pdSubSaveAll(){
-  pdSubDraftSync();
-  var keys=pdSubDrafts.filter(function(d){return d.state==='ready';}).map(function(d){return d.key;});
-  var ok=0;for(var k=0;k<keys.length;k++){if(await pdSubSaveDraft(keys[k],true))ok++;}
-  renderPdSubDrafts();loadPdBudget();if(ok)toast(ok+' udgift'+(ok===1?'':'er')+' gemt','✓');
+async function pcSaveAll(kind){
+  pcSync();
+  var keys=pcDrafts.filter(function(d){return d.kind===kind&&d.state==='ready'&&!d.id;}).map(function(d){return d.key;});
+  var ok=0;for(var k=0;k<keys.length;k++){if(await pcSaveDraft(keys[k],true))ok++;}
+  pcRenderDrafts(kind);loadPdBudget();if(ok)toast(ok+' gemt','✓');
 }
-// v2.56.0 — underleverandør-udgifter pr. sag (Budget-fanen).
-var pdSubEditId=null;
+function renderPdSubDrafts(){pcRenderDrafts('sub');pcRenderDrafts('material');}
 function renderPdSubCosts(){
-  var d=pdBudgetData||{},L=d.subcontractor_costs||[];
-  var body=document.getElementById('pd-budget-sub-body');if(!body)return;
-  if(!L.length){body.innerHTML='<div class="pdsub-empty">Ingen underleverandør-udgifter på sagen endnu.</div>';return;}
-  var tot=L.reduce(function(s,x){return s+(Number(x.amount)||0);},0);
-  body.innerHTML=L.map(function(x){
-    var meta=[x.invoice_number?'Faktura '+esc(x.invoice_number):'',x.invoice_date?esc(x.invoice_date.split('-').reverse().join('.')):'',x.quote_number?'📄 '+esc(x.quote_number)+(x.quote_line_desc?': '+esc(String(x.quote_line_desc).slice(0,60)):''):'',x.task_name?'Opgave: '+esc(x.task_name):'',x.file_url?'<a href="'+esc(x.file_url)+'" target="_blank" rel="noopener" style="color:#4338CA;font-weight:600;text-decoration:none" title="'+esc(x.file_name||'Faktura')+'">📎 PDF</a>':'',x.quote_line_id?'<span style="color:#0369A1;font-weight:600" title="Postens kostpris i tilbuddet tælles ikke med — fakturaen erstatter den">↺ erstatter postens kostpris</span>':''].filter(Boolean).join(' · ');
-    return '<div class="pdsub-row"><div class="pdsub-av">'+esc(String(x.supplier||x.description||'?').trim().charAt(0).toUpperCase())+'</div><div class="pdsub-main"><b>'+esc(x.supplier||x.description||'Underleverandør')+'</b><div>'+(x.supplier&&x.description?esc(x.description)+(meta?' · ':''):'')+meta+'</div></div><div class="pdsub-val">'+krFmt(x.amount)+'</div><div class="pdsub-acts"><button type="button" data-pdsub-edit="'+x.id+'" title="Ret">✎</button><button type="button" data-pdsub-del="'+x.id+'" title="Slet">✕</button></div></div>';
-  }).join('')+'<div class="pdsub-total"><span>I alt ekskl. moms — trækkes fra fortjenesten</span><b>−'+krFmt(tot)+'</b></div>';
+  var d=pdBudgetData||{},all=d.subcontractor_costs||[];
+  ['sub','material'].forEach(function(kind){
+    var body=document.getElementById('pc-'+kind+'-list');if(!body)return;
+    var L=all.filter(function(x){return (x.kind||'sub')===kind;});
+    var tot=L.reduce(function(s2,x){return s2+(Number(x.amount)||0);},0);
+    var sumEl=document.getElementById('pdb-sum-'+kind);if(sumEl)sumEl.textContent=L.length?(L.length+' stk · '+negKr(tot)):'';
+    if(!L.length){body.innerHTML='<div class="pdsub-empty">'+(kind==='material'?'Ingen materialefakturaer på sagen endnu.':'Ingen underleverandør-udgifter på sagen endnu.')+'</div>';return;}
+    body.innerHTML=L.map(function(x){
+      var al=(x.allocations||[]);
+      var meta=[x.invoice_number?'Faktura '+esc(x.invoice_number):'',x.invoice_date?esc(x.invoice_date.split('-').reverse().join('.')):'',x.task_name?'Opgave: '+esc(x.task_name):'',x.file_url?'<a href="'+esc(x.file_url)+'" target="_blank" rel="noopener" style="color:#4338CA;font-weight:600;text-decoration:none" title="'+esc(x.file_name||'Faktura')+'">📎 PDF</a>':''].filter(Boolean).join(' · ');
+      var alHtml=al.length?'<div class="pc-al-list">'+al.map(function(a){return '<span title="Erstatter postens kostpris i budgettet">↺ '+esc((a.quote_number&&pdSubQuotes().length>1?a.quote_number+': ':'')+String(a.description||'Post').slice(0,50))+' · '+krFmt(a.amount)+'</span>';}).join('')+'</div>':'';
+      return '<div class="pdsub-row"><div class="pdsub-av'+(kind==='material'?' mat':'')+'">'+esc(String(x.supplier||x.description||'?').trim().charAt(0).toUpperCase())+'</div><div class="pdsub-main"><b>'+esc(x.supplier||x.description||(kind==='material'?'Materialer':'Underleverandør'))+'</b><div>'+(x.supplier&&x.description?esc(x.description)+(meta?' · ':''):'')+meta+'</div>'+alHtml+'</div><div class="pdsub-val">'+krFmt(x.amount)+'</div><div class="pdsub-acts"><button type="button" data-pc-edit="'+x.id+'" title="Ret">✎</button><button type="button" data-pc-del="'+x.id+'" title="Slet">✕</button></div></div>';
+    }).join('')+'<div class="pdsub-total"><span>I alt ekskl. moms — trækkes fra fortjenesten</span><b>'+negKr(tot)+'</b></div>';
+  });
 }
-function pdSubOpenForm(item,taskId){
-  pdSubEditId=item?item.id:null;
-  var sel=document.getElementById('pdsub-task');
-  sel.innerHTML='<option value="">— Hele sagen —</option>'+(pjCurrent&&pjCurrent.tasks||[]).filter(function(t){return !t.is_group;}).map(function(t){return '<option value="'+esc(t.id)+'">'+esc(t.name||'(uden navn)')+'</option>';}).join('');
-  document.getElementById('pdsub-supplier').value=item?item.supplier:'';
-  document.getElementById('pdsub-invno').value=item?item.invoice_number:'';
-  document.getElementById('pdsub-date').value=item?item.invoice_date:new Date().toISOString().slice(0,10);
-  document.getElementById('pdsub-desc').value=item?item.description:'';
-  sel.value=item?(item.task_id||''):(taskId||'');
-  var qs=document.getElementById('pdsub-quote');qs.innerHTML=pdSubQuoteOpts(item?item.quote_id:null);
-  document.getElementById('pdsub-line').innerHTML=pdSubLineOpts(item?item.quote_id:null,item?item.quote_line_id:null);
-  document.getElementById('pdsub-file-wrap').innerHTML=item&&item.file_url?'<a class="pdsub-file" href="'+esc(item.file_url)+'" target="_blank" rel="noopener">📎 '+esc(item.file_name||'Faktura')+'</a>':'';
-  document.getElementById('pdsub-amount').value=item?String(item.amount).replace('.',','):'';
-  document.getElementById('pdsub-save').textContent=item?'Gem ændringer':'Gem udgift';
-  document.getElementById('pdsub-form').hidden=false;
-  document.getElementById('pdsub-add-btn').style.display='none';
-  setTimeout(function(){document.getElementById('pdsub-supplier').focus();},30);
-}
-function pdSubCloseForm(){document.getElementById('pdsub-form').hidden=true;document.getElementById('pdsub-add-btn').style.display='';pdSubEditId=null;}
-async function pdSubSave(){
-  var body={supplier:document.getElementById('pdsub-supplier').value,invoice_number:document.getElementById('pdsub-invno').value,invoice_date:document.getElementById('pdsub-date').value,description:document.getElementById('pdsub-desc').value,task_id:document.getElementById('pdsub-task').value||null,amount:document.getElementById('pdsub-amount').value,quote_line_id:document.getElementById('pdsub-line').value||null};
-  body.quote_id=document.getElementById('pdsub-quote').value||(body.quote_line_id?pdSubLineQuote(body.quote_line_id):null);
-  var btn=document.getElementById('pdsub-save');btn.disabled=true;
-  var r=await api('/api/projects/'+pjCurrent.id+'/subcontractor-costs'+(pdSubEditId?'/'+pdSubEditId:''),{method:pdSubEditId?'PUT':'POST',body:JSON.stringify(body)});
-  btn.disabled=false;
-  if(!r||r.ok===false||r.error){toast((r&&r.error)||'Kunne ikke gemme','❌');return;}
-  toast('Udgift gemt','✓');pdSubCloseForm();loadPdBudget();
-}
-async function pdSubDelete(id){
+// Bagudkompatibelt navn (bruges fra opgave-popuppens "Underleverandør"-genvej).
+function pdSubOpenForm(item,taskId){pcNewDraft(item?(item.kind||'sub'):'sub',item||null,taskId);}
+async function pcDelete(id){
   var x=((pdBudgetData||{}).subcontractor_costs||[]).find(function(y){return y.id===id;});
-  if(!await gmConfirm('Slet udgiften'+(x&&x.supplier?' fra '+x.supplier:'')+'?','Slet udgift'))return;
+  if(!await gmConfirm('Slet '+(x&&x.supplier?'fakturaen fra '+x.supplier:'udgiften')+'?','Slet'))return;
   await api('/api/projects/'+pjCurrent.id+'/subcontractor-costs/'+id,{method:'DELETE'});loadPdBudget();
 }
+// ── Sammenklappelige sektioner i Budget (huskes i browseren) ──
+function pdbCollapsed(){try{return JSON.parse(localStorage.getItem('gm_pdb_collapsed')||'{}')||{};}catch(e){return {};}}
+function pdbApplyCollapsed(){var c=pdbCollapsed();document.querySelectorAll('#pdtab-budget [data-pdb-sec]').forEach(function(el){el.classList.toggle('collapsed',!!c[el.dataset.pdbSec]);});}
+function pdbToggle(key){var c=pdbCollapsed();c[key]=!c[key];try{localStorage.setItem('gm_pdb_collapsed',JSON.stringify(c));}catch(e){}pdbApplyCollapsed();}
 function pdtdUpdateSubHint(taskId){
   var el=document.getElementById('pdtd-subhint');if(!el)return;
   el.style.display=(typeof me!=='undefined'&&me&&me.role==='admin')?'':'none';
@@ -36014,39 +36067,39 @@ function pdtdUpdateSubHint(taskId){
 }
 (function(){
   function init(){
-    var add=document.getElementById('pdsub-add-btn');if(!add)return;
-    add.addEventListener('click',function(){pdSubOpenForm(null);});
-    document.getElementById('pdsub-cancel').addEventListener('click',pdSubCloseForm);
-    document.getElementById('pdsub-save').addEventListener('click',pdSubSave);
-    document.getElementById('pdsub-amount').addEventListener('keydown',function(e){if(e.key==='Enter')pdSubSave();});
-    document.getElementById('pdsub-quote').addEventListener('change',function(){var l=document.getElementById('pdsub-line');var cur=l.value;l.innerHTML=pdSubLineOpts(this.value,this.value&&pdSubLineQuote(cur)===Number(this.value)?cur:null);});
-    document.getElementById('pdsub-line').addEventListener('change',function(){var q=document.getElementById('pdsub-quote');var qid=pdSubLineQuote(this.value);if(qid&&!q.value){q.value=String(qid);var v=this.value;this.innerHTML=pdSubLineOpts(qid,v);}});
-    var fi=document.getElementById('pdsub-files');
-    fi.addEventListener('change',function(){var f=this.files;pdSubHandleFiles(f);this.value='';});
-    var drop=document.getElementById('pdsub-drop');
-    ['dragenter','dragover'].forEach(function(ev){drop.addEventListener(ev,function(e){e.preventDefault();drop.classList.add('on');});});
-    ['dragleave','drop'].forEach(function(ev){drop.addEventListener(ev,function(e){e.preventDefault();drop.classList.remove('on');});});
-    drop.addEventListener('drop',function(e){if(e.dataTransfer&&e.dataTransfer.files)pdSubHandleFiles(e.dataTransfer.files);});
-    var dr=document.getElementById('pdsub-drafts');
-    dr.addEventListener('click',function(e){
-      var sv=e.target.closest('[data-pdsub-dsave]'),rm=e.target.closest('[data-pdsub-drop]'),all=e.target.closest('[data-pdsub-saveall]');
-      if(sv){sv.disabled=true;pdSubSaveDraft(Number(sv.dataset.pdsubDsave)).then(function(ok){if(!ok)sv.disabled=false;});}
-      if(rm){pdSubDraftSync();pdSubDrafts=pdSubDrafts.filter(function(d){return d.key!==Number(rm.dataset.pdsubDrop);});renderPdSubDrafts();}
-      if(all){all.disabled=true;pdSubSaveAll();}
+    var page=document.getElementById('pdtab-budget');if(!page)return;
+    page.addEventListener('click',function(e){
+      var tg=e.target.closest('[data-pdb-toggle]');if(tg&&!e.target.closest('button:not([data-pdb-toggle]),a,input,label.pdsub-add')){pdbToggle(tg.dataset.pdbToggle);return;}
+      var add=e.target.closest('[data-pc-add]');if(add){var k=add.dataset.pcAdd;var c=pdbCollapsed();if(c[k]){pdbToggle(k);}pcNewDraft(k,null);return;}
+      var ed=e.target.closest('[data-pc-edit]');if(ed){var id=Number(ed.dataset.pcEdit);var it=((pdBudgetData||{}).subcontractor_costs||[]).find(function(x){return x.id===id;});if(it)pcNewDraft(it.kind||'sub',it);return;}
+      var de=e.target.closest('[data-pc-del]');if(de){pcDelete(Number(de.dataset.pcDel));return;}
+      var draftBox=e.target.closest('[data-pc-draft]');
+      var sv=e.target.closest('[data-pc-dsave]');if(sv){sv.disabled=true;pcSaveDraft(Number(sv.dataset.pcDsave)).then(function(ok){if(!ok)sv.disabled=false;});return;}
+      var rm=e.target.closest('[data-pc-drop]');if(rm){pcSync();var dk=Number(rm.dataset.pcDrop);var d0=pcDrafts.find(function(d){return d.key===dk;});pcDrafts=pcDrafts.filter(function(d){return d.key!==dk;});if(d0)pcRenderDrafts(d0.kind);return;}
+      var all=e.target.closest('[data-pc-saveall]');if(all){all.disabled=true;pcSaveAll(all.dataset.pcSaveall);return;}
+      if(draftBox){
+        var key=Number(draftBox.dataset.pcDraft),dr=pcDrafts.find(function(d){return d.key===key;});if(!dr)return;
+        if(e.target.closest('[data-pc-aladd]')){pcSync();dr.allocations.push({quote_line_id:null,amount:''});pcRenderDrafts(dr.kind);return;}
+        var x=e.target.closest('[data-pc-alx]');if(x){pcSync();dr.allocations.splice(Number(x.dataset.pcAlx),1);pcRenderDrafts(dr.kind);return;}
+      }
     });
-    dr.addEventListener('change',function(e){
-      var t=e.target;if(!t.dataset||!t.dataset.f)return;
-      var box=t.closest('[data-pdsub-draft]');if(!box)return;
-      if(t.dataset.f==='quote_id'){var l=box.querySelector('[data-f="quote_line_id"]');var cur=l.value;l.innerHTML=pdSubLineOpts(t.value,t.value&&pdSubLineQuote(cur)===Number(t.value)?cur:null);}
-      if(t.dataset.f==='quote_line_id'){var q=box.querySelector('[data-f="quote_id"]');var qid=pdSubLineQuote(t.value);if(qid&&!q.value){q.value=String(qid);var v=t.value;t.innerHTML=pdSubLineOpts(qid,v);}}
-      pdSubDraftSync();
+    page.addEventListener('change',function(e){
+      var box=e.target.closest('[data-pc-draft]');if(box){pcSync();var key=Number(box.dataset.pcDraft),dr=pcDrafts.find(function(d){return d.key===key;});var info=box.querySelector('.pc-al-info');if(dr&&info)info.outerHTML=pcAllocSummary(dr);}
+      var fi=e.target.closest('input[type=file][data-pc-files]');if(fi){var f=fi.files;pcHandleFiles(fi.dataset.pcFiles,f);fi.value='';}
     });
-    document.getElementById('pd-budget-sub-body').addEventListener('click',function(e){
-      var ed=e.target.closest('[data-pdsub-edit]'),de=e.target.closest('[data-pdsub-del]');
-      if(ed){var id=Number(ed.dataset.pdsubEdit);pdSubOpenForm(((pdBudgetData||{}).subcontractor_costs||[]).find(function(x){return x.id===id;}));}
-      if(de)pdSubDelete(Number(de.dataset.pdsubDel));
+    page.addEventListener('input',function(e){
+      var box=e.target.closest('[data-pc-draft]');if(!box||!(e.target.matches('[data-f="amount"]')||e.target.closest('.pc-al-row')))return;
+      pcSync();var key=Number(box.dataset.pcDraft),dr=pcDrafts.find(function(d){return d.key===key;});var info=box.querySelector('.pc-al-info');if(dr&&info)info.outerHTML=pcAllocSummary(dr);
     });
-    document.getElementById('pdtd-subhint-btn').addEventListener('click',async function(){
+    page.querySelectorAll('[data-pc-dropzone]').forEach(function(drop){
+      var kind=drop.dataset.pcDropzone;
+      ['dragenter','dragover'].forEach(function(ev){drop.addEventListener(ev,function(e){e.preventDefault();drop.classList.add('on');});});
+      ['dragleave','drop'].forEach(function(ev){drop.addEventListener(ev,function(e){e.preventDefault();drop.classList.remove('on');});});
+      drop.addEventListener('drop',function(e){if(e.dataTransfer&&e.dataTransfer.files)pcHandleFiles(kind,e.dataTransfer.files);});
+    });
+    pdbApplyCollapsed();
+    var hb=document.getElementById('pdtd-subhint-btn');
+    if(hb)hb.addEventListener('click',async function(){
       var tid=pdTaskDetailId;closeModal('pd-task-detail-modal');switchPdTab('budget');
       await loadPdBudget();pdSubOpenForm(null,tid);
       document.getElementById('pd-budget-sub-wrap').scrollIntoView({behavior:'smooth',block:'start'});

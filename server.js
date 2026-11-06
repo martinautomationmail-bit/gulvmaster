@@ -2627,6 +2627,11 @@ async function initSchema() {
     ALTER TABLE project_subcontractor_costs ADD COLUMN IF NOT EXISTS file_name TEXT;
     ALTER TABLE project_subcontractor_costs ADD COLUMN IF NOT EXISTS quote_id INTEGER;
     ALTER TABLE project_subcontractor_costs ADD COLUMN IF NOT EXISTS quote_line_id INTEGER;
+    -- v2.74.3 — samme tabel bruges nu også til MATERIALE-fakturaer (kind='material'),
+    -- og en faktura kan fordeles på flere tilbudsposter med beløb pr. post
+    -- (allocations = [{quote_line_id, amount}]).
+    ALTER TABLE project_subcontractor_costs ADD COLUMN IF NOT EXISTS kind TEXT NOT NULL DEFAULT 'sub';
+    ALTER TABLE project_subcontractor_costs ADD COLUMN IF NOT EXISTS allocations JSONB;
     CREATE INDEX IF NOT EXISTS idx_project_subcontractor_costs ON project_subcontractor_costs(project_id);
     -- RUNDE H: Færdig-mailen til kunden sendes nu automatisk når SAGEN sættes til
     -- "Afsluttet" (status='done'), ikke længere manuelt pr. opgave i Opgavepool.
@@ -17666,24 +17671,44 @@ function subCostFields(b) {
     quote_line_id: Number(b.quote_line_id) || null,
     file_url: /^https:\/\//.test(String(b.file_url || '')) ? String(b.file_url).slice(0, 1000) : null,
     file_name: String(b.file_name || '').trim().slice(0, 200) || null,
+    kind: b.kind === 'material' ? 'material' : 'sub',
+    allocations: costAllocations(b.allocations, isFinite(amount) ? amount : 0),
   };
+}
+// Fordeling på tilbudsposter: tomme beløb deler resten ligeligt.
+function costAllocations(raw, total) {
+  if (!Array.isArray(raw)) return null;
+  const parse = v => { if (v === null || v === undefined || String(v).trim() === '') return null; const n = typeof v === 'number' ? v : Number(String(v).trim().replace(/\s/g, '').replace(/\.(?=\d{3}(\D|$))/g, '').replace(',', '.')); return isFinite(n) ? Math.max(0, Math.round(n * 100) / 100) : null; };
+  const rows = raw.map(a => ({ quote_line_id: Number(a && a.quote_line_id) || null, amount: parse(a && a.amount) })).filter(a => a.quote_line_id).slice(0, 50);
+  if (!rows.length) return null;
+  const fixed = rows.filter(a => a.amount !== null).reduce((x, a) => x + a.amount, 0);
+  const blanks = rows.filter(a => a.amount === null);
+  if (blanks.length) { const each = Math.max(0, Math.round(((Number(total) || 0) - fixed) / blanks.length * 100) / 100); blanks.forEach(a => { a.amount = each; }); }
+  return rows;
+}
+async function costAllocQuoteId(allocs) {
+  if (!allocs || !allocs.length) return null;
+  const r = await pool.query('SELECT DISTINCT quote_id FROM quote_lines WHERE id = ANY($1::int[])', [allocs.map(a => a.quote_line_id)]);
+  return r.rows.length === 1 ? r.rows[0].quote_id : null;
 }
 app.post('/api/projects/:id/subcontractor-costs', auth, adminOnly, asyncRoute(async (req, res) => {
   const f = subCostFields(req.body || {});
   if (!(f.amount > 0)) return res.status(400).json({ error: 'Skriv et beløb' });
   if (!f.supplier && !f.description) return res.status(400).json({ error: 'Skriv hvem underleverandøren er' });
+  if (f.allocations) { f.quote_line_id = null; f.quote_id = await costAllocQuoteId(f.allocations) || f.quote_id; }
   if (f.quote_line_id && !f.quote_id) { const l = await pgOne('SELECT quote_id FROM quote_lines WHERE id=$1', [f.quote_line_id]); f.quote_id = l ? l.quote_id : null; }
-  const row = await pgOne(`INSERT INTO project_subcontractor_costs (project_id, supplier, description, invoice_number, invoice_date, amount, task_id, created_by, quote_id, quote_line_id, file_url, file_name)
-    VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING *`, [req.params.id, f.supplier, f.description, f.invoice_number, f.invoice_date, f.amount, f.task_id, req.user.id, f.quote_id, f.quote_line_id, f.file_url, f.file_name]);
+  const row = await pgOne(`INSERT INTO project_subcontractor_costs (project_id, supplier, description, invoice_number, invoice_date, amount, task_id, created_by, quote_id, quote_line_id, file_url, file_name, kind, allocations)
+    VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14) RETURNING *`, [req.params.id, f.supplier, f.description, f.invoice_number, f.invoice_date, f.amount, f.task_id, req.user.id, f.quote_id, f.quote_line_id, f.file_url, f.file_name, f.kind, f.allocations ? JSON.stringify(f.allocations) : null]);
   res.json(row);
 }));
 app.put('/api/projects/:id/subcontractor-costs/:costId', auth, adminOnly, asyncRoute(async (req, res) => {
   const f = subCostFields(req.body || {});
   if (!(f.amount > 0)) return res.status(400).json({ error: 'Skriv et beløb' });
+  if (f.allocations) { f.quote_line_id = null; f.quote_id = await costAllocQuoteId(f.allocations) || f.quote_id; }
   if (f.quote_line_id && !f.quote_id) { const l = await pgOne('SELECT quote_id FROM quote_lines WHERE id=$1', [f.quote_line_id]); f.quote_id = l ? l.quote_id : null; }
   const row = await pgOne(`UPDATE project_subcontractor_costs SET supplier=$1, description=$2, invoice_number=$3, invoice_date=$4, amount=$5, task_id=$6,
-      quote_id=$9, quote_line_id=$10, file_url=COALESCE($11, file_url), file_name=COALESCE($12, file_name), updated_at=${nowTextSQL()}
-    WHERE id=$7 AND project_id=$8 RETURNING *`, [f.supplier, f.description, f.invoice_number, f.invoice_date, f.amount, f.task_id, req.params.costId, req.params.id, f.quote_id, f.quote_line_id, f.file_url, f.file_name]);
+      quote_id=$9, quote_line_id=$10, file_url=COALESCE($11, file_url), file_name=COALESCE($12, file_name), kind=$13, allocations=$14, updated_at=${nowTextSQL()}
+    WHERE id=$7 AND project_id=$8 RETURNING *`, [f.supplier, f.description, f.invoice_number, f.invoice_date, f.amount, f.task_id, req.params.costId, req.params.id, f.quote_id, f.quote_line_id, f.file_url, f.file_name, f.kind, f.allocations ? JSON.stringify(f.allocations) : null]);
   if (!row) return res.status(404).json({ error: 'Ikke fundet' });
   res.json(row);
 }));
@@ -17727,12 +17752,14 @@ app.post('/api/projects/:id/subcontractor-costs/scan', auth, adminOnly, asyncRou
           amount_incl_vat: { type: 'number', description: 'Fakturaens samlede beløb inkl. moms i kr' },
           description: { type: 'string', description: 'Kort dansk beskrivelse (max 80 tegn) af hvad fakturaen dækker' },
           quote_id: { type: 'integer', description: 'id på det tilbud fakturaen bedst passer til, hvis det kan afgøres' },
-          quote_line_id: { type: 'integer', description: 'id på den tilbudspost fakturaen bedst passer til, hvis det kan afgøres' }
+          quote_line_id: { type: 'integer', description: 'id på den tilbudspost fakturaen bedst passer til, hvis det kan afgøres' },
+          allocations: { type: 'array', description: 'Forslag til fordeling af fakturaens beløb EKSKL. moms på sagens tilbudsposter. Summen må højst være amount_ex_vat. Udelad poster du ikke er rimeligt sikker på.', items: { type: 'object', properties: { quote_line_id: { type: 'integer' }, amount: { type: 'number', description: 'kr ekskl. moms' }, reason: { type: 'string', description: 'kort: hvilke fakturalinjer' } }, required: ['quote_line_id', 'amount'] } }
         },
         required: ['supplier', 'amount_ex_vat']
       }
     };
-    const system = 'Du læser danske leverandørfakturaer for Gulv Master (gulvfirma). Udfyld værktøjet "faktura" med fakturaens oplysninger. Beløb skal være tal i kr (fx 12500.5). Står der kun beløb inkl. moms, så beregn ekskl. moms (dansk moms 25 %). Foreslå kun tilbud/post hvis det er rimeligt tydeligt ud fra fakturaens tekst.' + (ctx ? '\n\nSagens tilbud og poster:\n' + ctx.slice(0, 8000) : '');
+    const isMat = b.kind === 'material';
+    const system = 'Du læser danske leverandørfakturaer for Gulv Master (gulvfirma). Fakturaen er en ' + (isMat ? 'MATERIALE-faktura (fx fra en byggemarked/grossist: gulvbrædder, lim, olie, spartel)' : 'faktura fra en UNDERLEVERANDØR (håndværker der har udført en del af arbejdet)') + '. Udfyld værktøjet "faktura" med fakturaens oplysninger. Beløb skal være tal i kr (fx 12500.5). Står der kun beløb inkl. moms, så beregn ekskl. moms (dansk moms 25 %). Gå fakturaens linjer igennem og foreslå i allocations hvilke af sagens tilbudsposter de hører til, med beløb ekskl. moms pr. post (fx gulvbrædder → posten for lægning/materiale af gulv, lim → samme post, olie → slibning/behandling). Ved én tydelig post: én allocation med hele beløbet.' + (ctx ? '\n\nSagens tilbud og poster:\n' + ctx.slice(0, 9000) : '\n\nSagen har ingen tilbudsposter — udelad allocations.');
     const content = [
       isPdf ? { type: 'document', source: { type: 'base64', media_type: 'application/pdf', data } } : { type: 'image', source: { type: 'base64', media_type: mime, data } },
       { type: 'text', text: 'Udfyld værktøjet "faktura" ud fra denne faktura.' }
@@ -17760,7 +17787,9 @@ app.post('/api/projects/:id/subcontractor-costs/scan', auth, adminOnly, asyncRou
     amount: amount > 0 ? Math.round(amount * 100) / 100 : null,
     amount_incl_vat: Number(x.amount_incl_vat) > 0 ? Number(x.amount_incl_vat) : null,
     description: x.description ? String(x.description).slice(0, 300) : '',
-    quote_id: quoteId, quote_line_id: line ? line.id : null
+    quote_id: quoteId, quote_line_id: line ? line.id : null,
+    allocations: Array.isArray(x.allocations) ? x.allocations.filter(a => lines.some(l => l.id === Number(a.quote_line_id)) && Number(a.amount) > 0)
+      .map(a => ({ quote_line_id: Number(a.quote_line_id), amount: Math.round(Number(a.amount) * 100) / 100, reason: a.reason ? String(a.reason).slice(0, 120) : '' })).slice(0, 20) : []
   });
 }));
 app.delete('/api/projects/:id/subcontractor-costs/:costId', auth, adminOnly, asyncRoute(async (req, res) => {
@@ -17792,7 +17821,12 @@ app.get('/api/projects/:id/budget', auth, adminOnly, asyncRoute(async (req, res)
   // v2.74.2 — en underleverandør-faktura der er koblet til en bestemt
   // tilbudspost ERSTATTER postens kostpris (den faktiske udgift afløser
   // overslaget), så den ikke tælles med to gange.
-  const replacedLineIds = (await pool.query('SELECT DISTINCT quote_line_id FROM project_subcontractor_costs WHERE project_id=$1 AND quote_line_id IS NOT NULL', [req.params.id])).rows.map(r => r.quote_line_id);
+  // v2.74.3 — fakturaer (underleverandør + materialer) kan fordeles på flere
+  // poster (allocations); gamle rækker med kun quote_line_id = én fordeling.
+  const costRowsRaw = (await pool.query('SELECT id, amount, quote_line_id, allocations FROM project_subcontractor_costs WHERE project_id=$1', [req.params.id])).rows;
+  const allocOf = c => (Array.isArray(c.allocations) && c.allocations.length) ? c.allocations.map(a => ({ quote_line_id: Number(a.quote_line_id), amount: Number(a.amount) || 0 }))
+    : (c.quote_line_id ? [{ quote_line_id: c.quote_line_id, amount: Number(c.amount) || 0 }] : []);
+  const replacedLineIds = [...new Set(costRowsRaw.flatMap(c => allocOf(c).map(a => a.quote_line_id)).filter(Boolean))];
   const matRows = countedIds.length ? (await pool.query(
     `SELECT quote_id,
         COALESCE(SUM(cost_price * quantity) FILTER (WHERE NOT (id = ANY($2::int[]))), 0) AS s,
@@ -17854,16 +17888,28 @@ app.get('/api/projects/:id/budget', auth, adminOnly, asyncRoute(async (req, res)
      WHERE c.project_id=$1 ORDER BY COALESCE(c.invoice_date, c.created_at) ASC, c.id ASC`,
     [req.params.id]
   ).then(r => r.rows);
-  const subcontractorTotal = subRows.reduce((sum, r) => sum + (Number(r.amount) || 0), 0);
-  const subByQuote = {};
+  const allLineIds = [...new Set(subRows.flatMap(c => allocOf(c).map(a => a.quote_line_id)))];
+  const lineInfo = {};
+  if (allLineIds.length) (await pool.query('SELECT l.id, l.quote_id, l.description, q.quote_number FROM quote_lines l JOIN quotes q ON q.id=l.quote_id WHERE l.id = ANY($1::int[])', [allLineIds])).rows.forEach(r => { lineInfo[r.id] = r; });
+  const isMat = r => r.kind === 'material';
+  const subcontractorTotal = subRows.filter(r => !isMat(r)).reduce((sum, r) => sum + (Number(r.amount) || 0), 0);
+  const materialInvoiceTotal = subRows.filter(isMat).reduce((sum, r) => sum + (Number(r.amount) || 0), 0);
+  const subByQuote = {}, matInvByQuote = {};
   let subShared = 0;
   subRows.forEach(r => {
-    const amt = Number(r.amount) || 0;
-    if (r.eff_quote_id && countedIds.includes(r.eff_quote_id)) subByQuote[r.eff_quote_id] = (subByQuote[r.eff_quote_id] || 0) + amt;
-    else subShared += amt;
+    const amt = Number(r.amount) || 0, bucket = isMat(r) ? matInvByQuote : subByQuote;
+    let rest = amt;
+    allocOf(r).forEach(a => {
+      const li = lineInfo[a.quote_line_id]; const part = Math.min(rest, a.amount);
+      if (li && countedIds.includes(li.quote_id) && part > 0) { bucket[li.quote_id] = (bucket[li.quote_id] || 0) + part; rest -= part; }
+    });
+    if (rest > 0.005) {
+      if (r.eff_quote_id && countedIds.includes(r.eff_quote_id)) bucket[r.eff_quote_id] = (bucket[r.eff_quote_id] || 0) + rest;
+      else subShared += rest;
+    }
   });
 
-  const profit = approvedEx - costToComplete - laborTotal - subcontractorTotal;
+  const profit = approvedEx - costToComplete - laborTotal - subcontractorTotal - materialInvoiceTotal;
   const margin = approvedEx > 0 ? (profit / approvedEx) * 100 : 0;
 
   // Pr. tilbud: direkte omkostninger + en andel af de fælles omkostninger
@@ -17875,14 +17921,14 @@ app.get('/api/projects/:id/budget', auth, adminOnly, asyncRoute(async (req, res)
   const perQuote = pQuotes.map(q => {
     if (!q.counted) return { id: q.id, quote_number: q.quote_number, title: q.quote_title || q.job_name || '', status: q.status, is_primary: q.is_primary, counted: false, approved: q.total };
     const share = approvedEx > 0 ? exVat(q) / approvedEx : (counted.length ? 1 / counted.length : 0);
-    const materials = matByQuote[q.id] || 0, labor = laborByQuote[q.id] || 0, sub = subByQuote[q.id] || 0;
+    const materials = matByQuote[q.id] || 0, labor = laborByQuote[q.id] || 0, sub = subByQuote[q.id] || 0, matInv = matInvByQuote[q.id] || 0;
     const sharedPart = sharedTotal * share;
-    const cost = materials + labor + sub + sharedPart;
+    const cost = materials + labor + sub + matInv + sharedPart;
     const p2 = exVat(q) - cost;
     return {
       id: q.id, quote_number: q.quote_number, title: q.quote_title || q.job_name || '', status: q.status, is_primary: q.is_primary, counted: true,
       approved: q.total, approved_ex: exVat(q), collected: collectedByQuote[q.id] || 0,
-      materials, materials_replaced: replacedByQuote[q.id] || 0, labor, subcontractor: sub, shared_cost: sharedPart, cost,
+      materials, materials_replaced: replacedByQuote[q.id] || 0, labor, subcontractor: sub, material_invoices: matInv, shared_cost: sharedPart, cost,
       profit: p2, margin: exVat(q) > 0 ? (p2 / exVat(q)) * 100 : 0
     };
   });
@@ -17897,7 +17943,8 @@ app.get('/api/projects/:id/budget', auth, adminOnly, asyncRoute(async (req, res)
     cost_to_complete: costToComplete,
     labor_cost: laborTotal,
     subcontractor_cost: subcontractorTotal,
-    subcontractor_costs: subRows.map(r => ({ id: r.id, supplier: r.supplier || '', description: r.description || '', invoice_number: r.invoice_number || '', invoice_date: r.invoice_date || '', amount: Number(r.amount) || 0, task_id: r.task_id || null, task_name: r.task_name || '', quote_id: r.quote_id || null, quote_line_id: r.quote_line_id || null, quote_number: r.quote_number || '', quote_line_desc: r.quote_line_desc || '', file_url: r.file_url || null, file_name: r.file_name || null })),
+    material_invoice_cost: materialInvoiceTotal,
+    subcontractor_costs: subRows.map(r => ({ kind: r.kind || 'sub', allocations: allocOf(r).map(a => ({ ...a, description: (lineInfo[a.quote_line_id] || {}).description || '', quote_number: (lineInfo[a.quote_line_id] || {}).quote_number || '' })), id: r.id, supplier: r.supplier || '', description: r.description || '', invoice_number: r.invoice_number || '', invoice_date: r.invoice_date || '', amount: Number(r.amount) || 0, task_id: r.task_id || null, task_name: r.task_name || '', quote_id: r.quote_id || null, quote_line_id: r.quote_line_id || null, quote_number: r.quote_number || '', quote_line_desc: r.quote_line_desc || '', file_url: r.file_url || null, file_name: r.file_name || null })),
     projected_profit: profit,
     projected_margin: margin,
     shared_cost: sharedTotal,
