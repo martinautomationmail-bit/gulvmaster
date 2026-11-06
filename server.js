@@ -17842,7 +17842,7 @@ app.get('/api/projects/:id/budget', auth, adminOnly, asyncRoute(async (req, res)
   // akkord-prissnapshot (te.akkord_rate). Er registreringen tagget med en
   // tilbudspost, ved vi hvilket tilbud den hører til (ql.quote_id).
   const laborRows = await pool.query(`
-    SELECT te.id, te.user_id, te.minutes, te.akkord_item_id, te.akkord_quantity,
+    SELECT te.id, te.user_id, te.minutes, te.akkord_item_id, te.akkord_quantity, te.quote_line_id, te.entry_date, te.note,
            u.name AS user_name, u.pay_type, u.hourly_wage,
            ai.name AS akkord_name, COALESCE(te.akkord_rate, ai.rate) AS akkord_rate,
            ql.quote_id AS line_quote_id
@@ -17863,6 +17863,7 @@ app.get('/api/projects/:id/budget', auth, adminOnly, asyncRoute(async (req, res)
       ? (Number(row.akkord_quantity) || 0) * (Number(row.akkord_rate) || 0)
       : (minutes / 60) * (Number(row.hourly_wage) || 0);
     laborTotal += cost;
+    row._cost = cost; row._akkord = isAkkord;
     if (row.line_quote_id && countedIds.includes(row.line_quote_id)) laborByQuote[row.line_quote_id] = (laborByQuote[row.line_quote_id] || 0) + cost;
     else laborShared += cost;
     const key = row.user_id || 0;
@@ -17933,7 +17934,62 @@ app.get('/api/projects/:id/budget', auth, adminOnly, asyncRoute(async (req, res)
     };
   });
 
+  // v2.74.5 (Martin: "baseret på hvad folk tracker kan jeg se hvad jeg
+  // egentlig ender med at tjene på hver post") — fortjeneste PR. POST:
+  // salgspris ekskl. moms − (fakturaer fordelt på posten, ellers postens
+  // kostpris som overslag) − løn fra tidsregistreringer tagget med posten.
+  const qLines = countedIds.length ? (await pool.query(`SELECT l.*, q.quote_number, q.total AS q_total, q.tax_amount AS q_tax
+    FROM quote_lines l JOIN quotes q ON q.id=l.quote_id WHERE l.quote_id = ANY($1::int[]) ORDER BY array_position($1::int[], l.quote_id), l.position, l.id`, [countedIds])).rows : [];
+  const rawByQuote = {};
+  qLines.forEach(l => { if (l.line_type === 'text') return; const g = (Number(l.quantity) || 0) * (Number(l.sell_price) || 0); rawByQuote[l.quote_id] = (rawByQuote[l.quote_id] || 0) + g - lineDiscountAmount(l, g); });
+  const invByLine = {};
+  subRows.forEach(r => allocOf(r).forEach(a => { (invByLine[a.quote_line_id] = invByLine[a.quote_line_id] || []).push({ id: r.id, kind: r.kind || 'sub', supplier: r.supplier || '', description: r.description || '', invoice_number: r.invoice_number || '', invoice_date: r.invoice_date || '', amount: Number(a.amount) || 0, file_url: r.file_url || null }); }));
+  const fmtEntry = r => ({ date: String(r.entry_date || '').slice(0, 10), name: r.user_name || 'Ukendt', minutes: Number(r.minutes) || 0, cost: Math.round((r._cost || 0) * 100) / 100, note: r.note || '', akkord: r._akkord ? ((r.akkord_name || '') + ' × ' + (Number(r.akkord_quantity) || 0)) : null });
+  let lastHeading = '';
+  const perLine = [];
+  qLines.forEach(l => {
+    if (l.line_type === 'text') { lastHeading = l.description || ''; return; }
+    const g = (Number(l.quantity) || 0) * (Number(l.sell_price) || 0);
+    const net = g - lineDiscountAmount(l, g);
+    const qEx = Math.max(0, (Number(l.q_total) || 0) - (Number(l.q_tax) || 0));
+    const ratio = rawByQuote[l.quote_id] > 0 ? qEx / rawByQuote[l.quote_id] : 1; // fordeler evt. dokumentrabat
+    const sale = net * ratio;
+    const est = (Number(l.cost_price) || 0) * (Number(l.quantity) || 0);
+    const invs = invByLine[l.id] || [];
+    const matAct = invs.filter(x => x.kind === 'material').reduce((x, y) => x + y.amount, 0);
+    const subAct = invs.filter(x => x.kind !== 'material').reduce((x, y) => x + y.amount, 0);
+    const costUsed = invs.length ? matAct + subAct : est;
+    const entries = laborRows.filter(r => r.quote_line_id === l.id);
+    const labor = entries.reduce((x, r) => x + (r._cost || 0), 0), minutes = entries.reduce((x, r) => x + (Number(r.minutes) || 0), 0);
+    const emp = {};
+    entries.forEach(r => { const k = r.user_id || 0; const e = emp[k] = emp[k] || { name: r.user_name || 'Ukendt', minutes: 0, cost: 0, days: new Set() }; e.minutes += Number(r.minutes) || 0; e.cost += r._cost || 0; if (r.entry_date) e.days.add(String(r.entry_date).slice(0, 10)); });
+    const profit2 = sale - costUsed - labor;
+    perLine.push({
+      id: l.id, quote_id: l.quote_id, quote_number: l.quote_number, heading: lastHeading, description: l.description || '', quantity: Number(l.quantity) || 0, unit: l.unit || '',
+      sell_price: Number(l.sell_price) || 0, sale: Math.round(sale * 100) / 100, est_cost: Math.round(est * 100) / 100,
+      has_invoices: invs.length > 0, materials_actual: matAct, sub_actual: subAct, cost_used: Math.round(costUsed * 100) / 100,
+      labor: Math.round(labor * 100) / 100, minutes, profit: Math.round(profit2 * 100) / 100, margin: sale > 0 ? profit2 / sale * 100 : null,
+      invoiced: !!l.invoiced_in_invoice_id,
+      employees: Object.values(emp).map(e => ({ name: e.name, minutes: e.minutes, cost: Math.round(e.cost * 100) / 100, days: e.days.size })).sort((x, y) => y.minutes - x.minutes),
+      entries: entries.map(fmtEntry).sort((x, y) => y.date.localeCompare(x.date)),
+      invoices: invs
+    });
+  });
+  const lineIdSet = new Set(qLines.map(l => l.id));
+  const unEntries = laborRows.filter(r => !r.quote_line_id || !lineIdSet.has(r.quote_line_id));
+  const unInvoices = subRows.map(r => { const al = allocOf(r).filter(a => lineIdSet.has(a.quote_line_id)).reduce((x, a) => x + a.amount, 0); return { id: r.id, kind: r.kind || 'sub', supplier: r.supplier || '', description: r.description || '', invoice_number: r.invoice_number || '', amount: Math.max(0, Math.round(((Number(r.amount) || 0) - al) * 100) / 100), file_url: r.file_url || null }; }).filter(x => x.amount > 0.005);
+  const unEmp = {};
+  unEntries.forEach(r => { const k = r.user_id || 0; const e = unEmp[k] = unEmp[k] || { name: r.user_name || 'Ukendt', minutes: 0, cost: 0, days: new Set() }; e.minutes += Number(r.minutes) || 0; e.cost += r._cost || 0; if (r.entry_date) e.days.add(String(r.entry_date).slice(0, 10)); });
+  const unassigned = {
+    labor: Math.round(unEntries.reduce((x, r) => x + (r._cost || 0), 0) * 100) / 100, minutes: unEntries.reduce((x, r) => x + (Number(r.minutes) || 0), 0),
+    invoices_total: unInvoices.reduce((x, y) => x + y.amount, 0), invoices: unInvoices,
+    employees: Object.values(unEmp).map(e => ({ name: e.name, minutes: e.minutes, cost: Math.round(e.cost * 100) / 100, days: e.days.size })).sort((x, y) => y.minutes - x.minutes),
+    entries: unEntries.map(fmtEntry).sort((x, y) => y.date.localeCompare(x.date))
+  };
+
   res.json({
+    lines: perLine,
+    unassigned,
     approved_price: approved,
     approved_price_ex: approvedEx,
     vat_amount: approved - approvedEx,

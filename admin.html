@@ -5380,6 +5380,27 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
 @keyframes pdsubspin{to{transform:rotate(360deg)}}
 .pdsub-saveall{display:flex;justify-content:flex-end;margin:-2px 0 12px}
 .pdsub-file{font-size:12px;color:#4338CA;font-weight:600;text-decoration:none;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pdl{margin:22px 0 4px;background:#fff;border:1px solid #E5E7EB;border-radius:16px;padding:14px 18px}
+.pdl h3{font-size:15px;margin:0}.pdl:not(.collapsed) h3{margin-bottom:8px}
+.pdl-top{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:8px}.pdl-top .sub{font-size:12px;max-width:720px}
+.pdl-sort{display:flex;gap:4px;flex-shrink:0}.pdl-sort button{border:1px solid #E5E7EB;background:#fff;border-radius:999px;padding:5px 11px;font:600 12px Inter,system-ui,sans-serif;cursor:pointer;color:#4B5563;white-space:nowrap}.pdl-sort button.on{background:#111318;color:#fff;border-color:#111318}
+.pdl-wrap{overflow-x:auto}
+.pdl-t td{vertical-align:top}.pdl-t td small{display:block;font-size:11px;color:#9CA3AF;font-weight:500}
+.pdl-t td b{font-weight:600}.pdl-r{cursor:pointer}.pdl-r:hover td{background:#F5F7FF}
+.pdl-r.neg td{background:#FEF2F2}.pdl-r.neg:hover td{background:#FEE2E2}.pdl-r.neg .pdl-p{color:#B91C1C}
+.pdl-p{font-weight:800}.pdl-r.un td{background:#F9FAFB;font-style:italic}
+.pdl-m{display:inline-block;font-weight:700;font-size:12px;border-radius:999px;padding:2px 8px;background:#DCFCE7;color:#15803D}.pdl-m.warn{background:#FEF3C7;color:#92400E}.pdl-m.neg{background:#FEE2E2;color:#B91C1C}
+.pdl-hd td{font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.04em;color:#6B7280;background:#F9FAFB;padding-top:8px;padding-bottom:6px}
+.pdl-modal{max-width:640px;width:94vw;max-height:88vh;overflow:auto}
+.pdl-mh h3{margin:6px 0 2px;font-size:17px}
+.pdl-calc{margin:14px 0 6px;border:1px solid #E5E7EB;border-radius:12px;padding:4px 14px}
+.pdl-calc>div{display:grid;grid-template-columns:1fr auto;gap:0 12px;padding:8px 0;border-top:1px solid #F3F4F6}.pdl-calc>div:first-child{border-top:0}
+.pdl-calc span{font-weight:700;font-size:13.5px}.pdl-calc small{grid-column:1;font-size:11.5px;color:#6B7280}.pdl-calc b{grid-row:1/span 2;grid-column:2;align-self:center;font-size:14px}.pdl-calc b.neg{color:#B91C1C}
+.pdl-calc .muted{opacity:.55}.pdl-calc .muted b{text-decoration:line-through}.pdl-calc .tot{border-top:2px solid #111318}.pdl-calc .tot b{font-size:18px}
+.pdl-kpi{font-size:12px;color:#0369A1;margin-bottom:6px}
+.pdl-modal h4{font-size:13px;margin:16px 0 6px}
+.pdl-inv{display:flex;align-items:center;gap:10px;padding:7px 0;border-top:1px solid #F3F4F6;font-size:13px}.pdl-inv span{flex:1;min-width:0}.pdl-inv small{display:block;color:#6B7280;font-size:11.5px}.pdl-inv a{color:#4338CA;font-weight:600;text-decoration:none;font-size:12px}
+.pdl-ents>div{display:grid;grid-template-columns:80px 1fr auto;gap:10px;padding:7px 0;border-top:1px solid #F3F4F6;font-size:12.5px}.pdl-ents .d{color:#6B7280}.pdl-ents small{display:block;color:#6B7280;font-size:11.5px;white-space:pre-line}.pdl-ents .c{font-weight:700}
 .pdb-sec-h{cursor:pointer;user-select:none}
 .pdb-chev{display:inline-block;font-style:normal;color:#9CA3AF;font-size:12px;margin-right:6px;transition:transform .15s}
 .pdb-sec.collapsed .pdb-chev{transform:rotate(-90deg)}
@@ -5802,7 +5823,7 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
        i browseren faktisk ER det nyeste deploy, eller om Render/GitHub bare
        ikke er nået at opdatere endnu — i stedet for at skulle gætte om en
        rettelse "stadig ikke virker" eller bare endnu ikke er live. -->
-  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build v2.74.4 · 2026-11-02</span></div>
+  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build v2.75.0 · 2026-11-02</span></div>
 </aside>
 <div class="app-content">
 <!-- RUNDE FB — AI-ASSISTENTEN (Martin: "en ai der er nede i venstre hjørne af
@@ -9833,6 +9854,8 @@ body.ai-has-reply #ai-fab{animation:ai-nudge 1.4s ease-in-out 3}
         <div id="pd-budget-explain"></div>
         <!-- v2.73.0 — fortjeneste pr. tilbud når sagen har flere tilbud -->
         <div id="pd-budget-quotes"></div>
+        <!-- v2.74.5 — fortjeneste pr. post (ud fra tidsregistrering + fakturaer) -->
+        <div id="pd-budget-lines"></div>
         <div class="pdb-sec pdb-emp" data-pdb-sec="emp">
           <div class="pdb-sec-h pdb-emp-h" data-pdb-toggle="emp"><h3><i class="pdb-chev">▾</i>👷 Løn &amp; akkord pr. medarbejder <span class="pdb-sec-sum" id="pdb-sum-emp"></span></h3></div>
           <div class="pdb-sec-b">
@@ -35860,6 +35883,7 @@ function renderPdBudget(){
     pdbApplyCollapsed();
   }
   renderPdBudgetQuotes(d);
+  renderPdBudgetLines(d);
   var body=document.getElementById('pd-budget-employees-body');
   if(!d.employees||!d.employees.length)body.innerHTML='<tr><td colspan="5" style="text-align:center;color:var(--bly-sub);padding:20px">Ingen tidsregistreringer på sagen endnu</td></tr>';
   else body.innerHTML=d.employees.map(function(e){
@@ -35878,6 +35902,64 @@ function renderPdBudget(){
   pdbApplyCollapsed();
 }
 // v2.73.0 — fortjeneste pr. tilbud (vises når sagen har mere end ét tilbud).
+// ── v2.74.5 — FORTJENESTE PR. POST: hvad tjener vi reelt på hver post, ud fra
+// det medarbejderne tracker og de fakturaer der er fordelt på posten. ──
+var pdlSort='order';
+function pdlHours(m){return (Math.round((Number(m)||0)/6)/10).toString().replace('.',',')+' t';}
+function pdlPct(v){return v==null?'–':Number(v).toFixed(0)+' %';}
+function renderPdBudgetLines(d){
+  var el=document.getElementById('pd-budget-lines');if(!el)return;
+  var L=(d.lines||[]).slice();
+  if(!L.length||pdBudgetHidden){el.innerHTML='';return;}
+  if(pdlSort==='loss')L.sort(function(a,b){return a.profit-b.profit;});
+  var multiQ=(d.quotes||[]).filter(function(q){return q.counted;}).length>1;
+  var tracked=L.filter(function(l){return l.minutes>0||l.has_invoices;}).length;
+  var losers=L.filter(function(l){return l.profit<0;}).length;
+  var un=d.unassigned||{};
+  var lastHead=null;
+  var rows=L.map(function(l,i){
+    var head='';
+    if(pdlSort==='order'){var h=(multiQ?l.quote_number+(l.heading?' · ':''):'')+(l.heading||'');if(h&&h!==lastHead){head='<tr class="pdl-hd"><td colspan="6">'+esc(h)+'</td></tr>';}lastHead=h;}
+    var neg=l.profit<0,warn=!neg&&l.margin!=null&&l.margin<15;
+    return head+'<tr class="pdl-r'+(neg?' neg':'')+(warn?' warn':'')+'" data-pdl="'+l.id+'">'
+      +'<td><b>'+esc(String(l.description||'').split('\n')[0].slice(0,80))+'</b><small>'+l.quantity+' '+esc(l.unit||'')+(l.invoiced?' · faktureret':'')+'</small></td>'
+      +'<td class="num">'+krFmt(l.sale)+'</td>'
+      +'<td class="num">'+negKr(l.cost_used)+'<small>'+(l.has_invoices?'faktura':'overslag')+'</small></td>'
+      +'<td class="num">'+negKr(l.labor)+'<small>'+(l.minutes?pdlHours(l.minutes):'ingen timer')+'</small></td>'
+      +'<td class="num pdl-p">'+krFmt(l.profit)+'</td>'
+      +'<td class="num"><span class="pdl-m'+(neg?' neg':warn?' warn':'')+'">'+pdlPct(l.margin)+'</span></td></tr>';
+  }).join('');
+  var unRow=(un.labor||un.invoices_total)?'<tr class="pdl-r un" data-pdl="un"><td><b>Ikke koblet til en post</b><small>Timer/fakturaer uden valgt post</small></td><td class="num">–</td><td class="num">'+negKr(un.invoices_total||0)+'</td><td class="num">'+negKr(un.labor||0)+'<small>'+pdlHours(un.minutes)+'</small></td><td class="num pdl-p">'+krFmt(-((un.labor||0)+(un.invoices_total||0)))+'</td><td class="num">–</td></tr>':'';
+  el.innerHTML='<div class="pdl pdb-sec" data-pdb-sec="lines"><h3 class="pdb-sec-h" data-pdb-toggle="lines"><i class="pdb-chev">▾</i>📊 Fortjeneste pr. post <span class="pdb-sec-sum">'+L.length+' poster'+(losers?' · <b style="color:#B91C1C">'+losers+' med tab</b>':'')+'</span></h3>'
+    +'<div class="pdb-sec-b"><div class="pdl-top"><span class="sub">Salgspris − materialer/underleverandører (fakturaer fordelt på posten, ellers kostprisen som overslag) − løn fra de timer der er registreret på posten. '+tracked+' af '+L.length+' poster har registreringer. Klik på en post for detaljer.</span>'
+    +'<div class="pdl-sort"><button type="button" data-pdl-sort="order" class="'+(pdlSort==='order'?'on':'')+'">Tilbuddets rækkefølge</button><button type="button" data-pdl-sort="loss" class="'+(pdlSort==='loss'?'on':'')+'">Dårligste først</button></div></div>'
+    +'<div class="pdl-wrap"><table class="bly-table pdl-t"><thead><tr><th>Post</th><th class="num">Salg ekskl. moms</th><th class="num">Materialer / UL</th><th class="num">Løn</th><th class="num">Fortjeneste</th><th class="num">Margin</th></tr></thead><tbody>'+rows+unRow+'</tbody></table></div>'
+    +(un.minutes?'<div class="pdbq-note">💡 '+pdlHours(un.minutes)+' er registreret uden at vælge en post. Bed medarbejderne vælge "Post fra tilbud", når de registrerer tid — så bliver tallene pr. post rigtige.</div>':'')+'</div></div>';
+  pdbApplyCollapsed();
+}
+function pdlOpen(id){
+  var d=pdBudgetData||{};var l=id==='un'?Object.assign({description:'Ikke koblet til en post',un:true},d.unassigned||{}):(d.lines||[]).find(function(x){return String(x.id)===String(id);});if(!l)return;
+  var m=document.getElementById('pdl-modal');
+  if(!m){m=document.createElement('div');m.className='mo';m.id='pdl-modal';m.innerHTML='<div class="modal pdl-modal"><div id="pdl-body"></div><div class="modal-actions"><button class="btn" type="button" onclick="closeModal(\'pdl-modal\')">Luk</button></div></div>';document.body.appendChild(m);m.addEventListener('click',function(e){if(e.target===m)closeModal('pdl-modal');});}
+  var invs=l.invoices||[],emps=l.employees||[],ents=l.entries||[];
+  var calc=l.un?'':'<div class="pdl-calc">'
+    +'<div><span>Salgspris ekskl. moms</span><small>'+l.quantity+' '+esc(l.unit||'')+' × '+krFmt(l.sell_price)+(Math.abs(l.sale-l.quantity*l.sell_price)>1?' (efter rabat)':'')+'</small><b>'+krFmt(l.sale)+'</b></div>'
+    +(l.has_invoices
+      ?(l.materials_actual?'<div><span>− Materialefakturaer</span><small>Fordelt på posten</small><b class="neg">'+negKr(l.materials_actual)+'</b></div>':'')+(l.sub_actual?'<div><span>− Underleverandører</span><small>Fordelt på posten</small><b class="neg">'+negKr(l.sub_actual)+'</b></div>':'')+'<div class="muted"><span>Kostpris i tilbuddet (overslag)</span><small>Erstattet af fakturaerne — tælles ikke med</small><b>'+krFmt(l.est_cost)+'</b></div>'
+      :'<div><span>− Kostpris (overslag)</span><small>Ingen fakturaer fordelt på posten endnu</small><b class="neg">'+negKr(l.est_cost)+'</b></div>')
+    +'<div><span>− Løn</span><small>'+pdlHours(l.minutes)+' registreret på posten</small><b class="neg">'+negKr(l.labor)+'</b></div>'
+    +'<div class="tot"><span>= Fortjeneste</span><small>'+(l.margin!=null?pdlPct(l.margin)+' af salgsprisen':'')+'</small><b style="color:'+(l.profit<0?'#B91C1C':'#15803D')+'">'+krFmt(l.profit)+'</b></div></div>';
+  if(!l.un&&l.minutes&&l.quantity&&l.unit){var perUnit=l.minutes/60/l.quantity;calc+='<div class="pdl-kpi">⏱ '+(Math.round(perUnit*100)/100).toString().replace('.',',')+' t pr. '+esc(l.unit)+' · løn '+krFmt(l.labor/l.quantity)+' pr. '+esc(l.unit)+'</div>';}
+  var empH=emps.length?'<h4>👷 Hvem har været der</h4><table class="bly-table"><thead><tr><th>Medarbejder</th><th class="num">Dage</th><th class="num">Timer</th><th class="num">Løn</th></tr></thead><tbody>'+emps.map(function(e){return '<tr><td>'+esc(e.name)+'</td><td class="num">'+e.days+'</td><td class="num">'+pdlHours(e.minutes)+'</td><td class="num">'+krFmt(e.cost)+'</td></tr>';}).join('')+'</tbody></table>':'<h4>👷 Hvem har været der</h4><div class="sub">Ingen har registreret tid på '+(l.un?'sagen uden post':'denne post')+' endnu.</div>';
+  var invH=invs.length?'<h4>🧾 Fakturaer</h4>'+invs.map(function(x){return '<div class="pdl-inv"><span>'+(x.kind==='material'?'🧱':'🧾')+' <b>'+esc(x.supplier||'Faktura')+'</b>'+(x.invoice_number?' · '+esc(x.invoice_number):'')+(x.description?'<small>'+esc(x.description)+'</small>':'')+'</span>'+(x.file_url?'<a href="'+esc(x.file_url)+'" target="_blank" rel="noopener">📎 PDF</a>':'')+'<b>'+krFmt(x.amount)+'</b></div>';}).join(''):'';
+  var entH=ents.length?'<h4>📅 Registreringer</h4><div class="pdl-ents">'+ents.map(function(e){return '<div><span class="d">'+esc(e.date?fmtDaDate(e.date):'')+'</span><span class="n"><b>'+esc(e.name)+'</b> · '+(e.akkord?esc(e.akkord):pdlHours(e.minutes))+(e.note?'<small>'+esc(e.note)+'</small>':'')+'</span><span class="c">'+krFmt(e.cost)+'</span></div>';}).join('')+'</div>':'';
+  document.getElementById('pdl-body').innerHTML='<div class="pdl-mh">'+(l.quote_number?'<span class="pdsub-tag">'+esc(l.quote_number)+'</span>':'')+'<h3>'+esc(String(l.description||'').split('\n')[0])+'</h3>'+(l.heading?'<div class="sub">'+esc(l.heading)+'</div>':'')+'</div>'+calc+empH+invH+entH;
+  m.classList.add('open');
+}
+document.addEventListener('click',function(e){
+  var s2=e.target.closest&&e.target.closest('[data-pdl-sort]');if(s2){pdlSort=s2.dataset.pdlSort;renderPdBudgetLines(pdBudgetData||{});return;}
+  var r=e.target.closest&&e.target.closest('[data-pdl]');if(r&&r.closest('#pd-budget-lines')){pdlOpen(r.dataset.pdl);}
+});
 function negKr(v){return (Math.round(Number(v)||0)?'−':'')+krFmt(v);}
 function renderPdBudgetQuotes(d){
   var el=document.getElementById('pd-budget-quotes');if(!el)return;
