@@ -2971,6 +2971,9 @@ body.plan-alt-dragging .ctl-add{display:none}
    under #pd-task-detail-modal, så det ikke rammer gantt-detail-modal, som
    deler .pdtd-card/.gd-info-grid-navnene et par steder. */
 #pd-task-detail-modal .pdtd-card-optional-label{font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.05em;color:#9AA3B2;margin-bottom:10px}
+.doc-job-photo-item{position:relative;cursor:pointer}
+.doc-job-photo-item.djp-sel{outline:3px solid #4F46E5;outline-offset:-1px;border-radius:12px}
+.doc-job-photo-item.djp-sel::after{content:'✓';position:absolute;top:8px;right:8px;width:26px;height:26px;border-radius:50%;background:#4F46E5;color:#fff;display:grid;place-items:center;font-weight:800;font-size:14px;box-shadow:0 2px 6px rgba(0,0,0,.25)}
 #pd-task-detail-modal .pdtd-photos-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(76px,1fr));gap:8px}
 #pd-task-detail-modal .pdtd-photos-empty{grid-column:1/-1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;padding:16px 10px;border:1.5px dashed #E2E8F0;border-radius:10px;color:#9AA3B2;font-size:11.5px;text-align:center}
 #pd-task-detail-modal .pdtd-booking-chips{display:flex;flex-wrap:wrap;gap:8px}
@@ -5377,6 +5380,16 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
 @keyframes pdsubspin{to{transform:rotate(360deg)}}
 .pdsub-saveall{display:flex;justify-content:flex-end;margin:-2px 0 12px}
 .pdsub-file{font-size:12px;color:#4338CA;font-weight:600;text-decoration:none;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pdb-kpi-sub{font-size:11.5px;color:#9CA3AF;margin-top:4px}
+.pdb-ex{margin:16px 0 4px;background:#fff;border:1.5px solid var(--bly-border);border-radius:var(--bly-r-lg);padding:14px 18px}
+.pdb-ex-h{font-size:14px;font-weight:800;margin-bottom:6px}
+.pdb-ex-r{display:flex;align-items:center;gap:12px;padding:9px 0;border-top:1px solid #F3F4F6}
+.pdb-ex-r .op{width:18px;text-align:center;font-weight:800;color:#9CA3AF;font-size:15px}
+.pdb-ex-r .t{flex:1;min-width:0}.pdb-ex-r .t b{display:block;font-size:13.5px}.pdb-ex-r .t small{display:block;font-size:12px;color:#6B7280;margin-top:1px}
+.pdb-ex-r .v{font-weight:800;font-size:14px;white-space:nowrap}.pdb-ex-r .v.neg{color:#B91C1C}
+.pdb-ex-r.tot{border-top:2px solid #111318}.pdb-ex-r.tot .v{font-size:18px}
+.pdb-ex-note{font-size:12px;color:#0369A1;background:#F0F9FF;border:1px solid #BAE6FD;border-radius:10px;padding:9px 12px;margin-top:8px;line-height:1.45}
+.pdb-emp-tot td{border-top:2px solid #E5E7EB;background:#F9FAFB}
 .pdbq{margin:22px 0 4px}
 .pdbq h3{font-size:14px;margin:0 0 10px}
 .pdbq-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:12px}
@@ -5766,7 +5779,7 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
        i browseren faktisk ER det nyeste deploy, eller om Render/GitHub bare
        ikke er nået at opdatere endnu — i stedet for at skulle gætte om en
        rettelse "stadig ikke virker" eller bare endnu ikke er live. -->
-  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build v2.74.1 · 2026-11-02</span></div>
+  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build v2.74.2 · 2026-11-02</span></div>
 </aside>
 <div class="app-content">
 <!-- RUNDE FB — AI-ASSISTENTEN (Martin: "en ai der er nede i venstre hjørne af
@@ -17215,7 +17228,7 @@ async function noteAttachOpenCustomerPhotoPicker(prefix){
   var sub=document.getElementById('doc-job-photos-sub');
   document.getElementById('doc-job-photos-title').textContent='Vælg fra kundens billeder';
   grid.innerHTML='<div class="sub">Henter kundens billeder…</div>';
-  document.getElementById('doc-job-photos-modal').classList.add('open');
+  document.getElementById('doc-job-photos-modal').classList.add('open');if(typeof djpSyncMulti==='function')djpSyncMulti();
   var r=await api('/api/customer-photos-by-job-name?job_name='+encodeURIComponent(task.job_name));
   if(!r||!r.customer){
     grid.innerHTML='<div class="sub">Ingen kunde fundet på denne sag (kræver et tilbud/en faktura koblet til sagen) — der er derfor ingen kundebilleder at vælge fra.</div>';
@@ -22336,8 +22349,8 @@ function renderFinExpenseCard(){
   var curAmt=amtFor(curKey),nextAmt=nextKey?amtFor(nextKey):null;
   el.innerHTML='<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:18px"><div style="font-size:15px;font-weight:800;color:var(--bly-ink)">Udgifter</div><button class="bly-btn outline small" data-action="fin-goto-udgifter">Se detaljer</button></div>'+
     '<div style="display:flex;gap:28px;flex-wrap:wrap">'+
-    '<div><div class="fin-muted" style="font-size:11.5px;font-weight:600;margin-bottom:4px">'+esc(curLbl)+'</div><div style="font-size:22px;font-weight:800;color:#DC2626">'+(curAmt!=null?('−'+krFmt(curAmt)):'–')+'</div></div>'+
-    (nextLbl?('<div><div class="fin-muted" style="font-size:11.5px;font-weight:600;margin-bottom:4px">'+esc(nextLbl)+'</div><div style="font-size:22px;font-weight:800;color:'+(nextAmt?'#DC2626':'var(--bly-sub)')+'">'+(nextAmt!=null?('−'+krFmt(nextAmt)):'–')+'</div></div>'):'')+
+    '<div><div class="fin-muted" style="font-size:11.5px;font-weight:600;margin-bottom:4px">'+esc(curLbl)+'</div><div style="font-size:22px;font-weight:800;color:#DC2626">'+(curAmt!=null?(negKr(curAmt)):'–')+'</div></div>'+
+    (nextLbl?('<div><div class="fin-muted" style="font-size:11.5px;font-weight:600;margin-bottom:4px">'+esc(nextLbl)+'</div><div style="font-size:22px;font-weight:800;color:'+(nextAmt?'#DC2626':'var(--bly-sub)')+'">'+(nextAmt!=null?(negKr(nextAmt)):'–')+'</div></div>'):'')+
     '</div>';
   var btn=el.querySelector('[data-action="fin-goto-udgifter"]');
   if(btn)btn.addEventListener('click',function(){var t=document.querySelector('[data-fintab="udgifter"]');if(t)t.click();});
@@ -35784,24 +35797,40 @@ function renderPdBudget(){
   var d=pdBudgetData;
   var summaryEl=document.getElementById('pd-budget-summary');
   document.getElementById('pd-budget-toggle-btn').textContent=pdBudgetHidden?'Vis oversigt':'Skjul oversigt';
-  if(pdBudgetHidden){summaryEl.style.display='none';}
+  if(pdBudgetHidden){summaryEl.style.display='none';var ex0=document.getElementById('pd-budget-explain');if(ex0)ex0.innerHTML='';}
   else{
     summaryEl.style.display='';
     var profitColor=d.projected_profit>=0?'#16A34A':'#DC2626';
     // RUNDE S — underleverandør-omkostning tælles med i "Forventet omkostning"
     // ligesom løn og materialer, se GET /api/projects/:id/budget i server.js.
     var subTotal=Number(d.subcontractor_cost)||0;
+    var exP=d.approved_price_ex!=null?d.approved_price_ex:d.approved_price;
     var cards=[
-      ['Godkendt pris',krFmt(d.approved_price),null],
-      ['Opkrævet',krFmt(d.collected),null],
-      ['Restsaldo',krFmt(d.remaining_balance),null],
-      ['Forventet omkostning',krFmt(d.cost_to_complete+d.labor_cost+subTotal),null],
-      ['Forventet fortjeneste',krFmt(d.projected_profit),profitColor],
-      ['Forventet margin',Number(d.projected_margin).toFixed(1).replace('.',',')+' %',profitColor]
+      ['Godkendt pris ekskl. moms',krFmt(exP),null,'Inkl. moms '+krFmt(d.approved_price)],
+      ['Opkrævet',krFmt(d.collected),null,'Betalt af kunden, inkl. moms'],
+      ['Restsaldo',krFmt(d.remaining_balance),null,'Mangler at blive betalt, inkl. moms'],
+      ['Omkostninger',krFmt(d.cost_to_complete+d.labor_cost+subTotal),null,'Kostpris + løn + underleverandører'],
+      ['Forventet fortjeneste',krFmt(d.projected_profit),profitColor,'Ekskl. moms'],
+      ['Forventet margin',Number(d.projected_margin).toFixed(1).replace('.',',')+' %',profitColor,'Af prisen ekskl. moms']
     ];
     summaryEl.innerHTML=cards.map(function(c){
-      return '<div class="pd-budget-card"><div class="bly-kpi-label">'+esc(c[0])+'</div><div class="bly-kpi-value"'+(c[2]?' style="color:'+c[2]+'"':'')+'>'+c[1]+'</div></div>';
+      return '<div class="pd-budget-card"><div class="bly-kpi-label">'+esc(c[0])+'</div><div class="bly-kpi-value"'+(c[2]?' style="color:'+c[2]+'"':'')+'>'+c[1]+'</div>'+(c[3]?'<div class="pdb-kpi-sub">'+esc(c[3])+'</div>':'')+'</div>';
     }).join('');
+    // v2.74.2 — Martin: "Kan du forklare mig logikken bag den?" — regnestykket vises nu linje for linje.
+    var hrs=(d.employees||[]).reduce(function(a,e){return a+(Number(e.minutes)||0);},0)/60;
+    var nEmp=(d.employees||[]).length,nSub=(d.subcontractor_costs||[]).length;
+    var rows=[
+      ['Godkendt pris ekskl. moms','Summen af '+((d.quotes||[]).filter(function(q){return q.counted;}).length>1?'de godkendte tilbud':'det godkendte tilbud')+' uden moms ('+krFmt(d.vat_amount||0)+' i moms er trukket fra — den er ikke jeres penge)',exP,'+'],
+      ['Kostpris fra tilbuddets poster','Kost-prisen × antal på hver post i tilbuddet (materialer m.m.)'+(d.materials_replaced>0?'. '+krFmt(d.materials_replaced)+' er IKKE medregnet, fordi en underleverandør-faktura er koblet til posten og erstatter overslaget':''),d.cost_to_complete,'−'],
+      ['Løn til medarbejdere','Registrerede timer × medarbejderens timeløn (+ akkord) — '+(Math.round(hrs*10)/10).toString().replace('.',',')+' t fordelt på '+nEmp+' medarbejder'+(nEmp===1?'':'e')+' indtil nu',d.labor_cost,'−'],
+      ['Underleverandører','Uploadede fakturaer ekskl. moms ('+nSub+' stk.)',subTotal,'−']
+    ];
+    var expl=document.getElementById('pd-budget-explain');
+    if(!expl){expl=document.createElement('div');expl.id='pd-budget-explain';summaryEl.insertAdjacentElement('afterend',expl);}
+    expl.innerHTML='<div class="pdb-ex"><div class="pdb-ex-h">🧮 Sådan er fortjenesten regnet</div>'
+      +rows.map(function(r){return '<div class="pdb-ex-r"><span class="op">'+r[3]+'</span><div class="t"><b>'+esc(r[0])+'</b><small>'+esc(r[1])+'</small></div><span class="v'+(r[3]==='−'?' neg':'')+'">'+(r[3]==='−'?negKr(r[2]):krFmt(r[2]))+'</span></div>';}).join('')
+      +'<div class="pdb-ex-r tot"><span class="op">=</span><div class="t"><b>Forventet fortjeneste</b><small>'+Number(d.projected_margin).toFixed(1).replace('.',',')+' % af prisen ekskl. moms</small></div><span class="v" style="color:'+profitColor+'">'+krFmt(d.projected_profit)+'</span></div>'
+      +'<div class="pdb-ex-note">💡 Løn tæller kun de timer der er registreret indtil nu, så fortjenesten falder efterhånden som der registreres flere timer. Er underleverandørens pris allerede regnet med i kostprisen på en post, så vælg posten på udgiften (Tilbud + Post) — så erstatter fakturaen postens kostpris i stedet for at blive lagt oveni.</div></div>';
   }
   renderPdBudgetQuotes(d);
   var body=document.getElementById('pd-budget-employees-body');
@@ -35816,10 +35845,11 @@ function renderPdBudget(){
       +'<td>'+akkordTxt+'</td>'
       +'<td class="num">'+krFmt(e.cost)+'</td>'
       +'</tr>';
-  }).join('');
+  }).join('')+((d.employees||[]).length?'<tr class="pdb-emp-tot"><td colspan="4"><b>Løn i alt</b> <span class="sub">— trækkes fra fortjenesten</span></td><td class="num"><b>−'+krFmt(d.labor_cost)+'</b></td></tr>':'');
   renderPdSubCosts();
 }
 // v2.73.0 — fortjeneste pr. tilbud (vises når sagen har mere end ét tilbud).
+function negKr(v){return (Math.round(Number(v)||0)?'−':'')+krFmt(v);}
 function renderPdBudgetQuotes(d){
   var el=document.getElementById('pd-budget-quotes');if(!el)return;
   var L=d.quotes||[];
@@ -35830,15 +35860,15 @@ function renderPdBudgetQuotes(d){
     var head='<div class="h"><b>'+esc(q.quote_number||'Tilbud')+'</b>'+(q.counted?'':'<span class="pdsub-tag warn">'+(q.status==='declined'?'Afvist':'Afventer godkendelse')+'</span>')+'</div><div class="t">'+esc(q.title||'')+'</div>';
     if(!q.counted)return '<a class="pdbq-c off" href="/admin#quotes/tilbud/'+q.id+'" target="_blank" rel="noopener">'+head+'<div class="r"><span>Tilbudspris</span><b>'+krFmt(q.approved)+'</b></div><div class="pdbq-note">Tæller med i sagen, når tilbuddet er godkendt.</div></a>';
     return '<a class="pdbq-c" href="/admin#quotes/tilbud/'+q.id+'" target="_blank" rel="noopener" title="Åbn tilbuddet i en ny fane">'+head
-      +'<div class="r"><span>Godkendt pris</span><b>'+krFmt(q.approved)+'</b></div>'
-      +'<div class="r"><span>Materialer (kostpris)</span><b>'+krFmt(q.materials)+'</b></div>'
-      +'<div class="r"><span>Løn på tilbuddets poster</span><b>'+krFmt(q.labor)+'</b></div>'
-      +(q.subcontractor?'<div class="r"><span>Underleverandører</span><b>'+krFmt(q.subcontractor)+'</b></div>':'')
-      +(q.shared_cost?'<div class="r"><span>Andel af fælles omkostninger</span><b>'+krFmt(q.shared_cost)+'</b></div>':'')
+      +'<div class="r"><span>Pris ekskl. moms</span><b>'+krFmt(q.approved_ex!=null?q.approved_ex:q.approved)+'</b></div>'
+      +'<div class="r"><span>Kostpris på poster</span><b>−'+krFmt(q.materials)+'</b></div>'
+      +'<div class="r"><span>Løn på tilbuddets poster</span><b>−'+krFmt(q.labor)+'</b></div>'
+      +(q.subcontractor?'<div class="r"><span>Underleverandører</span><b>−'+krFmt(q.subcontractor)+'</b></div>':'')
+      +(q.shared_cost?'<div class="r"><span>Andel af fælles løn/udgifter</span><b>−'+krFmt(q.shared_cost)+'</b></div>':'')
       +'<div class="p"><span style="color:'+col(q.profit)+'">Fortjeneste · '+pc(q.margin)+'</span><b style="color:'+col(q.profit)+'">'+krFmt(q.profit)+'</b></div></a>';
   });
   cards.push('<div class="pdbq-c tot"><div class="h"><b>Hele sagen</b></div><div class="t">'+L.filter(function(q){return q.counted;}).length+' godkendte tilbud</div>'
-    +'<div class="r"><span>Godkendt pris</span><b>'+krFmt(d.approved_price)+'</b></div>'
+    +'<div class="r"><span>Pris ekskl. moms</span><b>'+krFmt(d.approved_price_ex!=null?d.approved_price_ex:d.approved_price)+'</b></div>'
     +'<div class="r"><span>Omkostninger i alt</span><b>'+krFmt(d.cost_to_complete+d.labor_cost+(Number(d.subcontractor_cost)||0))+'</b></div>'
     +'<div class="r"><span>Opkrævet</span><b>'+krFmt(d.collected)+'</b></div>'
     +'<div class="p"><span style="color:'+col(d.projected_profit)+'">Fortjeneste · '+pc(d.projected_margin)+'</span><b style="color:'+col(d.projected_profit)+'">'+krFmt(d.projected_profit)+'</b></div></div>');
@@ -35937,9 +35967,9 @@ function renderPdSubCosts(){
   if(!L.length){body.innerHTML='<div class="pdsub-empty">Ingen underleverandør-udgifter på sagen endnu.</div>';return;}
   var tot=L.reduce(function(s,x){return s+(Number(x.amount)||0);},0);
   body.innerHTML=L.map(function(x){
-    var meta=[x.invoice_number?'Faktura '+esc(x.invoice_number):'',x.invoice_date?esc(x.invoice_date.split('-').reverse().join('.')):'',x.quote_number?'📄 '+esc(x.quote_number)+(x.quote_line_desc?': '+esc(String(x.quote_line_desc).slice(0,60)):''):'',x.task_name?'Opgave: '+esc(x.task_name):'',x.file_url?'<a href="'+esc(x.file_url)+'" target="_blank" rel="noopener" style="color:#4338CA;font-weight:600;text-decoration:none" title="'+esc(x.file_name||'Faktura')+'">📎 PDF</a>':''].filter(Boolean).join(' · ');
+    var meta=[x.invoice_number?'Faktura '+esc(x.invoice_number):'',x.invoice_date?esc(x.invoice_date.split('-').reverse().join('.')):'',x.quote_number?'📄 '+esc(x.quote_number)+(x.quote_line_desc?': '+esc(String(x.quote_line_desc).slice(0,60)):''):'',x.task_name?'Opgave: '+esc(x.task_name):'',x.file_url?'<a href="'+esc(x.file_url)+'" target="_blank" rel="noopener" style="color:#4338CA;font-weight:600;text-decoration:none" title="'+esc(x.file_name||'Faktura')+'">📎 PDF</a>':'',x.quote_line_id?'<span style="color:#0369A1;font-weight:600" title="Postens kostpris i tilbuddet tælles ikke med — fakturaen erstatter den">↺ erstatter postens kostpris</span>':''].filter(Boolean).join(' · ');
     return '<div class="pdsub-row"><div class="pdsub-av">'+esc(String(x.supplier||x.description||'?').trim().charAt(0).toUpperCase())+'</div><div class="pdsub-main"><b>'+esc(x.supplier||x.description||'Underleverandør')+'</b><div>'+(x.supplier&&x.description?esc(x.description)+(meta?' · ':''):'')+meta+'</div></div><div class="pdsub-val">'+krFmt(x.amount)+'</div><div class="pdsub-acts"><button type="button" data-pdsub-edit="'+x.id+'" title="Ret">✎</button><button type="button" data-pdsub-del="'+x.id+'" title="Slet">✕</button></div></div>';
-  }).join('')+'<div class="pdsub-total"><span>I alt ekskl. moms</span><b>'+krFmt(tot)+'</b></div>';
+  }).join('')+'<div class="pdsub-total"><span>I alt ekskl. moms — trækkes fra fortjenesten</span><b>−'+krFmt(tot)+'</b></div>';
 }
 function pdSubOpenForm(item,taskId){
   pdSubEditId=item?item.id:null;
@@ -37782,6 +37812,12 @@ function renderPdtdPhotos(){
       :'<img src="'+esc(p.url)+'" loading="lazy" title="'+esc(p.caption||'')+'">';
     return '<div class="pd-photo-thumb">'+inner+'<button type="button" class="pd-photo-del" data-id="'+p.id+'" title="Fjern fra opgaven">✕</button></div>';
   }).join('');
+  // v2.74.2 — klik på et billede åbner det stort med ‹/› mellem opgavens billeder.
+  var imgs=photos.filter(function(p){return !pdIsPdfUrl(p.url);});
+  Array.prototype.forEach.call(grid.querySelectorAll('.pd-photo-thumb img'),function(im){
+    im.style.cursor='zoom-in';
+    im.onclick=function(){var u=im.getAttribute('src');gmGalleryOpen(imgs.map(function(p){return {url:p.url,caption:p.caption,source:'Opgavebillede'};}),Math.max(0,imgs.findIndex(function(p){return p.url===u;})));};
+  });
   Array.prototype.forEach.call(grid.querySelectorAll('.pd-photo-del'),function(btn){
     btn.onclick=async function(e){
       e.stopPropagation();
@@ -37822,7 +37858,7 @@ async function pdtdOpenPhotoPicker(){
   var sub=document.getElementById('doc-job-photos-sub');
   document.getElementById('doc-job-photos-title').textContent='Vælg billede eller fil til opgaven';
   grid.innerHTML='<div class="sub">Henter sagens billeder og filer…</div>';
-  document.getElementById('doc-job-photos-modal').classList.add('open');
+  document.getElementById('doc-job-photos-modal').classList.add('open');if(typeof djpSyncMulti==='function')djpSyncMulti();
   var calls=[api('/api/projects/'+pjCurrent.id+'/photo-library')];
   calls.push(pjCurrent.customer_id?api('/api/crm/customers/'+pjCurrent.customer_id+'/files').catch(function(){return null;}):Promise.resolve(null));
   var results=await Promise.all(calls);
@@ -37837,7 +37873,7 @@ async function pdtdOpenPhotoPicker(){
     });
   }
   if(!photos.length){grid.innerHTML='<div class="sub">Ingen billeder eller filer fundet på sagen endnu — hverken uploadet direkte, fra tidsregistrering, kundebesøget eller Handlens filer.</div>';return;}
-  sub.textContent='Sagens billeder og filer — vælg én til denne opgave, så medarbejderen får den med når opgaven bookes';
+  sub.textContent='Klik på alle de billeder/filer medarbejderen skal have med på opgaven, og tryk "Tilføj valgte"';
   grid.innerHTML=photos.map(function(p,idx){
     // RETTELSE (okt. 2026) — p.needsFetch-grenen rammer kun Handlens
     // Gmail-vedhæftninger, som allerede er filtreret til billeder (se
@@ -37852,6 +37888,7 @@ async function pdtdOpenPhotoPicker(){
       +'</div>';
   }).join('');
   docJobPhotosCtx.photos=photos;
+  djpSyncMulti();
 }
 // ── ÉT kalendervisning til start+slutdato — klik en dag for start, klik en
 // anden dag for slut (eller samme dag igen for en 1-dags opgave), i stedet
@@ -38267,6 +38304,23 @@ document.addEventListener('click',function(e){
   var z=e.target.closest&&e.target.closest('[data-gm-zip]');
   if(z){var cid=z.dataset.gmZip==='customer'?(cdCurrent&&cdCurrent.id):crmpxCurrentCustomerId;if(cid)gmDownloadAuthed('/api/crm/customers/'+cid+'/files.zip','filer.zip');else toast('Ingen kunde koblet på','⚠️');}
 });
+// v2.74.2 (Martin: "åbne et billede som stor popup og så scrolle ved at klikke
+// til højre eller venstre") — ALLE billed-links der ellers åbnede i en ny fane
+// (tidsregistrering, KS, opgavekort, vedhæftninger …) åbner nu i det fælles
+// galleri, med de øvrige billeder i samme sektion som ‹/›.
+function gmIsImageUrl(u){u=String(u||'');return /res\.cloudinary\.com\/[^/]+\/image\/upload\//.test(u)&&!/\.pdf(\?|$)/i.test(u)||/\.(jpe?g|png|gif|webp|heic|avif)(\?|$)/i.test(u);}
+document.addEventListener('click',function(e){
+  if(e.defaultPrevented||e.button!==0||e.metaKey||e.ctrlKey||e.shiftKey)return;
+  var a=e.target.closest&&e.target.closest('a[href]');if(!a||!gmIsImageUrl(a.getAttribute('href')))return;
+  if(a.closest('#gm-gallery'))return;
+  var scope=a.closest('.pdt-ph,.pdtd-photos-grid,[id^="pdtab-"],.modal,.crmpxv-photos,.pdx-card,.page')||document.body;
+  var links=Array.prototype.filter.call(scope.querySelectorAll('a[href]'),function(x){return gmIsImageUrl(x.getAttribute('href'));});
+  var seen={},items=[];
+  links.forEach(function(x){var u=x.getAttribute('href');if(seen[u])return;seen[u]=1;items.push({url:u,caption:x.getAttribute('title')||''});});
+  if(!items.length)return;
+  e.preventDefault();
+  gmGalleryOpen(items,Math.max(0,items.findIndex(function(it){return it.url===a.getAttribute('href');})));
+},false);
 async function renderPdOtherPhotos(){
   var wrap=document.getElementById('pd-other-photos-wrap');
   var grid=document.getElementById('pd-other-photos-grid');
@@ -40963,7 +41017,7 @@ function qcvRecalcTotal(){
     var ded=Math.min(ac.remaining_ex,Math.max(0,sum));
     acHtml='<label class="qcv-line-row" style="background:#F0F9FF;border-color:#BAE6FD"><input type="checkbox" id="qcv-aconto"'+(qcvState.deductAconto?' checked':'')+'>'
       +'<span style="flex:1"><b>Træk a conto fra</b><div class="sub">'+esc(ac.invoices.filter(function(a){return a.remaining_ex>0;}).map(function(a){return a.invoice_number;}).join(', '))+' — '+krFmt(ac.remaining_ex)+' ekskl. moms er endnu ikke modregnet</div></span>'
-      +'<span style="flex-shrink:0;font-weight:700;color:#0369A1">'+(qcvState.deductAconto?'−'+krFmt(ded):'')+'</span></label>';
+      +'<span style="flex-shrink:0;font-weight:700;color:#0369A1">'+(qcvState.deductAconto?negKr(ded):'')+'</span></label>';
     if(qcvState.deductAconto)sum=sum-ded;
   }
   document.getElementById('qcv-total').innerHTML=acHtml+'<div class="qe-totals-row total"><span>'+(acHtml&&qcvState.deductAconto?'Til betaling, ca. (ekskl. moms, efter a conto)':'Valgte linjer, ca. (før evt. tilbudsrabat/moms)')+'</span><span>'+krFmt(sum)+'</span></div>';
@@ -42240,7 +42294,7 @@ async function docAttachOpenJobPhotoPicker(docType){
   var sub=document.getElementById('doc-job-photos-sub');
   document.getElementById('doc-job-photos-title').textContent='Vælg fra sagens billeder';
   grid.innerHTML='<div class="sub">Henter sagens billeder…</div>';
-  document.getElementById('doc-job-photos-modal').classList.add('open');
+  document.getElementById('doc-job-photos-modal').classList.add('open');if(typeof djpSyncMulti==='function')djpSyncMulti();
   var r=await api('/api/document-job-photos/'+docType+'/'+state.id);
   if(!r||!r.project){
     grid.innerHTML='<div class="sub">Ingen sag koblet på dette '+(docType==='invoice'?'faktura':'tilbud')+' endnu — der er derfor ingen sagsbilleder at vælge fra.</div>';
@@ -42269,7 +42323,7 @@ async function docAttachOpenCustomerPhotoPicker(docType){
   var sub=document.getElementById('doc-job-photos-sub');
   document.getElementById('doc-job-photos-title').textContent='Vælg fra kundens billeder';
   grid.innerHTML='<div class="sub">Henter kundens billeder…</div>';
-  document.getElementById('doc-job-photos-modal').classList.add('open');
+  document.getElementById('doc-job-photos-modal').classList.add('open');if(typeof djpSyncMulti==='function')djpSyncMulti();
   var r=await api('/api/document-customer-photos/'+docType+'/'+state.id);
   if(!r||!r.customer){
     grid.innerHTML='<div class="sub">Ingen kunde koblet på dette '+(docType==='invoice'?'faktura':'tilbud')+' endnu — der er derfor ingen kundebilleder at vælge fra.</div>';
@@ -42298,7 +42352,7 @@ async function ivOpenCreditCustomerPhotoPicker(){
   var sub=document.getElementById('doc-job-photos-sub');
   document.getElementById('doc-job-photos-title').textContent='Vælg fra kundens billeder';
   grid.innerHTML='<div class="sub">Henter kundens billeder…</div>';
-  document.getElementById('doc-job-photos-modal').classList.add('open');
+  document.getElementById('doc-job-photos-modal').classList.add('open');if(typeof djpSyncMulti==='function')djpSyncMulti();
   var r=await api('/api/document-customer-photos/invoice/'+ivState.id);
   if(!r||!r.customer){
     grid.innerHTML='<div class="sub">Ingen kunde koblet på denne faktura — der er derfor ingen kundebilleder at vælge fra.</div>';
@@ -42314,7 +42368,24 @@ async function ivOpenCreditCustomerPhotoPicker(){
   }).join('');
   docJobPhotosCtx.photos=r.photos;
 }
-async function docJobPhotoPick(idx){
+function djpSyncMulti(){
+  var btn=document.getElementById('djp-multi-add');
+  var on=docJobPhotosCtx&&docJobPhotosCtx.mode==='task-stage';
+  if(!btn){var acts=document.querySelector('#doc-job-photos-modal .modal-actions');if(!acts)return;btn=document.createElement('button');btn.type='button';btn.className='btn primary';btn.id='djp-multi-add';btn.onclick=djpAddSelected;acts.appendChild(btn);}
+  var n=document.querySelectorAll('#doc-job-photos-grid .doc-job-photo-item.djp-sel').length;
+  btn.style.display=on?'':'none';btn.disabled=!n;btn.textContent=n?('Tilføj '+n+' valgte'):'Vælg billeder';
+}
+async function djpAddSelected(){
+  var sel=Array.prototype.map.call(document.querySelectorAll('#doc-job-photos-grid .doc-job-photo-item.djp-sel'),function(x){return Number(x.dataset.idx);});
+  if(!sel.length)return;
+  var btn=document.getElementById('djp-multi-add');btn.disabled=true;btn.textContent='Tilføjer…';
+  var ok=0;for(var i=0;i<sel.length;i++){if(await docJobPhotoPick(sel[i],{quiet:true}))ok++;}
+  closeModal('doc-job-photos-modal');
+  await reloadPdCurrent();renderPdtdPhotos();
+  toast(ok+' '+(ok===1?'fil':'filer')+' tilføjet til opgaven ✓','📎');
+}
+async function docJobPhotoPick(idx,pickOpts){
+  pickOpts=pickOpts||{};
   if(!docJobPhotosCtx)return;
   var photo=(docJobPhotosCtx.photos||[])[idx];
   if(!photo)return;
@@ -42386,11 +42457,13 @@ async function docJobPhotoPick(idx){
     if(!finalUrl)return;
     var pr=await api('/api/tasks/'+taskId+'/photos',{method:'POST',body:JSON.stringify({url:finalUrl,caption:photo.caption||photo.user_name||null})});
     if(pr&&pr.ok){
+      if(pickOpts.quiet)return true;
       toast(pdIsPdfUrl(finalUrl)?'Fil tilføjet til opgaven ✓':'Billede tilføjet til opgaven ✓','📎');
       await reloadPdCurrent();
       renderPdtdPhotos();
+      return true;
     }else toast((pr&&pr.error)||'Kunne ikke tilføje filen','❌');
-    return;
+    return false;
   }
   var docType=docJobPhotosCtx.docType;
   var state=docAttachStateFor(docType);
@@ -42804,7 +42877,12 @@ function bindQuotesModuleEvents(){
   document.getElementById('qe-attach-list').addEventListener('click',function(e){var btn=e.target.closest('.iv-attach-remove');if(btn)docAttachRemove(btn.dataset.doctype,Number(btn.dataset.idx));});
   // RUNDE AC — fælles billedvælger-modal (sagens billeder/timetracking), delt
   // mellem tilbud og faktura, se docAttachOpenJobPhotoPicker/docJobPhotoPick.
-  document.getElementById('doc-job-photos-grid').addEventListener('click',function(e){var item=e.target.closest('.doc-job-photo-item');if(item){docJobPhotoPick(Number(item.dataset.idx));closeModal('doc-job-photos-modal');}});
+  document.getElementById('doc-job-photos-grid').addEventListener('click',function(e){
+    var item=e.target.closest('.doc-job-photo-item');if(!item)return;
+    // v2.74.2 — på en opgave kan man vælge så mange billeder man vil, og tilføje dem samlet.
+    if(docJobPhotosCtx&&docJobPhotosCtx.mode==='task-stage'){item.classList.toggle('djp-sel');djpSyncMulti();return;}
+    docJobPhotoPick(Number(item.dataset.idx));closeModal('doc-job-photos-modal');
+  });
   document.getElementById('doc-job-photos-close-btn').addEventListener('click',function(){closeModal('doc-job-photos-modal');});
   // RUNDE Y — qe-product-search/-results er fjernet fra HTML'en (Martins
   // ønske: "fjern det lille felt der er ved siden af tilføj linje"). Begge

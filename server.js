@@ -17777,7 +17777,11 @@ app.get('/api/projects/:id/budget', auth, adminOnly, asyncRoute(async (req, res)
   const pQuotes = await projectQuotes(project);
   const counted = pQuotes.filter(q => q.counted);
   const countedIds = counted.map(q => q.id);
-  const approved = counted.reduce((sum, q) => sum + q.total, 0);
+  const approved = counted.reduce((sum, q) => sum + q.total, 0); // inkl. moms (det kunden betaler)
+  // v2.74.2 — fortjenesten regnes ALTID ekskl. moms (momsen er ikke vores
+  // penge, og kostpriser/løn/underleverandører er også ekskl. moms).
+  const exVat = q => Math.max(0, (Number(q.total) || 0) - (Number(q.tax_amount) || 0));
+  const approvedEx = counted.reduce((sum, q) => sum + exVat(q), 0);
 
   // Opkrævet: betalinger på alle fakturaer der hører til sagen.
   const invRows = (await pool.query(`SELECT i.id, i.quote_id, COALESCE((SELECT SUM(amount) FROM invoice_payments ip WHERE ip.invoice_id=i.id),0) AS paid
@@ -17785,10 +17789,19 @@ app.get('/api/projects/:id/budget', auth, adminOnly, asyncRoute(async (req, res)
   const collected = invRows.reduce((sum, r) => sum + (Number(r.paid) || 0), 0);
 
   // Forventet materiale-omkostning: kostpris fra tilbudslinjerne, pr. tilbud.
+  // v2.74.2 — en underleverandør-faktura der er koblet til en bestemt
+  // tilbudspost ERSTATTER postens kostpris (den faktiske udgift afløser
+  // overslaget), så den ikke tælles med to gange.
+  const replacedLineIds = (await pool.query('SELECT DISTINCT quote_line_id FROM project_subcontractor_costs WHERE project_id=$1 AND quote_line_id IS NOT NULL', [req.params.id])).rows.map(r => r.quote_line_id);
   const matRows = countedIds.length ? (await pool.query(
-    `SELECT quote_id, COALESCE(SUM(cost_price * quantity), 0) AS s FROM quote_lines WHERE quote_id = ANY($1::int[]) AND line_type='item' GROUP BY quote_id`, [countedIds])).rows : [];
-  const matByQuote = {}; matRows.forEach(r => { matByQuote[r.quote_id] = Number(r.s) || 0; });
+    `SELECT quote_id,
+        COALESCE(SUM(cost_price * quantity) FILTER (WHERE NOT (id = ANY($2::int[]))), 0) AS s,
+        COALESCE(SUM(cost_price * quantity) FILTER (WHERE id = ANY($2::int[])), 0) AS replaced
+     FROM quote_lines WHERE quote_id = ANY($1::int[]) AND line_type='item' GROUP BY quote_id`, [countedIds, replacedLineIds])).rows : [];
+  const matByQuote = {}, replacedByQuote = {};
+  matRows.forEach(r => { matByQuote[r.quote_id] = Number(r.s) || 0; replacedByQuote[r.quote_id] = Number(r.replaced) || 0; });
   const costToComplete = Object.values(matByQuote).reduce((a, v) => a + v, 0);
+  const replacedCost = Object.values(replacedByQuote).reduce((a, v) => a + v, 0);
 
   // Løn-/akkord-omkostning: hver tidsregistrering omregnes til kr ud fra
   // medarbejderens NUVÆRENDE timeløn (timeansatte) eller det gemte
@@ -17850,8 +17863,8 @@ app.get('/api/projects/:id/budget', auth, adminOnly, asyncRoute(async (req, res)
     else subShared += amt;
   });
 
-  const profit = approved - costToComplete - laborTotal - subcontractorTotal;
-  const margin = approved > 0 ? (profit / approved) * 100 : 0;
+  const profit = approvedEx - costToComplete - laborTotal - subcontractorTotal;
+  const margin = approvedEx > 0 ? (profit / approvedEx) * 100 : 0;
 
   // Pr. tilbud: direkte omkostninger + en andel af de fælles omkostninger
   // (timer/udgifter der ikke er tagget til et bestemt tilbud), fordelt efter
@@ -17861,21 +17874,24 @@ app.get('/api/projects/:id/budget', auth, adminOnly, asyncRoute(async (req, res)
   invRows.forEach(r => { if (r.quote_id) collectedByQuote[r.quote_id] = (collectedByQuote[r.quote_id] || 0) + (Number(r.paid) || 0); });
   const perQuote = pQuotes.map(q => {
     if (!q.counted) return { id: q.id, quote_number: q.quote_number, title: q.quote_title || q.job_name || '', status: q.status, is_primary: q.is_primary, counted: false, approved: q.total };
-    const share = approved > 0 ? q.total / approved : (counted.length ? 1 / counted.length : 0);
+    const share = approvedEx > 0 ? exVat(q) / approvedEx : (counted.length ? 1 / counted.length : 0);
     const materials = matByQuote[q.id] || 0, labor = laborByQuote[q.id] || 0, sub = subByQuote[q.id] || 0;
     const sharedPart = sharedTotal * share;
     const cost = materials + labor + sub + sharedPart;
-    const p2 = q.total - cost;
+    const p2 = exVat(q) - cost;
     return {
       id: q.id, quote_number: q.quote_number, title: q.quote_title || q.job_name || '', status: q.status, is_primary: q.is_primary, counted: true,
-      approved: q.total, collected: collectedByQuote[q.id] || 0,
-      materials, labor, subcontractor: sub, shared_cost: sharedPart, cost,
-      profit: p2, margin: q.total > 0 ? (p2 / q.total) * 100 : 0
+      approved: q.total, approved_ex: exVat(q), collected: collectedByQuote[q.id] || 0,
+      materials, materials_replaced: replacedByQuote[q.id] || 0, labor, subcontractor: sub, shared_cost: sharedPart, cost,
+      profit: p2, margin: exVat(q) > 0 ? (p2 / exVat(q)) * 100 : 0
     };
   });
 
   res.json({
     approved_price: approved,
+    approved_price_ex: approvedEx,
+    vat_amount: approved - approvedEx,
+    materials_replaced: replacedCost,
     collected,
     remaining_balance: approved - collected,
     cost_to_complete: costToComplete,
