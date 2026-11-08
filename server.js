@@ -25857,9 +25857,14 @@ function sanitizeMailBody(html) {
 }
 // Ren tekst-udgave af en rig-tekst-note (bruges til højde-beregning og andre
 // steder der ikke kan/skal vise HTML, fx sms/notifikations-tekster).
+// v2.76.2 — "&nbsp;" m.fl. stod som ren tekst i PDF'en (fx "oplysninger&nbsp;").
+function decodeHtmlEntities(t) {
+  return String(t || '').replace(/&nbsp;/gi, ' ').replace(/&#(\d+);/g, (_, n) => String.fromCharCode(Number(n)))
+    .replace(/&#x([0-9a-f]+);/gi, (_, n) => String.fromCharCode(parseInt(n, 16)))
+    .replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&amp;/g, '&');
+}
 function richTextToPlain(html) {
-  return String(html || '').replace(/<br\s*\/?>/gi, '\n').replace(/<[^>]+>/g, '')
-    .replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&#39;/g, "'");
+  return decodeHtmlEntities(String(html || '').replace(/<br\s*\/?>/gi, '\n').replace(/<[^>]+>/g, ''));
 }
 
 // RUNDE H #310 (Martins ønske: "kan du ikke finder nogle bedre fonte til mit
@@ -25909,7 +25914,7 @@ function renderRichText(doc, html, x, y, width, opts) {
     let m;
     while ((m = re.exec(lineHtml))) {
       if (m[4] !== undefined) {
-        const text = m[4].replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&#39;/g, "'");
+        const text = decodeHtmlEntities(m[4]);
         if (text) runs.push({ text, bold: boldDepth > 0, href: href || undefined });
       } else {
         const closing = m[1] === '/', tag = m[2].toLowerCase();
@@ -26236,7 +26241,7 @@ function drawPdfLineTableHeader(doc, y) {
   doc.roundedRect(40, y, 515, 24, 6).fill('#F4F6FB');
   doc.font('DMSans').fontSize(9).fillColor('#374151');
   doc.text('Beskrivelse', 52, y + 8);
-  doc.text('Antal', 278, y + 8, { width: 42, align: 'right' });
+  doc.text('Antal', 268, y + 8, { width: 52, align: 'right' });
   doc.text('Rabat', 325, y + 8, { width: 60, align: 'right' });
   doc.text('Enhedspris', 390, y + 8, { width: 70, align: 'right' });
   doc.text('I alt', 465, y + 8, { width: 75, align: 'right' });
@@ -26367,10 +26372,17 @@ function drawDocumentPdf(doc, kind, record, company, attachments) {
     // OG (RUNDE U) så vi kan afgøre FØR vi tegner noget, om linjen overhovedet er
     // på den aktuelle side eller skal starte på en ny (ensurePdfSpace).
     const nameHeight = pdfLineDescHeight(doc, l, 220);
-    const rowHeight = Math.max(nameHeight, 14) + 8;
+    // v2.76.2 — rækken skal også have plads til rabat-kolonnens to linjer
+    // ("-30%" + "(-16.950 kr)") og en Antal-celle der ombrydes ("1 Timepris"),
+    // ellers løb de ud over skillelinjen / ind i næste række.
+    const qtyText = String(l.quantity) + ' ' + (l.unit || '');
+    doc.font('DMSans').fontSize(9.5);
+    const qtyHeight = doc.heightOfString(qtyText, { width: 52, align: 'right' });
+    const discHeight = lineDiscRateLabel ? 22 : 0;
+    const rowHeight = Math.max(nameHeight, qtyHeight, discHeight, 14) + 10;
     y = ensurePdfSpace(doc, y, rowHeight, { ...ctx, redrawTableHeader: true });
     doc.font('DMSans').fontSize(9.5).fillColor('#111318');
-    doc.text(String(l.quantity) + ' ' + (l.unit || ''), 278, y, { width: 42, align: 'right' });
+    doc.text(qtyText, 268, y, { width: 52, align: 'right' });
     if (lineDiscRateLabel) {
       doc.font('DMSans-Bold').fontSize(8).fillColor('#C0392B');
       doc.text(lineDiscRateLabel, 325, y + 1, { width: 60, align: 'right', lineBreak: false });
@@ -26382,7 +26394,7 @@ function drawDocumentPdf(doc, kind, record, company, attachments) {
     doc.text(Math.round(lineTotal).toLocaleString('da-DK') + ' kr', 465, y, { width: 75, align: 'right' });
     drawPdfLineDesc(doc, l, 48, y, 220);
     y += rowHeight;
-    doc.moveTo(40, y - 4).lineTo(555, y - 4).strokeColor('#EEF0F3').stroke();
+    doc.moveTo(40, y - 5).lineTo(555, y - 5).strokeColor('#EEF0F3').stroke();
   });
 
   y += 12;
