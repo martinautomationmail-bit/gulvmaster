@@ -5613,6 +5613,15 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
   .panel-body{max-height:280px}
   .nav{height:auto;min-height:52px;flex-wrap:wrap;padding:7px 10px}
 }
+.gtf{position:relative}
+.gtf-btn{text-align:left;min-width:150px;max-width:260px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;cursor:pointer}
+.gtf-btn.on{border-color:#6366F1;color:#3730A3;background:#EEF2FF}
+.gtf-pop{display:none;position:absolute;top:calc(100% + 6px);left:0;z-index:60;background:#fff;border:1px solid #E5E7EB;border-radius:12px;box-shadow:0 12px 30px rgba(17,19,24,.14);padding:6px;min-width:220px;max-height:340px;overflow:auto}
+.gtf.open .gtf-pop{display:block}
+.gtf-pop label{display:flex;align-items:center;gap:8px;padding:7px 9px;border-radius:8px;font-size:13px;cursor:pointer;white-space:nowrap}
+.gtf-pop label:hover{background:#F5F7FF}
+.gtf-pop .gtf-all{border-bottom:1px solid #F3F4F6;margin-bottom:4px;border-radius:8px 8px 0 0}
+.gtf-dot{width:9px;height:9px;border-radius:50%;flex-shrink:0}
 </style>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
@@ -5839,7 +5848,7 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
        i browseren faktisk ER det nyeste deploy, eller om Render/GitHub bare
        ikke er nået at opdatere endnu — i stedet for at skulle gætte om en
        rettelse "stadig ikke virker" eller bare endnu ikke er live. -->
-  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build v2.76.0 · 2026-11-02</span></div>
+  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build v2.76.1 · 2026-11-02</span></div>
 </aside>
 <div class="app-content">
 <!-- RUNDE FB — AI-ASSISTENTEN (Martin: "en ai der er nede i venstre hjørne af
@@ -9492,9 +9501,8 @@ body.ai-has-reply #ai-fab{animation:ai-nudge 1.4s ease-in-out 3}
                faggruppe-liste som Sagsoversigt/CRM, se populateGanttTradeFilter())
                i stedet for de hårdkodede lay/sand/paint/sub/other-værdier, som
                aldrig matchede noget rigtigt data. -->
-          <select id="gantt-trade-filter" class="select" style="width:auto">
-            <option value="all">🎨 Alle fag</option>
-          </select>
+          <!-- v2.76.1 — vælg flere fag på én gang (afkrydsning) -->
+          <div class="gtf" id="gantt-trade-filter"><button type="button" class="select gtf-btn" id="gtf-btn">🎨 Alle fag</button><div class="gtf-pop" id="gtf-pop"></div></div>
           <select id="gantt-period-filter" class="select" style="width:auto">
             <option value="all">Hele perioden</option>
             <option value="this-week">Denne uge</option>
@@ -18742,14 +18750,34 @@ async function openGanttProject(projectId,projectName){
 // lay/sand/paint/sub/other-værdier.
 async function populateGanttTradeFilter(){
   if(!pjProjectTypes.length)await loadPjProjectTypes();
-  var sel=document.getElementById('gantt-trade-filter');
-  if(!sel)return;
-  var keep=ganttAllFilters.trade;
-  sel.innerHTML='<option value="all">🎨 Alle fag</option>'+pjProjectTypes.map(function(t){return '<option value="'+esc(t)+'">'+esc(t)+'</option>';}).join('');
-  if(keep!=='all'&&pjProjectTypes.indexOf(keep)===-1)keep='all';
-  sel.value=keep;
-  ganttAllFilters.trade=keep;
+  if(!document.getElementById('gtf-pop'))return;
+  ganttAllFilters.trade=ganttAllFilters.trade.filter(function(t){return pjProjectTypes.indexOf(t)>-1;});
+  gtfRender();
 }
+// v2.76.1 — flere fag ad gangen. Tom liste = alle fag. Huskes i browseren.
+function gtfRender(){
+  var sel=ganttAllFilters.trade,btn=document.getElementById('gtf-btn'),pop=document.getElementById('gtf-pop');if(!btn||!pop)return;
+  btn.textContent=!sel.length?'🎨 Alle fag':(sel.length<=2?'🎨 '+sel.join(', '):'🎨 '+sel.length+' fag valgt');
+  btn.classList.toggle('on',!!sel.length);
+  pop.innerHTML='<label class="gtf-all"><input type="checkbox"'+(!sel.length?' checked':'')+' data-gtf-all> <b>Alle fag</b></label>'
+    +pjProjectTypes.map(function(t){return '<label><input type="checkbox" value="'+esc(t)+'"'+(sel.indexOf(t)>-1?' checked':'')+'> <span class="gtf-dot" style="background:'+(typeof projectTypeColor==='function'?projectTypeColor(t):'#9CA3AF')+'"></span>'+esc(t)+'</label>';}).join('');
+}
+function gtfSet(list){
+  ganttAllFilters.trade=list;
+  try{localStorage.setItem('gm_gantt_trades',JSON.stringify(list));}catch(e){}
+  gtfRender();renderGanttChart();
+}
+document.addEventListener('click',function(e){
+  var w=document.getElementById('gantt-trade-filter');if(!w)return;
+  if(e.target.closest&&e.target.closest('#gtf-btn')){w.classList.toggle('open');return;}
+  if(!w.contains(e.target))w.classList.remove('open');
+});
+document.addEventListener('change',function(e){
+  if(!e.target.closest||!e.target.closest('#gtf-pop'))return;
+  if(e.target.hasAttribute('data-gtf-all')){gtfSet([]);return;}
+  var vals=Array.prototype.map.call(document.querySelectorAll('#gtf-pop input[value]:checked'),function(x){return x.value;});
+  gtfSet(vals.length===pjProjectTypes.length?[]:vals);
+});
 async function openGanttAllTasks(){
   ganttState.projectId=null;ganttState.projectName='Alle opgaver';ganttState.project=null;ganttState.allMode=true;
   document.getElementById('gantt-job-title').textContent='📊 Alle opgaver (alle sager)';
@@ -18779,7 +18807,8 @@ function ganttTaskApiUrl(taskId){
   if(!pid)return null;
   return '/api/projects/'+encodeURIComponent(pid)+'/tasks/'+encodeURIComponent(taskId);
 }
-var ganttAllFilters={trade:'all',period:'all',search:'',customFrom:'',customTo:''};
+var ganttAllFilters={trade:[],period:'all',search:'',customFrom:'',customTo:''};
+try{var _gtf=JSON.parse(localStorage.getItem('gm_gantt_trades')||'[]');if(Array.isArray(_gtf))ganttAllFilters.trade=_gtf;}catch(e){}
 var ganttExpandedProjects={};
 function ganttFilteredTasks(){
   if(!ganttState.allMode)return ganttState.tasks;
@@ -18787,7 +18816,7 @@ function ganttFilteredTasks(){
   // RUNDE DK — fag-filteret bruger nu sagens rigtige faggruppe (project_type,
   // samme felt Sagsoversigt/CRM bruger), i stedet for type_guess (som sags-
   // opgaver aldrig får sat, se kommentaren ved GET /api/gantt/all-tasks).
-  if(ganttAllFilters.trade!=='all')list=list.filter(function(t){return (t.project_type||'')===ganttAllFilters.trade;});
+  if(ganttAllFilters.trade.length)list=list.filter(function(t){return ganttAllFilters.trade.indexOf(t.project_type||'')>-1;});
   if(ganttAllFilters.search.trim()){
     var q=ganttAllFilters.search.trim().toLowerCase();
     list=list.filter(function(t){return (t.name||'').toLowerCase().indexOf(q)>-1||(t.project_name||'').toLowerCase().indexOf(q)>-1||(t.job_number||'').toLowerCase().indexOf(q)>-1;});
@@ -27902,7 +27931,7 @@ async function bind(){
     closeModal('gantt-detail-modal');
     openProjectDetail(+pid);
   };
-  document.getElementById('gantt-trade-filter').onchange=function(e){ganttAllFilters.trade=e.target.value;renderGanttChart();};
+
   document.getElementById('gantt-period-filter').onchange=function(e){
     ganttAllFilters.period=e.target.value;
     document.getElementById('gantt-custom-range').style.display=e.target.value==='custom'?'inline-flex':'none';
