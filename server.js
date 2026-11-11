@@ -29241,6 +29241,22 @@ app.get('/kunde/:token/faktura/:invoiceId/pdf', asyncRoute(async (req, res) => {
 
 // SPROG — dansk/engelsk (se sprog.js)
 const sprog = require('./sprog')(app, { pool, pgOne, auth, asyncRoute, rootDir: __dirname });
+
+// ══════════════════════════════════════════════════════════════
+// NOTER (nov. 2026) — Notion-lignende noteprogram under Videnscenter, overført
+// fra Arkitekt & Boligrenovering-portalen (se notes.js / notes-ui.js). Erstatter
+// de gamle "fælles noter" (de bliver overført én gang ved opstart). Admin kan
+// også læse medarbejdernes private sider.
+// ══════════════════════════════════════════════════════════════
+const notes = require('./notes')(app, { pool, pgOne, auth, asyncRoute, PUBLIC_APP_URL, callAnthropicJSONMulti, sendPushToUser });
+// ── Noter som hurtig mobil-app (/noter) ── se kommentaren i noter.html
+const NOTES_VER = (() => { try { return require('crypto').createHash('md5').update(require('fs').readFileSync(path.join(__dirname, 'notes-ui.js'))).digest('hex').slice(0, 10); } catch (e) { return String(Date.now()); } })();
+const _noterCache = {};
+function noterFile(name) { if (!_noterCache[name]) _noterCache[name] = require('fs').readFileSync(path.join(__dirname, name), 'utf8').split('__NV__').join(NOTES_VER); return _noterCache[name]; }
+app.get('/noter', (req, res) => { res.set('Cache-Control', 'no-cache'); res.type('html').send(noterFile('noter.html')); });
+app.get('/noter-sw.js', (req, res) => { res.set('Cache-Control', 'no-cache'); res.set('Service-Worker-Allowed', '/noter'); res.type('application/javascript').send(noterFile('noter-sw.js')); });
+app.get('/noter.webmanifest', (req, res) => { res.set('Cache-Control', 'public, max-age=86400'); res.type('application/manifest+json').sendFile(path.join(__dirname, 'noter.webmanifest')); });
+app.get('/notes-ui.js', (req, res) => { res.set('Cache-Control', req.query.v === NOTES_VER ? 'public, max-age=31536000, immutable' : 'no-cache'); res.type('application/javascript').sendFile(path.join(__dirname, 'notes-ui.js')); });
 // SPROG: de interne sider får sprogvælgeren (og evt. den engelske oversætter) sat ind i <head>, se sprog.js
 const SPROG_PAGES = new Set(['admin.html', 'employee.html', 'employee-demo.html', 'index.html', 'set-password.html', 'migrate.html']);
 const _pageCache = new Map();
@@ -30183,6 +30199,8 @@ async function start() {
   await pool.query('SELECT 1 AS connected');
   await initSchema();
   await sprog.initSchema();
+  await notes.initSchema();
+  notes.startJobs(cron);
   await migrateTimetrackPanelPage();
   await migrateAutoProjectStages();
   await migrateKbPriorityProfession();

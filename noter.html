@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="da">
+<head>
+<meta charset="utf-8">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml"><link rel="icon" href="/favicon.ico" sizes="any"><link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,interactive-widget=resizes-content">
+<meta name="theme-color" content="#FBFAF8">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="Noter">
+<title>Noter</title>
+<link rel="manifest" href="/noter.webmanifest">
+<!--
+  NOTER · hurtig mobil-/app-udgave (okt. 2026, Martins ønske: "skal fungere på
+  telefon, være hurtig og responsiv"). Samme noteprogram (notes-ui.js) og samme
+  data som under Videnscenter i portalen, men uden resten af portalen: siden
+  henter ~60 kB i stedet for ~760 kB, kan lægges på hjemmeskærmen som en app,
+  og app-skallen caches af en service worker (noter-sw.js), så den åbner med
+  det samme. Senest viste sider gemmes lokalt og kan læses uden net.
+-->
+<style>
+:root{--bg:#FBFAF8}
+html,body{margin:0;height:100%;background:var(--bg);color:#2b2622;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,sans-serif;-webkit-text-size-adjust:100%;overscroll-behavior:none}
+body{padding:env(safe-area-inset-top) env(safe-area-inset-right) 0 env(safe-area-inset-left);box-sizing:border-box}
+#page-kb-notes{margin:0!important;padding:0!important;height:100%}
+#boot{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;color:#8a8178;font-size:14px}
+.n-toast{position:fixed;left:50%;bottom:calc(84px + env(safe-area-inset-bottom));transform:translateX(-50%);background:#241f1a;color:#fff;font-size:14px;padding:10px 16px;border-radius:10px;z-index:20000;box-shadow:0 8px 24px rgba(0,0,0,.2);max-width:90vw}
+.n-off{position:fixed;top:calc(6px + env(safe-area-inset-top));left:50%;transform:translateX(-50%);background:#8a6d1e;color:#fff;font-size:12.5px;padding:4px 10px;border-radius:999px;z-index:20000;display:none}
+body.offline .n-off{display:block}
+</style>
+</head>
+<body>
+<div id="boot">Åbner noter…</div>
+<div class="n-off">Offline – viser gemte sider</div>
+<div id="page-kb-notes" class="page active"></div>
+<script>
+(function(){
+  var token=null,me=null;
+  try{token=localStorage.getItem('gm_token');me=JSON.parse(localStorage.getItem('gm_user')||'null');}catch(e){}
+  if(!token||!me){location.replace('/?next=/noter'+encodeURIComponent(location.hash||''));return;}
+  window.token=token;window.me=me;window.API='';window.NOTER_STANDALONE=true;
+  window.esc=function(s){return String(s==null?'':s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];});};
+  window.toast=function(msg,ic){var o=document.querySelector('.n-toast');if(o)o.remove();var t=document.createElement('div');t.className='n-toast';t.textContent=(ic&&ic.length<4?ic+' ':'')+msg;document.body.appendChild(t);setTimeout(function(){t.remove();},2200);};
+  window.logout=function(){try{localStorage.removeItem('gm_token');localStorage.removeItem('gm_user');}catch(e){}location.replace('/?next=/noter');};
+  window.setAppTitle=function(t){document.title=(t?t+' · ':'')+'Noter';};
+  // Lokal kopi af træet og de senest viste sider, så appen kan læse uden net.
+  var CK='nt_cache_v1';
+  function cacheGet(){try{return JSON.parse(localStorage.getItem(CK)||'{}')||{};}catch(e){return {};}}
+  function cachePut(path,data){try{var c=cacheGet();c[path]={t:Date.now(),d:data};var keys=Object.keys(c).sort(function(a,b){return c[b].t-c[a].t;});keys.slice(40).forEach(function(k){delete c[k];});localStorage.setItem(CK,JSON.stringify(c));}catch(e){}}
+  function cacheable(path,opts){return (!opts.method||opts.method==='GET')&&/^\/api\/notes\/(tree|recent|\d+)$/.test(path);}
+  window.api=async function(path,opts){
+    opts=opts||{};
+    var h=Object.assign({'Authorization':'Bearer '+token},opts.headers||{});
+    var isFD=typeof FormData!=='undefined'&&opts.body instanceof FormData;
+    if(opts.body&&!h['Content-Type']&&!isFD&&typeof opts.body==='string')h['Content-Type']='application/json';
+    try{
+      var r=await fetch(path,Object.assign({},opts,{headers:h}));
+      var d=await r.json().catch(function(){return {error:'Ugyldigt svar'};});
+      if(r.status===401){logout();return null;}
+      document.body.classList.remove('offline');
+      if(r.ok&&cacheable(path,opts))cachePut(path,d);
+      return r.ok?d:Object.assign({ok:false},d);
+    }catch(e){
+      if(cacheable(path,opts)){var c=cacheGet()[path];if(c){document.body.classList.add('offline');return c.d;}}
+      document.body.classList.add('offline');toast('Ingen forbindelse','⚠');return null;
+    }
+  };
+  window.addEventListener('online',function(){document.body.classList.remove('offline');});
+})();
+</script>
+<script src="/notes-ui.js?v=__NV__" defer></script>
+<script>
+document.addEventListener('DOMContentLoaded',function(){
+  if(!window.NOTES)return;
+  var b=document.getElementById('boot');if(b)b.remove();
+  if(!/^#kb-notes/.test(location.hash))history.replaceState(null,'','#kb-notes'+(location.hash.replace(/^#/,'')?'/'+location.hash.replace(/^#/,''):''));
+  NOTES.init();
+  window.addEventListener('popstate',function(){NOTES.init();});
+  window.addEventListener('hashchange',function(){NOTES.init();});
+});
+if('serviceWorker' in navigator)window.addEventListener('load',function(){navigator.serviceWorker.register('/noter-sw.js',{scope:'/noter'}).catch(function(){});});
+</script>
+</body>
+</html>
