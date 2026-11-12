@@ -666,7 +666,8 @@ function norm(html){var s=String(html||'');if(/^(\s|<br\s*\/?>)*$/i.test(s))retu
 // ── gem / fortryd ───────────────────────────────────────────
 // 3-vejs fletning af blokke (base = sidst fælles udgave, mine = mine ændringer, theirs = den gemte udgave)
 function nbMerge(B, M, T) {
-  var J = function (x) { return JSON.stringify(x === undefined ? null : x); };
+  var canon = function (x) { if (Array.isArray(x)) return x.map(canon); if (x && typeof x === 'object') { var o = {}; Object.keys(x).sort().forEach(function (k) { var v = x[k]; if (v !== undefined && v !== null && v !== '' && v !== false) o[k] = canon(v); }); return o; } return x; };
+  var J = function (x) { return JSON.stringify(canon(x === undefined ? null : x)); };
   var map = function (l) { var o = {}; (l || []).forEach(function (b) { if (b && b.id) o[b.id] = b; }); return o; };
   function block(b, m, t) {
     if (!b) return m;

@@ -303,7 +303,8 @@ module.exports = function registerNotes(app, deps) {
   }));
   // 3-vejs fletning af blokke (base = sidst fælles udgave, mine = mine ændringer, theirs = den gemte udgave)
   function nbMerge(B, M, T) {
-    var J = function (x) { return JSON.stringify(x === undefined ? null : x); };
+    var canon = function (x) { if (Array.isArray(x)) return x.map(canon); if (x && typeof x === 'object') { var o = {}; Object.keys(x).sort().forEach(function (k) { var v = x[k]; if (v !== undefined && v !== null && v !== '' && v !== false) o[k] = canon(v); }); return o; } return x; };
+  var J = function (x) { return JSON.stringify(canon(x === undefined ? null : x)); };
     var map = function (l) { var o = {}; (l || []).forEach(function (b) { if (b && b.id) o[b.id] = b; }); return o; };
     function block(b, m, t) {
       if (!b) return m;
@@ -415,7 +416,7 @@ module.exports = function registerNotes(app, deps) {
         mineClean = cleanBlocks(bd.blocks, 0); blocks = mineClean;
         if (merging) {
           const live = (await db.query('SELECT blocks FROM note_pages WHERE id=$1 FOR NO KEY UPDATE', [id])).rows[0];
-          const theirs = (live && live.blocks) || [];
+          const theirs = cleanBlocks((live && live.blocks) || [], 0);
           blocks = cleanBlocks(nbMerge(cleanBlocks(bd.base_blocks, 0), mineClean, theirs), 0);
           cur.blocks = theirs;
         }
