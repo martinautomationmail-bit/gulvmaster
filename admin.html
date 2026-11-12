@@ -5622,6 +5622,13 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
 .gtf-pop label:hover{background:#F5F7FF}
 .gtf-pop .gtf-all{border-bottom:1px solid #F3F4F6;margin-bottom:4px;border-radius:8px 8px 0 0}
 .gtf-dot{width:9px;height:9px;border-radius:50%;flex-shrink:0}
+.assign-quotes{margin:-4px 0 12px;padding:10px;border:1px solid #E0E7FF;background:#F5F7FF;border-radius:10px}
+.assign-quotes .aq-h{font-size:12px;font-weight:700;color:#3730A3;margin-bottom:6px}
+.aq-chip{display:flex;flex-wrap:wrap;align-items:center;gap:4px 8px;padding:7px 10px;margin-top:4px;background:#fff;border:1px solid #E5E7EB;border-radius:8px;text-decoration:none;color:#111827;font-size:13px}
+.aq-chip:hover{border-color:#6366F1;background:#EEF2FF}
+.aq-chip.aq-att{border-color:#A5B4FC}
+.aq-n{font-weight:700;color:#4338CA;white-space:nowrap}.aq-t{flex:1 1 140px;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.aq-k{font-weight:600;white-space:nowrap}.aq-s{font-size:11px;padding:2px 7px;border-radius:99px;background:#F3F4F6;color:#374151;white-space:nowrap}.aq-sa{background:#E0E7FF;color:#3730A3}.aq-o{color:#6366F1;font-weight:700}
 </style>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
@@ -5848,7 +5855,7 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
        i browseren faktisk ER det nyeste deploy, eller om Render/GitHub bare
        ikke er nået at opdatere endnu — i stedet for at skulle gætte om en
        rettelse "stadig ikke virker" eller bare endnu ikke er live. -->
-  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build v2.77.0 · 2026-11-02</span></div>
+  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build v2.78.0 · 2026-11-02</span></div>
 </aside>
 <div class="app-content">
 <!-- RUNDE FB — AI-ASSISTENTEN (Martin: "en ai der er nede i venstre hjørne af
@@ -12028,6 +12035,7 @@ body.ai-has-reply #ai-fab{animation:ai-nudge 1.4s ease-in-out 3}
   <div class="modal">
     <h3 id="assign-title">Rediger booking</h3>
     <div id="assign-info" class="assign-info-box"></div>
+    <div id="assign-quotes" class="assign-quotes" style="display:none"></div>
     <div id="assign-geo-hint" class="geo-hint" style="display:none"></div>
     <div class="form-row">
       <div class="form-group"><label class="form-label">📍 Adresse <span class="opt-tag">ret hvis den mangler/er forkert</span></label><input id="assign-address" class="input" placeholder="Gade, postnr, by"></div>
@@ -17248,6 +17256,27 @@ async function noteAttachOpenCustomerPhotoPicker(prefix){
   }).join('');
   docJobPhotosCtx.photos=r.photos;
 }
+// Tilbud på kundebesøget/sagen vises øverst i "Rediger booking" (nov. 2026) — klik åbner
+// tilbuddet i en ny fane, så man ikke mister sin plan.
+async function assignLoadQuotes(taskId){
+  var box=document.getElementById('assign-quotes');if(!box)return;
+  box.style.display='none';box.innerHTML='';if(!taskId)return;
+  var r=await api('/api/tasks/'+encodeURIComponent(taskId)+'/related-quotes');
+  var cur=assignCtx&&(assignCtx.taskId||(assignCtx.bookingId&&(bookings.find(function(x){return +x.id===+assignCtx.bookingId;})||{}).task_id));
+  if(String(cur)!==String(taskId))return;
+  var qs=(r&&r.quotes)||[];if(!qs.length)return;
+  box.innerHTML='<div class="aq-h">📄 Tilbud'+(qs.length>1?' ('+qs.length+')':'')+'</div>'+qs.map(function(q){
+    var st=(typeof QZ_QUOTE_STATUS!=='undefined'&&QZ_QUOTE_STATUS[q.status]&&QZ_QUOTE_STATUS[q.status].label)||q.status||'';
+    return '<a class="aq-chip'+(q.attached?' aq-att':'')+'" href="#quotes/tilbud/'+q.id+'" target="_blank" rel="noopener" title="Åbn tilbuddet i en ny fane">'
+      +'<span class="aq-n">'+(q.quote_number?'#'+esc(q.quote_number):'Tilbud')+'</span>'
+      +'<span class="aq-t">'+esc(q.quote_title||q.job_name||'')+'</span>'
+      +'<span class="aq-k">'+krFmt(q.total)+'</span>'
+      +(st?'<span class="aq-s">'+esc(st)+'</span>':'')
+      +(q.attached?'<span class="aq-s aq-sa">Vedhæftet besøget</span>':'')
+      +'<span class="aq-o">↗</span></a>';
+  }).join('');
+  box.style.display='block';
+}
 // FULL ASSIGN MODAL
 function openAssign(ctx){
   assignCtx=ctx||{};
@@ -17271,6 +17300,7 @@ function openAssign(ctx){
   var caseLink=(t&&t.project_id)?(' <a href="#project-detail/'+t.project_id+'" onclick="closeModal(\'assign-modal\')" style="color:#1D4ED8;font-weight:700;text-decoration:underline">↗ Åbn sagen</a>'):'';
   var primaryName=t?esc(t.customer_name||t.job_name||t.name):'';
   document.getElementById('assign-info').innerHTML=t?('<strong>'+primaryName+'</strong>'+(t.job_number?' <span style="opacity:.7">· Sag #'+esc(t.job_number)+'</span>':'')+caseLink+'<br>'+esc(t.name||'')):'<strong>Vælg en task fra opgavepoolen.</strong>';
+  assignLoadQuotes(taskId);
   document.getElementById('assign-address').value=t?(t.job_address||''):'';
   document.getElementById('assign-phone').value=t?(t.customer_phone||''):'';
   document.getElementById('assign-ref').value=t?(t.start_date||'—'):'—';
@@ -44203,7 +44233,7 @@ async function openPage(id,o){
   var conv=0;(function fix(list){(list||[]).forEach(function(x,i){if(x.todo&&isTog(x.type)){var n=list[i+1],kids=n&&(n.indent||0)>(x.indent||0),c=!!x.checked;delete x.todo;
       if(kids||x.type!=='toggle')delete x.checked;else{x.type='todo';x.checked=c;delete x.open;}conv++;}
     if(Array.isArray(x.cols))x.cols.forEach(fix);});})(p.blocks);
-  S.page=p;S.pending={};S.undo=[];S.redo=[];S.sel=[];S.snap=JSON.stringify(p.blocks||[]);if(conv)setTimeout(function(){if(S.page===p)changed();},50);
+  S.page=p;S.pending={};S.undo=[];S.redo=[];S.sel=[];S.snap=JSON.stringify(p.blocks||[]);S.base=S.snap;S.saveN=(S.saveN||0)+1;if(conv)setTimeout(function(){if(S.page===p)changed();},50);
   if(!Array.isArray(p.blocks))p.blocks=[];
   revealInTree(p.id);renderTree();renderPage();
   setAppTitleSafe((p.icon?p.icon+' ':'')+(p.title||L('Uden titel','Untitled')));
@@ -44404,7 +44434,7 @@ function renderDoc(focus){
 }
 function rerenderKeep(){ // gentegn, men behold markøren hvor den er
   var a=document.activeElement,be=a&&a.closest&&a.closest('.nt-b'),pos=null;
-  if(be&&a.classList.contains('nt-txt'))pos=caretOffset(a);
+  if(be&&a.classList.contains('nt-txt'))pos=caretOffset(a);else if(be&&a.tagName==='TEXTAREA')pos=a.selectionStart;
   renderDoc(be?{id:be.dataset.id,pos:pos==null?'end':pos}:null);
 }
 function autoGrow(t){t.style.height='auto';t.style.height=(t.scrollHeight+2)+'px';}
@@ -44440,6 +44470,49 @@ function moveFocus(el,dir,pos){var a=editables(),i=a.indexOf(el),n=a[i+dir];if(!
 function norm(html){var s=String(html||'');if(/^(\s|<br\s*\/?>)*$/i.test(s))return '';s=s.replace(/\u200b/g,'');for(var k=0;k<3;k++)s=s.replace(/<(b|i|u|s|strong|em|code|span|mark|strike|font)(\s[^>]*)?><\/\1>/gi,'');return s.replace(/<br\s*\/?>$/i,'');}
 
 // ── gem / fortryd ───────────────────────────────────────────
+// 3-vejs fletning af blokke (base = sidst fælles udgave, mine = mine ændringer, theirs = den gemte udgave)
+function nbMerge(B, M, T) {
+  var J = function (x) { return JSON.stringify(x === undefined ? null : x); };
+  var map = function (l) { var o = {}; (l || []).forEach(function (b) { if (b && b.id) o[b.id] = b; }); return o; };
+  function block(b, m, t) {
+    if (!b) return m;
+    if (J(m) === J(b)) return t;
+    if (J(t) === J(b) || J(t) === J(m)) return m;
+    var o = {}, keys = {};
+    [b, m, t].forEach(function (x) { Object.keys(x).forEach(function (k) { keys[k] = 1; }); });
+    Object.keys(keys).forEach(function (k) {
+      var v;
+      if (k === 'cols' && Array.isArray(m.cols) && Array.isArray(t.cols) && Array.isArray(b.cols) && m.cols.length === t.cols.length && b.cols.length === m.cols.length) {
+        v = m.cols.map(function (c, i) { return list(b.cols[i], c, t.cols[i]); });
+      } else v = J(m[k]) === J(b[k]) ? t[k] : m[k];
+      if (v !== undefined) o[k] = v;
+    });
+    return o;
+  }
+  function list(B, M, T) {
+    B = B || []; M = M || []; T = T || [];
+    var bm = map(B), mm = map(M), tm = map(T), out = {};
+    var keep = function (id) {
+      var b = bm[id], m = mm[id], t = tm[id];
+      if (m && t) return block(b, m, t);
+      if (m) return !b ? m : (J(m) !== J(b) ? m : null); // de har slettet – behold kun hvis jeg har ændret den
+      if (t) return !b ? t : (J(t) !== J(b) ? t : null); // jeg har slettet – behold kun hvis de har ændret den
+      return null;
+    };
+    var ord = function (l) { return l.filter(function (x) { return x && bm[x.id] && mm[x.id] && tm[x.id]; }).map(function (x) { return x.id; }).join(','); };
+    var theyMoved = ord(T) !== ord(B);
+    var P = theyMoved ? T : M, S = theyMoved ? M : T, res = [];
+    P.forEach(function (x) { if (!x || out[x.id]) return; var v = keep(x.id); if (v) { out[x.id] = 1; res.push(v); } });
+    S.forEach(function (x, i) {
+      if (!x || out[x.id]) return; var v = keep(x.id); if (!v) return;
+      var at = 0; for (var j = i - 1; j >= 0; j--) { var k = res.findIndex(function (r) { return r.id === S[j].id; }); if (k > -1) { at = k + 1; break; } }
+      out[x.id] = 1; res.splice(at, 0, v);
+    });
+    return res;
+  }
+  return list(B, M, T);
+}
+
 function markDirty(fields){
   if(!S.page)return;Object.assign(S.pending,fields||{blocks:true});
   setStatus(L('Gemmer…','Saving…'));
@@ -44451,19 +44524,42 @@ function setStatus(t){var e=$('#nt-status');if(e)e.textContent=t;}
 async function save(force){
   clearTimeout(S.saveT);if(!S.page||!Object.keys(S.pending).length)return;
   if(S.saving){S.again=true;return;}
-  var p=S.page,body={base_updated_at:p.updated_at};if(force)body.force=true;
+  var p=S.page,body={base_updated_at:p.updated_at},sentStr=null;if(force)body.force=true;
   Object.keys(S.pending).forEach(function(k){body[k]=k==='blocks'?p.blocks:p[k];});
-  var sent=S.pending;S.pending={};S.saving=true;
+  if(S.pending.blocks){sentStr=JSON.stringify(p.blocks);try{body.base_blocks=JSON.parse(S.base||'[]');}catch(e){}}
+  var sent=S.pending;S.pending={};S.saving=true;S.saveN=(S.saveN||0)+1;
   var r=await api('/api/notes/'+p.id,{method:'PUT',body:JSON.stringify(body)});
   S.saving=false;
   if(S.page!==p){if(S.again){S.again=false;}return;}
+  if(r&&r.ok&&sentStr!=null){
+    if(r.blocks){applyRemote(JSON.parse(sentStr),r.blocks);}else S.base=sentStr;
+  }
   if(r&&r.conflict){S.pending=Object.assign(sent,S.pending);showConflict(r);setStatus(L('Ikke gemt','Not saved'));return;}
   if(!r||r.ok===false){S.pending=Object.assign(sent,S.pending);setStatus(L('Ikke gemt – prøver igen','Not saved – retrying'));S.saveT=setTimeout(save,4000);return;}
   p.updated_at=r.updated_at;p.updated_by=me&&me.id;setStatus(L('Gemt','Saved'));
   if(S.again){S.again=false;save();}
 }
 function flush(){if(S.page&&Object.keys(S.pending).length){var p=S.page,body={base_updated_at:p.updated_at};Object.keys(S.pending).forEach(function(k){body[k]=k==='blocks'?p.blocks:p[k];});S.pending={};
-  try{fetch('/api/notes/'+p.id,{method:'PUT',keepalive:true,headers:{'Content-Type':'application/json','Authorization':'Bearer '+token},body:JSON.stringify(body)});}catch(e){}}}
+  var str=JSON.stringify(body);if(body.blocks&&S.base){var withBase=str.slice(0,-1)+',"base_blocks":'+S.base+'}';if(withBase.length<60000)str=withBase;}
+  try{fetch('/api/notes/'+p.id,{method:'PUT',keepalive:true,headers:{'Content-Type':'application/json','Authorization':'Bearer '+token},body:str});}catch(e){}}}
+// Flet en udgave fra serveren ind i det der står på skærmen (base = det mine ændringer bygger på)
+function applyRemote(base,theirs){
+  var mine=S.page.blocks,before=JSON.stringify(mine),merged=nbMerge(base,mine,theirs);
+  S.base=JSON.stringify(theirs);S.page.blocks=merged;
+  var now=JSON.stringify(merged);if(now!==before){S.snap=now;rerenderKeep();}
+}
+// Hent kollegers ændringer løbende mens siden er åben
+async function pullRemote(){
+  if(!S.page||!isActive()||S.saving||S.composing||S.menu||(S.sel&&S.sel.length)||document.visibilityState!=='visible')return;
+  var ae=document.activeElement;if(ae&&ae.closest&&ae.closest('.nt-cell,.nt-cap,.nt-title'))return;
+  var p=S.page,n=S.saveN;
+  var r=await api('/api/notes/'+p.id);
+  if(!r||r.id!==p.id||S.page!==p||S.saving||S.saveN!==n||S.composing||r.updated_at===p.updated_at)return;
+  var base;try{base=JSON.parse(S.base||'[]');}catch(e){base=[];}
+  p.updated_at=r.updated_at;p.updated_by=r.updated_by;p.updated_by_name=r.updated_by_name;
+  ['title','icon','cover_url','cover_pos','full_width','text_size'].forEach(function(k){if(!S.pending[k]&&JSON.stringify(p[k])!==JSON.stringify(r[k])){p[k]=r[k];if(k==='title'){var te=$('.nt-title');if(te&&document.activeElement!==te)te.textContent=r.title||'';if(S.byId[p.id])S.byId[p.id].title=r.title;}}});
+  applyRemote(base,r.blocks||[]);
+}
 function showConflict(r){
   var c=$('#nt-conf');if(!c)return;
   c.innerHTML='<div class="nt-conf">⚠️ <span style="flex:1">'+H(r.updated_by_name||L('En kollega','A colleague'))+L(' har ændret siden imens. ',' changed this page meanwhile. ')+'</span><button data-act="conf-reload">'+L('Hent deres version','Load their version')+'</button><button data-act="conf-force">'+L('Gem min version','Keep mine')+'</button></div>';
@@ -46253,11 +46349,12 @@ function isActive(){var p=document.getElementById('page-kb-notes');return p&&p.c
 window.addEventListener('pagehide',flush);
 window.addEventListener('beforeunload',flush);
 window.addEventListener('focus',async function(){
-  if(!S.page||!isActive()||Object.keys(S.pending).length||S.saving)return;
-  var a=document.activeElement;if(a&&a.closest&&a.closest('#nt-doc'))return;
-  var r=await api('/api/notes/'+S.page.id);if(r&&r.id===S.page.id&&r.updated_at!==S.page.updated_at&&!Object.keys(S.pending).length){var top=$('#nt-scroll').scrollTop;S.page=r;S.snap=JSON.stringify(r.blocks);renderPage();$('#nt-scroll').scrollTop=top;}
-  loadTree();
+  if(!S.page||!isActive())return;
+  await pullRemote();loadTree();
 });
+setInterval(pullRemote,4000);
+document.addEventListener('compositionstart',function(){S.composing=true;},true);
+document.addEventListener('compositionend',function(){S.composing=false;},true);
 document.addEventListener('visibilitychange',function(){if(document.visibilityState==='hidden')flush();});
 
 function fitHeight(){var a=$('#nt-app');if(!a||!isActive())return;var top=a.getBoundingClientRect().top+scrollY;a.style.height=Math.max(480,innerHeight-top)+'px';}

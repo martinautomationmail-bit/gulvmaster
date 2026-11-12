@@ -301,6 +301,49 @@ module.exports = function registerNotes(app, deps) {
     }
     res.json({ ok: true, id: p.id, scope });
   }));
+  // 3-vejs fletning af blokke (base = sidst fælles udgave, mine = mine ændringer, theirs = den gemte udgave)
+  function nbMerge(B, M, T) {
+    var J = function (x) { return JSON.stringify(x === undefined ? null : x); };
+    var map = function (l) { var o = {}; (l || []).forEach(function (b) { if (b && b.id) o[b.id] = b; }); return o; };
+    function block(b, m, t) {
+      if (!b) return m;
+      if (J(m) === J(b)) return t;
+      if (J(t) === J(b) || J(t) === J(m)) return m;
+      var o = {}, keys = {};
+      [b, m, t].forEach(function (x) { Object.keys(x).forEach(function (k) { keys[k] = 1; }); });
+      Object.keys(keys).forEach(function (k) {
+        var v;
+        if (k === 'cols' && Array.isArray(m.cols) && Array.isArray(t.cols) && Array.isArray(b.cols) && m.cols.length === t.cols.length && b.cols.length === m.cols.length) {
+          v = m.cols.map(function (c, i) { return list(b.cols[i], c, t.cols[i]); });
+        } else v = J(m[k]) === J(b[k]) ? t[k] : m[k];
+        if (v !== undefined) o[k] = v;
+      });
+      return o;
+    }
+    function list(B, M, T) {
+      B = B || []; M = M || []; T = T || [];
+      var bm = map(B), mm = map(M), tm = map(T), out = {};
+      var keep = function (id) {
+        var b = bm[id], m = mm[id], t = tm[id];
+        if (m && t) return block(b, m, t);
+        if (m) return !b ? m : (J(m) !== J(b) ? m : null); // de har slettet – behold kun hvis jeg har ændret den
+        if (t) return !b ? t : (J(t) !== J(b) ? t : null); // jeg har slettet – behold kun hvis de har ændret den
+        return null;
+      };
+      var ord = function (l) { return l.filter(function (x) { return x && bm[x.id] && mm[x.id] && tm[x.id]; }).map(function (x) { return x.id; }).join(','); };
+      var theyMoved = ord(T) !== ord(B);
+      var P = theyMoved ? T : M, S = theyMoved ? M : T, res = [];
+      P.forEach(function (x) { if (!x || out[x.id]) return; var v = keep(x.id); if (v) { out[x.id] = 1; res.push(v); } });
+      S.forEach(function (x, i) {
+        if (!x || out[x.id]) return; var v = keep(x.id); if (!v) return;
+        var at = 0; for (var j = i - 1; j >= 0; j--) { var k = res.findIndex(function (r) { return r.id === S[j].id; }); if (k > -1) { at = k + 1; break; } }
+        out[x.id] = 1; res.splice(at, 0, v);
+      });
+      return res;
+    }
+    return list(B, M, T);
+  }
+
   // ── versionshistorik ─────────────────────────────────────
   const countOf = (blocks) => { let n = 0; walk(blocks, () => n++); return n; };
   async function saveVersion(page, reason, userId) {
@@ -351,7 +394,8 @@ module.exports = function registerNotes(app, deps) {
     const id = Number(req.params.id); const bd = req.body || {};
     const cur = await getPage(id, req.user.id);
     if (!cur) return res.status(404).json({ error: 'Siden findes ikke' });
-    if (bd.base_updated_at && cur.updated_by && cur.updated_by !== req.user.id && new Date(cur.updated_at) > new Date(bd.base_updated_at) && !bd.force) {
+    const merging = bd.blocks !== undefined && Array.isArray(bd.base_blocks);
+    if (!merging && bd.base_updated_at && cur.updated_by && cur.updated_by !== req.user.id && new Date(cur.updated_at) > new Date(bd.base_updated_at) && !bd.force) {
       return res.status(409).json({ conflict: true, updated_by_name: cur.updated_by_name, updated_at: cur.updated_at });
     }
     const sets = [], vals = [];
@@ -362,21 +406,41 @@ module.exports = function registerNotes(app, deps) {
     if (bd.cover_pos !== undefined) set('cover_pos', Math.max(0, Math.min(100, Number(bd.cover_pos) || 0)));
     if (bd.full_width !== undefined) set('full_width', !!bd.full_width);
     if (bd.text_size !== undefined) set('text_size', ['s', 'l', 'xl'].includes(bd.text_size) ? bd.text_size : (Number(bd.text_size) >= 8 && Number(bd.text_size) <= 40 ? String(Math.round(Number(bd.text_size))) : null));
-    let blocks = null;
-    if (bd.blocks !== undefined) { blocks = cleanBlocks(bd.blocks, 0); set('blocks', JSON.stringify(blocks)); await maybeVersion(cur, blocks, req.user.id).catch(e => console.error('Note-version:', e.message)); }
-    if (!sets.length) return res.json({ ok: true, updated_at: cur.updated_at });
-    const title = bd.title !== undefined ? str(bd.title, 300) : cur.title;
-    set('search_text', searchText(title, blocks || cur.blocks));
-    set('updated_by', req.user.id);
-    sets.push('updated_at=now()');
-    vals.push(id);
-    const r = await pgOne(`UPDATE note_pages SET ${sets.join(', ')} WHERE id=$${vals.length} RETURNING updated_at`, vals);
+    let blocks = null, mineClean = null, r, db = null;
+    // Fælles redigering: flet mine ændringer (i forhold til den udgave jeg tog udgangspunkt i) ind i den gemte udgave,
+    // så to der skriver samtidig ikke overskriver hinanden. Rækken låses imens, så to gem ikke kan krydse.
+    if (merging) { db = await pool.connect(); await db.query('BEGIN'); }
+    try {
+      if (bd.blocks !== undefined) {
+        mineClean = cleanBlocks(bd.blocks, 0); blocks = mineClean;
+        if (merging) {
+          const live = (await db.query('SELECT blocks FROM note_pages WHERE id=$1 FOR NO KEY UPDATE', [id])).rows[0];
+          const theirs = (live && live.blocks) || [];
+          blocks = cleanBlocks(nbMerge(cleanBlocks(bd.base_blocks, 0), mineClean, theirs), 0);
+          cur.blocks = theirs;
+        }
+        set('blocks', JSON.stringify(blocks)); await maybeVersion(cur, blocks, req.user.id).catch(e => console.error('Note-version:', e.message));
+      }
+      if (!sets.length) { if (db) await db.query('ROLLBACK'); return res.json({ ok: true, updated_at: cur.updated_at }); }
+      const title = bd.title !== undefined ? str(bd.title, 300) : cur.title;
+      set('search_text', searchText(title, blocks || cur.blocks));
+      set('updated_by', req.user.id);
+      sets.push('updated_at=now()');
+      vals.push(id);
+      const q = `UPDATE note_pages SET ${sets.join(', ')} WHERE id=$${vals.length} RETURNING updated_at`;
+      r = db ? (await db.query(q, vals)).rows[0] : await pgOne(q, vals);
+      if (db) await db.query('COMMIT');
+    } catch (e) { if (db) await db.query('ROLLBACK').catch(() => {}); throw e; }
+    finally { if (db) db.release(); }
+    var title = bd.title !== undefined ? str(bd.title, 300) : cur.title;
     if (blocks) {
       await syncReminders(id, blocks, req.user.id).catch(e => console.error('Note-påmindelser:', e.message));
       const before = mentionedUsers(cur.blocks), after = mentionedUsers(blocks);
       after.forEach(uid => { if (!before.has(uid) && uid !== req.user.id) notify(uid, `${req.user.name || 'En kollega'} nævnte dig i "${title || 'Uden titel'}"`, 'Åbn noten for at se det.', '#kb-notes/' + id); });
     }
-    res.json({ ok: true, updated_at: r.updated_at });
+    const out = { ok: true, updated_at: r.updated_at };
+    if (merging && JSON.stringify(blocks) !== JSON.stringify(mineClean)) out.blocks = blocks;
+    res.json(out);
   }));
   app.post('/api/notes/:id(\\d+)/move', auth, asyncRoute(async (req, res) => {
     const id = Number(req.params.id); const bd = req.body || {};

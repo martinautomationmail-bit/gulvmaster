@@ -9968,6 +9968,34 @@ app.get('/api/customer-visits/overview', auth, panelAccessAny(['plan', 'customer
   res.json({ booked: bookedOut, unbooked: unbooked.rows });
 }));
 
+// Tilbud til "Rediger booking"-popup'en i Daglig planlægning (nov. 2026, Martin: "så man ved
+// kundebesøg kan se det tilbud der er tilføjet ret hurtigt"). Samler: tilbuddet der er vedhæftet
+// besøget, tilbud på samme kunde (customer_id – eller navn/telefon for tilbud uden kobling) og
+// tilbud på sagen opgaven hører til. Vedhæftet tilbud står altid først.
+app.get('/api/tasks/:taskId/related-quotes', auth, panelAccessAny(['plan', 'customers', 'crmp_leads', 'crmp_sales']), asyncRoute(async (req, res) => {
+  const taskId = String(req.params.taskId);
+  const task = await pgOne('SELECT id, job_name, customer_phone, customer_email, project_id, is_visit FROM jt_tasks WHERE id=$1', [taskId]).catch(() => null);
+  const visit = await pgOne('SELECT customer_id, quote_id, customer_name, phone, email FROM customer_visits WHERE task_id=$1', [taskId]);
+  if (!task && !visit) return res.json({ quotes: [] });
+  const attached = visit && visit.quote_id ? Number(visit.quote_id) : -1;
+  const projectId = task && task.project_id ? Number(task.project_id) : -1;
+  let customerId = visit && visit.customer_id ? Number(visit.customer_id) : null;
+  if (!customerId && projectId > 0) { const pr = await pgOne('SELECT customer_id FROM projects WHERE id=$1', [projectId]).catch(() => null); customerId = pr && pr.customer_id ? Number(pr.customer_id) : null; }
+  const name = String((visit && visit.customer_name) || (task && task.job_name) || '').trim();
+  const phone = String((visit && visit.phone) || (task && task.customer_phone) || '').replace(/\s+/g, '');
+  const email = String((visit && visit.email) || (task && task.customer_email) || '').trim().toLowerCase();
+  const r = await pool.query(`
+    SELECT id, quote_number, quote_title, job_name, status, total, created_at, project_id, signed_at, (id=$1) AS attached
+    FROM quotes
+    WHERE id=$1
+       OR ($2::int > 0 AND project_id=$2)
+       OR ($3::int IS NOT NULL AND customer_id=$3)
+       OR (customer_id IS NULL AND $4<>'' AND lower(trim(job_name))=lower($4))
+       OR (customer_id IS NULL AND length($5)>=8 AND regexp_replace(coalesce(customer_phone,''),'\\s','','g')=$5)
+       OR (customer_id IS NULL AND $6<>'' AND lower(trim(coalesce(customer_email,'')))=$6)
+    ORDER BY (id=$1) DESC, created_at DESC LIMIT 12`, [attached, projectId, customerId, name, phone, email]);
+  res.json({ quotes: r.rows.map(q => ({ ...q, total: Number(q.total) || 0 })) });
+}));
 app.get('/api/customer-visits/:taskId', auth, asyncRoute(async (req, res) => {
   const row = await pgOne('SELECT * FROM customer_visits WHERE task_id=$1', [req.params.taskId]);
   res.json(row || null);

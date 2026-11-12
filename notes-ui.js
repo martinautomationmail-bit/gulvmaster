@@ -427,7 +427,7 @@ async function openPage(id,o){
   var conv=0;(function fix(list){(list||[]).forEach(function(x,i){if(x.todo&&isTog(x.type)){var n=list[i+1],kids=n&&(n.indent||0)>(x.indent||0),c=!!x.checked;delete x.todo;
       if(kids||x.type!=='toggle')delete x.checked;else{x.type='todo';x.checked=c;delete x.open;}conv++;}
     if(Array.isArray(x.cols))x.cols.forEach(fix);});})(p.blocks);
-  S.page=p;S.pending={};S.undo=[];S.redo=[];S.sel=[];S.snap=JSON.stringify(p.blocks||[]);if(conv)setTimeout(function(){if(S.page===p)changed();},50);
+  S.page=p;S.pending={};S.undo=[];S.redo=[];S.sel=[];S.snap=JSON.stringify(p.blocks||[]);S.base=S.snap;S.saveN=(S.saveN||0)+1;if(conv)setTimeout(function(){if(S.page===p)changed();},50);
   if(!Array.isArray(p.blocks))p.blocks=[];
   revealInTree(p.id);renderTree();renderPage();
   setAppTitleSafe((p.icon?p.icon+' ':'')+(p.title||L('Uden titel','Untitled')));
@@ -628,7 +628,7 @@ function renderDoc(focus){
 }
 function rerenderKeep(){ // gentegn, men behold markøren hvor den er
   var a=document.activeElement,be=a&&a.closest&&a.closest('.nt-b'),pos=null;
-  if(be&&a.classList.contains('nt-txt'))pos=caretOffset(a);
+  if(be&&a.classList.contains('nt-txt'))pos=caretOffset(a);else if(be&&a.tagName==='TEXTAREA')pos=a.selectionStart;
   renderDoc(be?{id:be.dataset.id,pos:pos==null?'end':pos}:null);
 }
 function autoGrow(t){t.style.height='auto';t.style.height=(t.scrollHeight+2)+'px';}
@@ -664,6 +664,49 @@ function moveFocus(el,dir,pos){var a=editables(),i=a.indexOf(el),n=a[i+dir];if(!
 function norm(html){var s=String(html||'');if(/^(\s|<br\s*\/?>)*$/i.test(s))return '';s=s.replace(/\u200b/g,'');for(var k=0;k<3;k++)s=s.replace(/<(b|i|u|s|strong|em|code|span|mark|strike|font)(\s[^>]*)?><\/\1>/gi,'');return s.replace(/<br\s*\/?>$/i,'');}
 
 // ── gem / fortryd ───────────────────────────────────────────
+// 3-vejs fletning af blokke (base = sidst fælles udgave, mine = mine ændringer, theirs = den gemte udgave)
+function nbMerge(B, M, T) {
+  var J = function (x) { return JSON.stringify(x === undefined ? null : x); };
+  var map = function (l) { var o = {}; (l || []).forEach(function (b) { if (b && b.id) o[b.id] = b; }); return o; };
+  function block(b, m, t) {
+    if (!b) return m;
+    if (J(m) === J(b)) return t;
+    if (J(t) === J(b) || J(t) === J(m)) return m;
+    var o = {}, keys = {};
+    [b, m, t].forEach(function (x) { Object.keys(x).forEach(function (k) { keys[k] = 1; }); });
+    Object.keys(keys).forEach(function (k) {
+      var v;
+      if (k === 'cols' && Array.isArray(m.cols) && Array.isArray(t.cols) && Array.isArray(b.cols) && m.cols.length === t.cols.length && b.cols.length === m.cols.length) {
+        v = m.cols.map(function (c, i) { return list(b.cols[i], c, t.cols[i]); });
+      } else v = J(m[k]) === J(b[k]) ? t[k] : m[k];
+      if (v !== undefined) o[k] = v;
+    });
+    return o;
+  }
+  function list(B, M, T) {
+    B = B || []; M = M || []; T = T || [];
+    var bm = map(B), mm = map(M), tm = map(T), out = {};
+    var keep = function (id) {
+      var b = bm[id], m = mm[id], t = tm[id];
+      if (m && t) return block(b, m, t);
+      if (m) return !b ? m : (J(m) !== J(b) ? m : null); // de har slettet – behold kun hvis jeg har ændret den
+      if (t) return !b ? t : (J(t) !== J(b) ? t : null); // jeg har slettet – behold kun hvis de har ændret den
+      return null;
+    };
+    var ord = function (l) { return l.filter(function (x) { return x && bm[x.id] && mm[x.id] && tm[x.id]; }).map(function (x) { return x.id; }).join(','); };
+    var theyMoved = ord(T) !== ord(B);
+    var P = theyMoved ? T : M, S = theyMoved ? M : T, res = [];
+    P.forEach(function (x) { if (!x || out[x.id]) return; var v = keep(x.id); if (v) { out[x.id] = 1; res.push(v); } });
+    S.forEach(function (x, i) {
+      if (!x || out[x.id]) return; var v = keep(x.id); if (!v) return;
+      var at = 0; for (var j = i - 1; j >= 0; j--) { var k = res.findIndex(function (r) { return r.id === S[j].id; }); if (k > -1) { at = k + 1; break; } }
+      out[x.id] = 1; res.splice(at, 0, v);
+    });
+    return res;
+  }
+  return list(B, M, T);
+}
+
 function markDirty(fields){
   if(!S.page)return;Object.assign(S.pending,fields||{blocks:true});
   setStatus(L('Gemmer…','Saving…'));
@@ -675,19 +718,42 @@ function setStatus(t){var e=$('#nt-status');if(e)e.textContent=t;}
 async function save(force){
   clearTimeout(S.saveT);if(!S.page||!Object.keys(S.pending).length)return;
   if(S.saving){S.again=true;return;}
-  var p=S.page,body={base_updated_at:p.updated_at};if(force)body.force=true;
+  var p=S.page,body={base_updated_at:p.updated_at},sentStr=null;if(force)body.force=true;
   Object.keys(S.pending).forEach(function(k){body[k]=k==='blocks'?p.blocks:p[k];});
-  var sent=S.pending;S.pending={};S.saving=true;
+  if(S.pending.blocks){sentStr=JSON.stringify(p.blocks);try{body.base_blocks=JSON.parse(S.base||'[]');}catch(e){}}
+  var sent=S.pending;S.pending={};S.saving=true;S.saveN=(S.saveN||0)+1;
   var r=await api('/api/notes/'+p.id,{method:'PUT',body:JSON.stringify(body)});
   S.saving=false;
   if(S.page!==p){if(S.again){S.again=false;}return;}
+  if(r&&r.ok&&sentStr!=null){
+    if(r.blocks){applyRemote(JSON.parse(sentStr),r.blocks);}else S.base=sentStr;
+  }
   if(r&&r.conflict){S.pending=Object.assign(sent,S.pending);showConflict(r);setStatus(L('Ikke gemt','Not saved'));return;}
   if(!r||r.ok===false){S.pending=Object.assign(sent,S.pending);setStatus(L('Ikke gemt – prøver igen','Not saved – retrying'));S.saveT=setTimeout(save,4000);return;}
   p.updated_at=r.updated_at;p.updated_by=me&&me.id;setStatus(L('Gemt','Saved'));
   if(S.again){S.again=false;save();}
 }
 function flush(){if(S.page&&Object.keys(S.pending).length){var p=S.page,body={base_updated_at:p.updated_at};Object.keys(S.pending).forEach(function(k){body[k]=k==='blocks'?p.blocks:p[k];});S.pending={};
-  try{fetch('/api/notes/'+p.id,{method:'PUT',keepalive:true,headers:{'Content-Type':'application/json','Authorization':'Bearer '+token},body:JSON.stringify(body)});}catch(e){}}}
+  var str=JSON.stringify(body);if(body.blocks&&S.base){var withBase=str.slice(0,-1)+',"base_blocks":'+S.base+'}';if(withBase.length<60000)str=withBase;}
+  try{fetch('/api/notes/'+p.id,{method:'PUT',keepalive:true,headers:{'Content-Type':'application/json','Authorization':'Bearer '+token},body:str});}catch(e){}}}
+// Flet en udgave fra serveren ind i det der står på skærmen (base = det mine ændringer bygger på)
+function applyRemote(base,theirs){
+  var mine=S.page.blocks,before=JSON.stringify(mine),merged=nbMerge(base,mine,theirs);
+  S.base=JSON.stringify(theirs);S.page.blocks=merged;
+  var now=JSON.stringify(merged);if(now!==before){S.snap=now;rerenderKeep();}
+}
+// Hent kollegers ændringer løbende mens siden er åben
+async function pullRemote(){
+  if(!S.page||!isActive()||S.saving||S.composing||S.menu||(S.sel&&S.sel.length)||document.visibilityState!=='visible')return;
+  var ae=document.activeElement;if(ae&&ae.closest&&ae.closest('.nt-cell,.nt-cap,.nt-title'))return;
+  var p=S.page,n=S.saveN;
+  var r=await api('/api/notes/'+p.id);
+  if(!r||r.id!==p.id||S.page!==p||S.saving||S.saveN!==n||S.composing||r.updated_at===p.updated_at)return;
+  var base;try{base=JSON.parse(S.base||'[]');}catch(e){base=[];}
+  p.updated_at=r.updated_at;p.updated_by=r.updated_by;p.updated_by_name=r.updated_by_name;
+  ['title','icon','cover_url','cover_pos','full_width','text_size'].forEach(function(k){if(!S.pending[k]&&JSON.stringify(p[k])!==JSON.stringify(r[k])){p[k]=r[k];if(k==='title'){var te=$('.nt-title');if(te&&document.activeElement!==te)te.textContent=r.title||'';if(S.byId[p.id])S.byId[p.id].title=r.title;}}});
+  applyRemote(base,r.blocks||[]);
+}
 function showConflict(r){
   var c=$('#nt-conf');if(!c)return;
   c.innerHTML='<div class="nt-conf">⚠️ <span style="flex:1">'+H(r.updated_by_name||L('En kollega','A colleague'))+L(' har ændret siden imens. ',' changed this page meanwhile. ')+'</span><button data-act="conf-reload">'+L('Hent deres version','Load their version')+'</button><button data-act="conf-force">'+L('Gem min version','Keep mine')+'</button></div>';
@@ -2477,11 +2543,12 @@ function isActive(){var p=document.getElementById('page-kb-notes');return p&&p.c
 window.addEventListener('pagehide',flush);
 window.addEventListener('beforeunload',flush);
 window.addEventListener('focus',async function(){
-  if(!S.page||!isActive()||Object.keys(S.pending).length||S.saving)return;
-  var a=document.activeElement;if(a&&a.closest&&a.closest('#nt-doc'))return;
-  var r=await api('/api/notes/'+S.page.id);if(r&&r.id===S.page.id&&r.updated_at!==S.page.updated_at&&!Object.keys(S.pending).length){var top=$('#nt-scroll').scrollTop;S.page=r;S.snap=JSON.stringify(r.blocks);renderPage();$('#nt-scroll').scrollTop=top;}
-  loadTree();
+  if(!S.page||!isActive())return;
+  await pullRemote();loadTree();
 });
+setInterval(pullRemote,4000);
+document.addEventListener('compositionstart',function(){S.composing=true;},true);
+document.addEventListener('compositionend',function(){S.composing=false;},true);
 document.addEventListener('visibilitychange',function(){if(document.visibilityState==='hidden')flush();});
 
 function fitHeight(){var a=$('#nt-app');if(!a||!isActive())return;var top=a.getBoundingClientRect().top+scrollY;a.style.height=Math.max(480,innerHeight-top)+'px';}
