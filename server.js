@@ -7367,7 +7367,28 @@ async function sendProjectCompletionWebhook(project) {
 // Kun aktiv hvis den enkelte medarbejder har slået det til (notify_schedule_changes)
 // OG har en privat mailadresse registreret. Sendes stille i baggrunden — påvirker
 // aldrig selve gemningen af bookingen, uanset om mailen lykkes eller ej.
-async function sendScheduleChangeEmail(userId, summary) {
+// Nov. 2026 (Martin: "Hvordan fuck har vi sendt 150 mails idag?"): før gik der én mail
+// pr. enkelt træk/ændring i planen — en travl planlægningsformiddag gav ~100 mails til
+// medarbejderne. Nu samles ændringerne pr. medarbejder og sendes som ÉN opsummering,
+// når der har været ro i planen for den person i SCHEDULE_MAIL_QUIET_MS.
+const SCHEDULE_MAIL_QUIET_MS = 15 * 60 * 1000;
+const scheduleMailQueue = new Map();
+function sendScheduleChangeEmail(userId, summary) {
+  const id = Number(userId);
+  if (!id) return Promise.resolve();
+  let q = scheduleMailQueue.get(id);
+  if (!q) { q = { lines: [], timer: null }; scheduleMailQueue.set(id, q); }
+  if (!q.lines.includes(summary)) q.lines.push(summary);
+  if (q.timer) clearTimeout(q.timer);
+  q.timer = setTimeout(() => {
+    scheduleMailQueue.delete(id);
+    const lines = q.lines;
+    const text = lines.length === 1 ? lines[0] : 'Der er sket ' + lines.length + ' ændringer i din kalender:\n' + lines.map(l => '• ' + l).join('\n');
+    sendScheduleChangeEmailNow(id, text).catch(() => {});
+  }, SCHEDULE_MAIL_QUIET_MS);
+  return Promise.resolve();
+}
+async function sendScheduleChangeEmailNow(userId, summary) {
   try {
     if (!mailIsConfigured()) return;
     const user = await pgOne('SELECT * FROM users WHERE id=$1', [userId]);
