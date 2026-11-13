@@ -2603,6 +2603,8 @@ async function initSchema() {
     -- her i stedet, og trækkes fra avancen ligesom løn-/materialeomkostning.
     ALTER TABLE gantt_tasks ADD COLUMN IF NOT EXISTS subcontractor_cost NUMERIC;
     ALTER TABLE gantt_tasks ADD COLUMN IF NOT EXISTS subcontractor_note TEXT;
+    -- Nov. 2026: opgavens EGEN faggruppe (tom = arver sagens project_type), så Gantt-filteret kan vise præcis de opgaver under en sag der hører til de valgte fag.
+    ALTER TABLE gantt_tasks ADD COLUMN IF NOT EXISTS trade TEXT;
     -- v2.56.0 (Martin: "flytte dette med underleverandør faktura under budget
     -- ... hvor man kan tilføje de underleverandør udgifter der er ... så man
     -- kan se det på hele sagen") — udgifter registreres nu pr. SAG under
@@ -2637,6 +2639,20 @@ async function initSchema() {
     -- har kostet") — en fejl/mangel er en egen opgave på sagen (gantt_task_id),
     -- evt. koblet til de tilbudsposter der skal rettes. Tid der registreres med
     -- rework_id tælles som fejl & mangler; extra_cost er fx materialer til rettelsen.
+    -- Nov. 2026 — Testplan: et lukket planlægningsrum hvor Gantt-opgaver kan lægges på
+    -- medarbejdere måneder frem UDEN at røre planning_bookings, kunde-/medarbejderbeskeder
+    -- eller medarbejdernes app. Én række = én Gantt-opgave lagt på én medarbejder.
+    CREATE TABLE IF NOT EXISTS testplan_bookings (
+      id SERIAL PRIMARY KEY,
+      gantt_task_id TEXT NOT NULL,
+      user_id INTEGER NOT NULL,
+      start_date TEXT NOT NULL,
+      days REAL NOT NULL DEFAULT 1,
+      note TEXT,
+      created_by INTEGER,
+      updated_at TEXT
+    );
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_testplan_task ON testplan_bookings(gantt_task_id);
     CREATE TABLE IF NOT EXISTS project_rework (
       id SERIAL PRIMARY KEY,
       project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
@@ -8432,7 +8448,7 @@ app.get('/api/gantt/projects', auth, asyncRoute(async (req, res) => {
 app.get('/api/gantt/all-tasks', auth, asyncRoute(async (req, res) => {
   const rows = await pool.query(`
     SELECT g.id, g.project_id, g.name, g.description, g.start_date, g.end_date,
-           g.progress, g.is_group, g.parent_task_id, g.position, g.depends_on, g.type_guess,
+           g.progress, g.is_group, g.parent_task_id, g.position, g.depends_on, g.type_guess, g.trade,
            p.name AS project_name, p.job_number, p.status AS project_status, p.project_type,
            p.customer_address, p.customer_phone, p.customer_email
     FROM gantt_tasks g
@@ -8444,7 +8460,7 @@ app.get('/api/gantt/all-tasks', auth, asyncRoute(async (req, res) => {
   res.json({
     tasks: rows.rows.map(r => ({
       id: r.id, project_id: r.project_id, project_name: r.project_name,
-      job_number: r.job_number, project_status: r.project_status, project_type: r.project_type,
+      job_number: r.job_number, project_status: r.project_status, project_type: r.trade || r.project_type, project_trade: r.project_type, trade: r.trade || null,
       name: r.name, description: r.description,
       start_date: r.start_date, end_date: r.end_date,
       progress: r.progress, is_group: !!r.is_group, parent_task_id: r.parent_task_id,
@@ -18780,6 +18796,47 @@ app.put('/api/rework/:id', auth, panelAccessAny(['plan', 'projects']), asyncRout
   }
   res.json({ ok: true });
 }));
+// ── TESTPLAN (nov. 2026) ─────────────────────────────────────────────
+// Martin: "et andet gantkort/test miljø hvor vi kan trække dem ned på medarbejder og
+// planlægge måneder frem som ikke påvirker noget andre steder". Rører KUN
+// testplan_bookings — ingen mails, SMS, push eller planning_bookings.
+app.get('/api/testplan', auth, panelAccess('plan'), asyncRoute(async (req, res) => {
+  const r = await pool.query('SELECT id, gantt_task_id, user_id, start_date, days, note, updated_at FROM testplan_bookings ORDER BY start_date, id');
+  res.json({ bookings: r.rows.map(b => ({ ...b, days: Number(b.days) || 1 })) });
+}));
+function tpClean(b) {
+  const out = {};
+  if (b.user_id !== undefined) out.user_id = Number(b.user_id) || null;
+  if (b.start_date !== undefined) out.start_date = /^\d{4}-\d{2}-\d{2}$/.test(String(b.start_date)) ? String(b.start_date) : null;
+  if (b.days !== undefined) out.days = Math.max(0.5, Math.min(120, Math.round((Number(b.days) || 1) * 2) / 2));
+  if (b.note !== undefined) out.note = b.note ? String(b.note).slice(0, 500) : null;
+  return out;
+}
+app.post('/api/testplan/bookings', auth, panelAccess('plan'), asyncRoute(async (req, res) => {
+  const b = req.body || {}, c = tpClean(b);
+  if (!b.gantt_task_id || !c.user_id || !c.start_date) return res.status(400).json({ error: 'Mangler opgave, medarbejder eller dato' });
+  const r = await pgOne(`INSERT INTO testplan_bookings (gantt_task_id, user_id, start_date, days, created_by, updated_at)
+    VALUES ($1,$2,$3,$4,$5,${nowTextSQL()})
+    ON CONFLICT (gantt_task_id) DO UPDATE SET user_id=EXCLUDED.user_id, start_date=EXCLUDED.start_date, days=EXCLUDED.days, updated_at=EXCLUDED.updated_at
+    RETURNING *`, [String(b.gantt_task_id), c.user_id, c.start_date, c.days || 1, req.user.id]);
+  res.json({ ok: true, booking: { ...r, days: Number(r.days) } });
+}));
+app.put('/api/testplan/bookings/:id', auth, panelAccess('plan'), asyncRoute(async (req, res) => {
+  const cur = await pgOne('SELECT * FROM testplan_bookings WHERE id=$1', [Number(req.params.id)]);
+  if (!cur) return res.status(404).json({ error: 'Findes ikke længere' });
+  const n = { ...cur, ...tpClean(req.body || {}) };
+  if (!n.user_id || !n.start_date) return res.status(400).json({ error: 'Ugyldig medarbejder eller dato' });
+  const r = await pgOne(`UPDATE testplan_bookings SET user_id=$1, start_date=$2, days=$3, note=$4, updated_at=${nowTextSQL()} WHERE id=$5 RETURNING *`, [n.user_id, n.start_date, n.days, n.note, cur.id]);
+  res.json({ ok: true, booking: { ...r, days: Number(r.days) } });
+}));
+app.delete('/api/testplan/bookings/:id', auth, panelAccess('plan'), asyncRoute(async (req, res) => {
+  await pool.query('DELETE FROM testplan_bookings WHERE id=$1', [Number(req.params.id)]);
+  res.json({ ok: true });
+}));
+app.delete('/api/testplan/bookings', auth, panelAccess('plan'), asyncRoute(async (req, res) => {
+  const r = await pool.query('DELETE FROM testplan_bookings');
+  res.json({ ok: true, deleted: r.rowCount });
+}));
 app.delete('/api/rework/:id', auth, panelAccessAny(['plan', 'projects']), asyncRoute(async (req, res) => {
   await pool.query('UPDATE time_entries SET rework_id=NULL WHERE rework_id=$1', [req.params.id]);
   await pool.query('DELETE FROM project_rework WHERE id=$1', [req.params.id]);
@@ -18886,6 +18943,7 @@ app.put('/api/projects/:id/tasks/:taskId', auth, panelAccess('projects'), asyncR
   await pool.query(`
     UPDATE gantt_tasks SET name=$1, start_date=$2, end_date=$3, progress=$4, description=$5, status=$6, depends_on=$7, subcontractor_cost=$8, subcontractor_note=$9, synced_at=${nowTextSQL()} WHERE id=$10
   `, [merged.name, merged.start_date, merged.end_date, merged.progress, merged.description, merged.status, JSON.stringify(merged.depends_on), merged.subcontractor_cost, merged.subcontractor_note, req.params.taskId]);
+  if (b.trade !== undefined) await pool.query('UPDATE gantt_tasks SET trade=$1 WHERE id=$2', [b.trade ? String(b.trade).slice(0, 80) : null, req.params.taskId]);
   if (project) await mirrorProjectTaskToPool(req.params.taskId, project, merged);
 
   // RUNDE DO — se shiftTaskBookings()-kommentaren ovenfor. Opgavens EGNE
