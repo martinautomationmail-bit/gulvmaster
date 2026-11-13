@@ -2605,6 +2605,7 @@ async function initSchema() {
     ALTER TABLE gantt_tasks ADD COLUMN IF NOT EXISTS subcontractor_note TEXT;
     -- Nov. 2026: opgavens EGEN faggruppe (tom = arver sagens project_type), så Gantt-filteret kan vise præcis de opgaver under en sag der hører til de valgte fag.
     ALTER TABLE gantt_tasks ADD COLUMN IF NOT EXISTS trade TEXT;
+    ALTER TABLE gantt_tasks ADD COLUMN IF NOT EXISTS trade_source TEXT;
     -- v2.56.0 (Martin: "flytte dette med underleverandør faktura under budget
     -- ... hvor man kan tilføje de underleverandør udgifter der er ... så man
     -- kan se det på hele sagen") — udgifter registreres nu pr. SAG under
@@ -8445,10 +8446,58 @@ app.get('/api/gantt/projects', auth, asyncRoute(async (req, res) => {
 // GET /api/project-types), bare aldrig spejlet herned. Nu følger p.project_type
 // med på hver opgave, og klientens filter (ganttFilteredTasks i admin.html)
 // bruger det i stedet for type_guess.
+// Nov. 2026 (Martin: "mange task ikke har et tag ... kan AI selv tagge dem korrekt
+// baseret på deres navn? ... ikke enterprise, da enterprise er noget man bruger på
+// projektet og ikke på en enkelt task"). Faste fag for OPGAVER (sagens faggruppe kan
+// stadig være Enterprise). AI tagger opgaver uden fag; manuelt valgt fag (trade_source
+// ='manual') røres aldrig.
+const TASK_TRADES = ['Gulvlægning', 'Gulvslibning', 'Tømrer', 'Maler', 'VVS', 'El', 'Murer', 'Fliser', 'Nedrivning', 'Andet'];
+let autoTagRunning = false;
+async function autoTagTaskTrades() {
+  if (autoTagRunning || !process.env.ANTHROPIC_API_KEY) return { tagged: 0 };
+  autoTagRunning = true;
+  let tagged = 0;
+  try {
+    for (let round = 0; round < 10; round++) {
+      const rows = (await pool.query(`
+        SELECT g.id, g.name, left(regexp_replace(coalesce(g.description,''), '<[^>]+>', ' ', 'g'), 160) AS descr, p.project_type
+        FROM gantt_tasks g JOIN projects p ON p.id = g.project_id
+        WHERE COALESCE(g.is_group,0)=0 AND coalesce(g.name,'')<>''
+          AND (g.trade IS NULL OR (COALESCE(g.trade_source,'') <> 'manual' AND NOT (g.trade = ANY($1::text[]))))
+        ORDER BY (p.status IN ('done','faktureret','ikke_udfoert','archived')), g.start_date DESC NULLS LAST
+        LIMIT 60`, [TASK_TRADES])).rows;
+      if (!rows.length) break;
+      const sys = 'Du er planlægger i et dansk gulv- og renoveringsfirma. Hver opgave skal have præcis ét fag fra listen: '
+        + TASK_TRADES.join(', ') + '. Gæt ud fra opgavens navn (og evt. beskrivelse). Opgaverne kan være på dansk eller engelsk. '
+        + 'Vejledning: slibning/afhøvling/lak/olie/behandling af gulv = Gulvslibning; lægning af gulv/parket/sildeben/LVT/vinyl/gulvlister/gulvspån/opklodsning og nivellering af gulv = Gulvlægning; '
+        + 'vægge/lofter/spartling/maling/filt/træværk-maling = Maler; døre/vinduer/skabe/køkkenmontage/skillevægge/bjælker/gips/carpenter = Tømrer; '
+        + 'rør/afløb/toilet/bruser/radiator/plumber = VVS; elektriker/lamper/stikkontakter/electrical = El; murværk/puds/beton/støbning = Murer; '
+        + 'fliser/klinker/tiles = Fliser; afmontering/nedrivning/demolish/bortskaffelse = Nedrivning; levering, oprydning, besigtigelse og andet = Andet. '
+        + 'Svar KUN med JSON: {"tags":{"<id>":"<fag>"}} med alle id\'er.';
+      const list = rows.map(r => ({ id: r.id, navn: r.name, beskrivelse: (r.descr || '').trim().slice(0, 160) || undefined, sagens_faggruppe: r.project_type || undefined }));
+      let out;
+      try { out = await callAnthropicJSON(sys, JSON.stringify(list)); } catch (e) { console.error('AI-fag-tagging fejlede:', e.message); break; }
+      const tags = (out && out.tags) || {};
+      for (const r of rows) {
+        let t = tags[r.id];
+        if (!TASK_TRADES.includes(t)) t = 'Andet';
+        await pool.query("UPDATE gantt_tasks SET trade=$1, trade_source='ai' WHERE id=$2 AND COALESCE(trade_source,'')<>'manual'", [t, r.id]);
+        tagged++;
+      }
+      if (rows.length < 60) break;
+    }
+    if (tagged) await logSystemEvent('task_trade_ai', 'info', `AI satte fag på ${tagged} opgave(r).`).catch(() => {});
+  } finally { autoTagRunning = false; }
+  return { tagged };
+}
+app.post('/api/gantt/auto-tag-trades', auth, panelAccessAny(['plan', 'projects']), asyncRoute(async (req, res) => {
+  res.json(await autoTagTaskTrades());
+}));
+
 app.get('/api/gantt/all-tasks', auth, asyncRoute(async (req, res) => {
   const rows = await pool.query(`
     SELECT g.id, g.project_id, g.name, g.description, g.start_date, g.end_date,
-           g.progress, g.is_group, g.parent_task_id, g.position, g.depends_on, g.type_guess, g.trade, g.status AS task_status,
+           g.progress, g.is_group, g.parent_task_id, g.position, g.depends_on, g.type_guess, g.trade, g.trade_source, g.status AS task_status,
            p.name AS project_name, p.job_number, p.status AS project_status, p.project_type,
            p.customer_address, p.customer_phone, p.customer_email
     FROM gantt_tasks g
@@ -8460,7 +8509,7 @@ app.get('/api/gantt/all-tasks', auth, asyncRoute(async (req, res) => {
   res.json({
     tasks: rows.rows.map(r => ({
       id: r.id, project_id: r.project_id, project_name: r.project_name,
-      job_number: r.job_number, project_status: r.project_status, project_type: r.trade || r.project_type, project_trade: r.project_type, trade: r.trade || null,
+      job_number: r.job_number, project_status: r.project_status, project_type: r.trade || (TASK_TRADES.includes(r.project_type) ? r.project_type : null), project_trade: r.project_type, trade: r.trade || null, trade_source: r.trade_source || null,
       name: r.name, description: r.description,
       start_date: r.start_date, end_date: r.end_date,
       progress: r.progress, is_group: !!r.is_group, parent_task_id: r.parent_task_id,
@@ -18943,7 +18992,15 @@ app.put('/api/projects/:id/tasks/:taskId', auth, panelAccess('projects'), asyncR
   await pool.query(`
     UPDATE gantt_tasks SET name=$1, start_date=$2, end_date=$3, progress=$4, description=$5, status=$6, depends_on=$7, subcontractor_cost=$8, subcontractor_note=$9, synced_at=${nowTextSQL()} WHERE id=$10
   `, [merged.name, merged.start_date, merged.end_date, merged.progress, merged.description, merged.status, JSON.stringify(merged.depends_on), merged.subcontractor_cost, merged.subcontractor_note, req.params.taskId]);
-  if (b.trade !== undefined) await pool.query('UPDATE gantt_tasks SET trade=$1 WHERE id=$2', [b.trade ? String(b.trade).slice(0, 80) : null, req.params.taskId]);
+  if (b.trade !== undefined) {
+    const tr = TASK_TRADES.includes(b.trade) ? b.trade : null;
+    await pool.query('UPDATE gantt_tasks SET trade=$1, trade_source=$2 WHERE id=$3', [tr, tr ? 'manual' : null, req.params.taskId]);
+    if (!tr) autoTagTaskTrades().catch(() => {});
+  } else if (b.name !== undefined && String(b.name).trim() !== String(current.name || '').trim() && current.trade_source !== 'manual') {
+    // Omdøbt opgave: lad AI tagge den igen ud fra det nye navn.
+    await pool.query("UPDATE gantt_tasks SET trade=NULL, trade_source=NULL WHERE id=$1", [req.params.taskId]);
+    autoTagTaskTrades().catch(() => {});
+  }
   if (project) await mirrorProjectTaskToPool(req.params.taskId, project, merged);
 
   // RUNDE DO — se shiftTaskBookings()-kommentaren ovenfor. Opgavens EGNE
@@ -30313,6 +30370,8 @@ async function start() {
   await sprog.initSchema();
   await notes.initSchema();
   notes.startJobs(cron);
+  setTimeout(() => autoTagTaskTrades().catch(e => console.error('AI-fag-tagging:', e.message)), 30000);
+  cron.schedule('*/15 * * * *', () => autoTagTaskTrades().catch(() => {}));
   await migrateTimetrackPanelPage();
   await migrateAutoProjectStages();
   await migrateKbPriorityProfession();

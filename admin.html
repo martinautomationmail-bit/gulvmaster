@@ -5904,7 +5904,7 @@ body.tp-dragging,body.tp-dragging *{cursor:grabbing!important}
        i browseren faktisk ER det nyeste deploy, eller om Render/GitHub bare
        ikke er nået at opdatere endnu — i stedet for at skulle gætte om en
        rettelse "stadig ikke virker" eller bare endnu ikke er live. -->
-  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build v2.80.0 · 2026-11-02</span></div>
+  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build v2.81.0 · 2026-11-02</span></div>
 </aside>
 <div class="app-content">
 <!-- RUNDE FB — AI-ASSISTENTEN (Martin: "en ai der er nede i venstre hjørne af
@@ -14179,7 +14179,12 @@ function dailyLoad(uid,ds){
 // står som "Planlagt" i testplanen. Gemmes KUN i testplan_bookings (se server.js).
 var TP={tasks:[],bk:[],zoom:'month',start:null,collapsed:{},ganttOpen:true,showReal:true,trades:[],q:'',loaded:false};
 try{var _tps=JSON.parse(localStorage.getItem('gm_tp')||'{}');['zoom','ganttOpen','showReal','trades','collapsed'].forEach(function(k){if(_tps[k]!==undefined)TP[k]=_tps[k];});}catch(e){}
+TP.trades=(TP.trades||[]).filter(function(t){return ['Gulvlægning','Gulvslibning','Tømrer','Maler','VVS','El','Murer','Fliser','Nedrivning','Andet'].indexOf(t)>-1;});
 function tpSaveUi(){try{localStorage.setItem('gm_tp',JSON.stringify({zoom:TP.zoom,ganttOpen:TP.ganttOpen,showReal:TP.showReal,trades:TP.trades,collapsed:TP.collapsed}));}catch(e){}}
+// Faste fag for OPGAVER (nov. 2026) — samme liste som TASK_TRADES i server.js. Enterprise bruges kun på sagen.
+var TASK_TRADES=['Gulvlægning','Gulvslibning','Tømrer','Maler','VVS','El','Murer','Fliser','Nedrivning','Andet'];
+var TASK_TRADE_COLORS={'Gulvlægning':'#3B82F6','Gulvslibning':'#22C55E','Tømrer':'#B45309','Maler':'#F59E0B','VVS':'#06B6D4','El':'#EAB308','Murer':'#EF4444','Fliser':'#EC4899','Nedrivning':'#64748B','Andet':'#94A3B8'};
+function taskTradeColor(t){return TASK_TRADE_COLORS[t]||null;}
 var TP_ZOOM={week:{weeks:4,col:56,label:'Uge'},month:{weeks:10,col:26,label:'Måned'},quarter:{weeks:26,col:12,label:'Kvartal'}};
 var TP_COLORS=['#8B5CF6','#3B82F6','#10B981','#F59E0B','#EC4899','#06B6D4','#EF4444','#6366F1','#84CC16','#F97316','#14B8A6','#A855F7'];
 function tpColor(pid){var n=0,s=String(pid||'');for(var i=0;i<s.length;i++)n=(n*31+s.charCodeAt(i))>>>0;return TP_COLORS[n%TP_COLORS.length];}
@@ -14221,7 +14226,7 @@ function tpLoad(days){
   if(TP.showReal)bookings.forEach(function(b){if(isCapacityBooking(b))return;var w=planWorkDates(b).filter(function(ds){return tpIsWork(date(ds));});if(!w.length)return;var per=(+b.days||w.length)/w.length;w.forEach(function(ds){addL(+b.user_id,ds,Math.min(1,per));});});
   return L;
 }
-function tpFagColor(t){return (t&&t.project_type&&projectTypeColor(t.project_type))||tpColor(t&&t.project_id);}
+function tpFagColor(t){return (t&&t.project_type&&(taskTradeColor(t.project_type)||projectTypeColor(t.project_type)))||'#A5B4C3';}
 function tpRender(){
   var page=document.getElementById('page-testplan');if(!page||!TP.loaded)return;
   var z=TP_ZOOM[TP.zoom]||TP_ZOOM.month,days=tpDays(),N=days.length,idx={};
@@ -14415,7 +14420,7 @@ document.addEventListener('click',async function(e){
 });
 function tpTradePop(){
   var pop=document.getElementById('tp-trade-pop');if(!pop)return;var sel=TP.trades;
-  pop.innerHTML='<label class="gtf-all"><input type="checkbox"'+(!sel.length?' checked':'')+' data-tp-tall> <b>Alle fag</b></label>'+pjProjectTypes.map(function(t){return '<label><input type="checkbox" value="'+esc(t)+'"'+(sel.indexOf(t)>-1?' checked':'')+'> <span class="gtf-dot" style="background:'+(typeof projectTypeColor==='function'?projectTypeColor(t):'#9CA3AF')+'"></span>'+esc(t)+'</label>';}).join('');
+  pop.innerHTML='<label class="gtf-all"><input type="checkbox"'+(!sel.length?' checked':'')+' data-tp-tall> <b>Alle fag</b></label>'+TASK_TRADES.map(function(t){return '<label><input type="checkbox" value="'+esc(t)+'"'+(sel.indexOf(t)>-1?' checked':'')+'> <span class="gtf-dot" style="background:'+taskTradeColor(t)+'"></span>'+esc(t)+'</label>';}).join('');
 }
 document.addEventListener('change',function(e){
   var pop=e.target.closest&&e.target.closest('#tp-trade-pop');
@@ -19029,7 +19034,7 @@ async function openGanttProject(projectId,projectName){
 async function populateGanttTradeFilter(){
   if(!pjProjectTypes.length)await loadPjProjectTypes();
   if(!document.getElementById('gtf-pop'))return;
-  ganttAllFilters.trade=ganttAllFilters.trade.filter(function(t){return pjProjectTypes.indexOf(t)>-1;});
+  ganttAllFilters.trade=ganttAllFilters.trade.filter(function(t){return TASK_TRADES.indexOf(t)>-1;});
   gtfRender();
 }
 // v2.76.1 — flere fag ad gangen. Tom liste = alle fag. Huskes i browseren.
@@ -19038,7 +19043,7 @@ function gtfRender(){
   btn.textContent=!sel.length?'🎨 Alle fag':(sel.length<=2?'🎨 '+sel.join(', '):'🎨 '+sel.length+' fag valgt');
   btn.classList.toggle('on',!!sel.length);
   pop.innerHTML='<label class="gtf-all"><input type="checkbox"'+(!sel.length?' checked':'')+' data-gtf-all> <b>Alle fag</b></label>'
-    +pjProjectTypes.map(function(t){return '<label><input type="checkbox" value="'+esc(t)+'"'+(sel.indexOf(t)>-1?' checked':'')+'> <span class="gtf-dot" style="background:'+(typeof projectTypeColor==='function'?projectTypeColor(t):'#9CA3AF')+'"></span>'+esc(t)+'</label>';}).join('');
+    +TASK_TRADES.map(function(t){return '<label><input type="checkbox" value="'+esc(t)+'"'+(sel.indexOf(t)>-1?' checked':'')+'> <span class="gtf-dot" style="background:'+taskTradeColor(t)+'"></span>'+esc(t)+'</label>';}).join('');
 }
 function gtfSet(list){
   ganttAllFilters.trade=list;
@@ -19436,9 +19441,8 @@ async function saveGanttTaskChange(taskId,changes){
 async function gdFillTrade(t){
   var sel=document.getElementById('gd-trade-input');if(!sel)return;
   if(!pjProjectTypes.length)await loadPjProjectTypes();
-  var projTrade=t.project_trade!==undefined?t.project_trade:(ganttState.project&&ganttState.project.project_type)||'';
-  var cur=t.trade||'';
-  sel.innerHTML='<option value="">Som sagen'+(projTrade?' ('+esc(projTrade)+')':'')+'</option>'+pjProjectTypes.map(function(x){return '<option value="'+esc(x)+'"'+(x===cur?' selected':'')+'>'+esc(x)+'</option>';}).join('');
+  var cur=TASK_TRADES.indexOf(t.trade)>-1?t.trade:'';
+  sel.innerHTML='<option value="">Ikke valgt – AI vælger ud fra navnet</option>'+TASK_TRADES.map(function(x){return '<option value="'+esc(x)+'"'+(x===cur?' selected':'')+'>'+esc(x)+(x===cur&&t.trade_source==='ai'?' (sat af AI)':'')+'</option>';}).join('');
   sel.value=cur;
 }
 var ganttDetailTaskId=null;
