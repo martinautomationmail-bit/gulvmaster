@@ -5687,6 +5687,13 @@ body.tp-dragging,body.tp-dragging *{cursor:grabbing!important}
 .tp-drop-prev span{position:relative;background:#4F46E5;color:#fff;font-size:11.5px;font-weight:700;padding:3px 8px;border-radius:6px;white-space:nowrap;box-shadow:0 2px 6px rgba(0,0,0,.2)}
 .tp-drop-prev.clash{outline-color:#F59E0B}.tp-drop-prev.clash span{background:#D97706}
 .tp-emp .tp-track{overflow:visible}
+.tp-tip{position:fixed;z-index:9998;display:none;width:340px;max-width:calc(100vw - 16px);background:#fff;border:1px solid #E5E7EB;border-radius:12px;box-shadow:0 12px 32px rgba(16,24,40,.18);padding:12px 14px;pointer-events:none;font-size:12.5px;color:#111827}
+.tp-tip-top{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:4px}.tp-tip-sag{font-size:11.5px;color:#6B7280;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.tp-tip-sag small{color:#9CA3AF;font-weight:500}
+.tp-tip-fag{font-size:11px;font-weight:700;padding:2px 8px;border-radius:99px;white-space:nowrap}
+.tp-tip-name{font-size:14px;font-weight:700;line-height:1.3;margin-bottom:6px;white-space:pre-line}
+.tp-tip-meta{font-size:12px;color:#374151;margin-bottom:8px}
+.tp-tip-desc{white-space:pre-line;line-height:1.5;color:#374151;background:#F9FAFB;border-radius:8px;padding:8px 10px;max-height:220px;overflow:hidden}.tp-tip-desc.muted{color:#9CA3AF;font-style:italic}
+.tp-tip-hint{margin-top:8px;font-size:11px;color:#9CA3AF}
 .tp-empty{padding:26px;text-align:center;color:#9CA3AF}
 </style>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
@@ -5915,7 +5922,7 @@ body.tp-dragging,body.tp-dragging *{cursor:grabbing!important}
        i browseren faktisk ER det nyeste deploy, eller om Render/GitHub bare
        ikke er nået at opdatere endnu — i stedet for at skulle gætte om en
        rettelse "stadig ikke virker" eller bare endnu ikke er live. -->
-  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build v2.83.1 · 2026-11-02</span></div>
+  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build v2.83.2 · 2026-11-02</span></div>
 </aside>
 <div class="app-content">
 <!-- RUNDE FB — AI-ASSISTENTEN (Martin: "en ai der er nede i venstre hjørne af
@@ -14252,7 +14259,7 @@ function tpRender(){
   var ti=idx[todayS],today=ti!==undefined?'<div class="tp-today" style="left:'+(ti*col)+'px;width:'+col+'px"></div>':'';
   function bar(cls,a,b,txt,attrs,color,title,top){
     var cut='';if(a<0){a=0;cut+=' cutl';}if(b>N){b=N;cut+=' cutr';}
-    return '<div class="'+cls+cut+'" style="left:'+(a*col+1)+'px;width:'+Math.max(col*0.5,(b-a)*col-3)+'px;top:'+(top||0)+'px;background:'+color+'" '+(attrs||'')+' title="'+esc(title||txt)+'">'+esc(txt)+'</div>';
+    return '<div class="'+cls+cut+'" style="left:'+(a*col+1)+'px;width:'+Math.max(col*0.5,(b-a)*col-3)+'px;top:'+(top||0)+'px;background:'+color+'" '+(attrs||'')+'>'+esc(txt)+'</div>';
   }
   function lanes(items){items.sort(function(x,y){return x.a-y.a||y.b-x.b;});var ends=[];items.forEach(function(it){var l=0;while(ends[l]!==undefined&&ends[l]>it.a+0.01)l++;ends[l]=it.b;it.lane=l;});return Math.max(1,ends.length);}
   // ── belastning pr. medarbejder pr. dag ──
@@ -14298,7 +14305,7 @@ function tpRender(){
   var trayH='';
   if(TP.trayOpen&&tray.length){
     tray.sort(function(a,b){return String(a.start_date||'').localeCompare(String(b.start_date||''));});
-    trayH='<div class="tp-tray">'+tray.map(function(t){var len=tpWorkCount(t.start_date&&t.start_date.slice(0,10),t.end_date&&t.end_date.slice(0,10));return '<div class="tp-g tp-chip" data-tp-task="'+esc(t.id)+'" style="background:'+tpFagColor(t)+'" title="'+esc((t.project_name||'')+' — '+(t.name||'')+(t.start_date?' · planlagt '+t.start_date.slice(0,10)+' → '+(t.end_date||'').slice(0,10):' · uden dato'))+'"><b>'+esc(t.project_name||'')+'</b> · '+esc(t.name||'')+' <span>'+len+' d · '+(t.start_date?'fra '+date(t.start_date).getDate()+'/'+(date(t.start_date).getMonth()+1):'uden dato')+'</span></div>';}).join('')+'</div>';
+    trayH='<div class="tp-tray">'+tray.map(function(t){var len=tpWorkCount(t.start_date&&t.start_date.slice(0,10),t.end_date&&t.end_date.slice(0,10));return '<div class="tp-g tp-chip" data-tp-task="'+esc(t.id)+'" style="background:'+tpFagColor(t)+'"><b>'+esc(t.project_name||'')+'</b> · '+esc(t.name||'')+' <span>'+len+' d · '+(t.start_date?'fra '+date(t.start_date).getDate()+'/'+(date(t.start_date).getMonth()+1):'uden dato')+'</span></div>';}).join('')+'</div>';
   }
   // ── medarbejdere ──
   var eh='';
@@ -14435,6 +14442,38 @@ function tpAddPersonMenu(b,x,y){
   if(!list.length)items.push({label:true,text:'Alle viste medarbejdere er allerede på'});
   showCtxMenu(x,y,items);
 }
+// v2.83.2 — pæn hover-boble med opgavens beskrivelse (Gantt-bjælker, bunken og planlagte opgaver)
+function tpPlain(html){var d=document.createElement('div');d.innerHTML=String(html||'').replace(/<br\s*\/?>/gi,'\n').replace(/<\/(p|div|li|h\d)>/gi,'\n').replace(/<li[^>]*>/gi,'• ');var t=(d.textContent||'').replace(/\n{3,}/g,'\n\n').trim();return t;}
+(function(){
+  var tip=null,cur=null;
+  function hide(){if(tip)tip.style.display='none';cur=null;}
+  document.addEventListener('mouseover',function(e){
+    var page=document.getElementById('page-testplan');
+    if(!page||!page.contains(e.target)||document.body.classList.contains('tp-dragging')){hide();return;}
+    var el=e.target.closest('.tp-g,.tp-b');if(!el){hide();return;}
+    if(el===cur)return;cur=el;
+    var bk=el.dataset.tpBk?TP.bk.find(function(x){return +x.id===+el.dataset.tpBk;}):null;
+    var t=tpTask(bk?bk.gantt_task_id:el.dataset.tpTask);if(!t){hide();return;}
+    var s=t.start_date?t.start_date.slice(0,10):null,e2=t.end_date?t.end_date.slice(0,10):s,len=tpWorkCount(s,e2);
+    var when=bk?(tpDayLbl(bk.start_date)+(bk.days>1?' → '+tpDayLbl(tpAddWork(bk.start_date,bk.days)):'')+' · '+bk.days+' d'):(s?tpDayLbl(s)+(e2&&e2!==s?' → '+tpDayLbl(e2):'')+' · '+len+' d':'Uden dato');
+    var crew=bk?TP.bk.filter(function(q){return String(q.gantt_task_id)===String(bk.gantt_task_id);}).map(function(q){var u=users.find(function(z){return +z.id===+q.user_id;});return u?u.name:'?';}):[];
+    var nmL=String(t.name||'Opgave').split('\n'),nm1=nmL[0].trim()||'Opgave',nmX=nmL.slice(1).join('\n').trim();
+    var desc=[nmX,tpPlain(t.description)].filter(Boolean).join('\n\n');if(desc.length>600)desc=desc.slice(0,600).replace(/\s+\S*$/,'')+' …';
+    var c=tpFagColor(t);
+    if(!tip){tip=document.createElement('div');tip.className='tp-tip';document.body.appendChild(tip);}
+    tip.innerHTML='<div class="tp-tip-top"><span class="tp-tip-sag">'+esc(t.project_name||'')+(t.job_number?' <small>#'+esc(t.job_number)+'</small>':'')+'</span>'+(t.project_type?'<span class="tp-tip-fag" style="background:'+c+'1f;color:'+c+'">'+esc(t.project_type)+'</span>':'')+'</div>'
+      +'<div class="tp-tip-name">'+esc(nm1)+'</div>'
+      +'<div class="tp-tip-meta">📅 '+esc(when)+(crew.length?' · 👷 '+esc(crew.join(', ')):'')+'</div>'
+      +(desc?'<div class="tp-tip-desc">'+esc(desc)+'</div>':'<div class="tp-tip-desc muted">Ingen beskrivelse på opgaven</div>')
+      +'<div class="tp-tip-hint">'+(bk?'Træk for at flytte · højreklik for valg':'Træk ned på en medarbejder · højreklik for hurtig placering')+'</div>';
+    tip.style.display='block';
+    var r=el.getBoundingClientRect(),w=tip.offsetWidth,h=tip.offsetHeight;
+    var x=Math.min(Math.max(8,r.left),window.innerWidth-w-8),y=r.top-h-8;if(y<8)y=r.bottom+8;
+    tip.style.left=x+'px';tip.style.top=y+'px';
+  });
+  document.addEventListener('pointerdown',hide,true);
+  document.addEventListener('scroll',hide,true);
+})();
 async function tpPlace(taskId,uid,ds){
   var t=tpTask(taskId),len=t?tpWorkCount(t.start_date&&t.start_date.slice(0,10),t.end_date&&t.end_date.slice(0,10)):1;
   var r=await api('/api/testplan/bookings',{method:'POST',body:JSON.stringify({gantt_task_id:taskId,user_id:uid,start_date:ds,days:len})});
