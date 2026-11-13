@@ -18859,7 +18859,7 @@ function tpClean(b) {
   const out = {};
   if (b.user_id !== undefined) out.user_id = Number(b.user_id) || null;
   if (b.start_date !== undefined) out.start_date = /^\d{4}-\d{2}-\d{2}$/.test(String(b.start_date)) ? String(b.start_date) : null;
-  if (b.days !== undefined) out.days = Math.max(0.5, Math.min(120, Math.round((Number(b.days) || 1) * 2) / 2));
+  if (b.days !== undefined) out.days = Number(b.days) > 0 && Number(b.days) < 0.5 ? 0.1 : Math.max(0.5, Math.min(120, Math.round((Number(b.days) || 1) * 2) / 2)); // 0,1 = kundebesøg
   if (b.note !== undefined) out.note = b.note ? String(b.note).slice(0, 500) : null;
   return out;
 }
