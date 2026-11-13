@@ -8448,7 +8448,7 @@ app.get('/api/gantt/projects', auth, asyncRoute(async (req, res) => {
 app.get('/api/gantt/all-tasks', auth, asyncRoute(async (req, res) => {
   const rows = await pool.query(`
     SELECT g.id, g.project_id, g.name, g.description, g.start_date, g.end_date,
-           g.progress, g.is_group, g.parent_task_id, g.position, g.depends_on, g.type_guess, g.trade,
+           g.progress, g.is_group, g.parent_task_id, g.position, g.depends_on, g.type_guess, g.trade, g.status AS task_status,
            p.name AS project_name, p.job_number, p.status AS project_status, p.project_type,
            p.customer_address, p.customer_phone, p.customer_email
     FROM gantt_tasks g
@@ -8468,7 +8468,7 @@ app.get('/api/gantt/all-tasks', auth, asyncRoute(async (req, res) => {
       // kender ikke afhængigheder), så det bliver reelt altid [] — kolonnen
       // læses alligevel, så en evt. gammel værdi ikke forsvinder lydløst.
       depends_on: safeJsonParse(r.depends_on, []) || [],
-      type_guess: r.type_guess,
+      type_guess: r.type_guess, task_status: r.task_status,
       customer_phone: r.customer_phone, customer_email: r.customer_email,
       customer_address: r.customer_address
     }))
