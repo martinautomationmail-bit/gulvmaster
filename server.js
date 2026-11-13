@@ -7373,7 +7373,12 @@ async function sendProjectCompletionWebhook(project) {
 // når der har været ro i planen for den person i SCHEDULE_MAIL_QUIET_MS.
 const SCHEDULE_MAIL_QUIET_MS = 15 * 60 * 1000;
 const scheduleMailQueue = new Map();
+// Nov. 2026 (Martin: "fjern så medarbejder ikke får mails når vi rykker rundt i kalenderen,
+// da de ikke læser den"): kalender-mails til medarbejdere er slået helt fra. Medarbejderen
+// får stadig push/in-app-besked (notifyEmployee) — og SMS, hvis det er slået til på personen.
+const SCHEDULE_CHANGE_EMAILS_ENABLED = false;
 function sendScheduleChangeEmail(userId, summary) {
+  if (!SCHEDULE_CHANGE_EMAILS_ENABLED) return Promise.resolve();
   const id = Number(userId);
   if (!id) return Promise.resolve();
   let q = scheduleMailQueue.get(id);
