@@ -5641,7 +5641,9 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
 #tp-trade-btn.on{border-color:#6366F1;color:#4338CA;background:#EEF2FF}
 .tp-chk{display:flex;align-items:center;gap:6px;font-size:12px;font-weight:600;color:#4B5563}
 .tp-board{display:flex;flex-direction:column;gap:18px;user-select:none}
-.tp-card{background:#fff;border:1px solid #E5E7EB;border-radius:14px;overflow:hidden;box-shadow:0 1px 3px rgba(16,24,40,.05)}
+.tp-card{background:#fff;border:1px solid #E5E7EB;border-radius:14px;box-shadow:0 1px 3px rgba(16,24,40,.05)}
+.tp-card>:first-child{border-top-left-radius:14px;border-top-right-radius:14px}.tp-card>:last-child{border-bottom-left-radius:14px;border-bottom-right-radius:14px}
+.tp-sec2{position:relative;z-index:20}
 .tp-card>.tp-sec:first-child{border-top:0}
 .tp-fchips{display:flex;gap:6px;flex-wrap:wrap;margin-left:6px}
 .tp-fchip{border:1px solid #E5E7EB;background:#fff;border-radius:99px;padding:4px 10px;font-size:12px;font-weight:600;color:#4B5563;cursor:pointer}.tp-fchip span{color:#9CA3AF;font-weight:500;margin-left:2px}
@@ -5694,6 +5696,9 @@ body.tp-dragging,body.tp-dragging *{cursor:grabbing!important}
 .tp-tip-meta{font-size:12px;color:#374151;margin-bottom:8px}
 .tp-tip-desc{white-space:pre-line;line-height:1.5;color:#374151;background:#F9FAFB;border-radius:8px;padding:8px 10px;max-height:220px;overflow:hidden}.tp-tip-desc.muted{color:#9CA3AF;font-style:italic}
 .tp-tip-hint{margin-top:8px;font-size:11px;color:#9CA3AF}
+.tp-ep{position:relative;margin-left:6px}.tp-ep-pop{display:none;left:0;right:auto;top:34px;max-height:380px;overflow:auto;min-width:260px}.tp-ep-pop.open{display:block}.tp-ep-t{margin-left:auto;color:#9CA3AF;font-size:11px;padding-left:8px}
+.tp-ep-pop label{display:flex;align-items:center;gap:6px}
+.tp-visit{position:absolute;height:28px;border-radius:8px;background:#FFFBEB;border:1.5px solid #F59E0B;color:#92400E;font-size:11.5px;font-weight:600;padding:0 7px;line-height:25px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;z-index:2}
 .tp-empty{padding:26px;text-align:center;color:#9CA3AF}
 </style>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
@@ -5922,7 +5927,7 @@ body.tp-dragging,body.tp-dragging *{cursor:grabbing!important}
        i browseren faktisk ER det nyeste deploy, eller om Render/GitHub bare
        ikke er nået at opdatere endnu — i stedet for at skulle gætte om en
        rettelse "stadig ikke virker" eller bare endnu ikke er live. -->
-  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build v2.83.2 · 2026-11-02</span></div>
+  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build v2.84.0 · 2026-11-02</span></div>
 </aside>
 <div class="app-content">
 <!-- RUNDE FB — AI-ASSISTENTEN (Martin: "en ai der er nede i venstre hjørne af
@@ -14196,9 +14201,9 @@ function dailyLoad(uid,ds){
 // Opgavepool. En opgave der trækkes ned på en medarbejder forsvinder fra Gantt og
 // står som "Planlagt" i testplanen. Gemmes KUN i testplan_bookings (se server.js).
 var TP={tasks:[],bk:[],zoom:'month',start:null,collapsed:{},ganttOpen:true,showReal:true,trades:[],q:'',loaded:false};
-try{var _tps=JSON.parse(localStorage.getItem('gm_tp')||'{}');['zoom','ganttOpen','showReal','trades','collapsed','empTrades'].forEach(function(k){if(_tps[k]!==undefined)TP[k]=_tps[k];});}catch(e){}
+try{var _tps=JSON.parse(localStorage.getItem('gm_tp')||'{}');['zoom','ganttOpen','showReal','trades','collapsed','empTrades','empIds','hideVendors'].forEach(function(k){if(_tps[k]!==undefined)TP[k]=_tps[k];});}catch(e){}
 TP.trades=(TP.trades||[]).filter(function(t){return ['Gulvlægning','Gulvslibning','Tømrer','Maler','VVS','El','Murer','Fliser','Nedrivning','Andet'].indexOf(t)>-1;});
-function tpSaveUi(){try{localStorage.setItem('gm_tp',JSON.stringify({zoom:TP.zoom,ganttOpen:TP.ganttOpen,showReal:TP.showReal,trades:TP.trades,collapsed:TP.collapsed,empTrades:TP.empTrades||[]}));}catch(e){}}
+function tpSaveUi(){try{localStorage.setItem('gm_tp',JSON.stringify({zoom:TP.zoom,ganttOpen:TP.ganttOpen,showReal:TP.showReal,trades:TP.trades,collapsed:TP.collapsed,empTrades:TP.empTrades||[],empIds:TP.empIds||[],hideVendors:TP.hideVendors!==false}));}catch(e){}}
 // Faste fag for OPGAVER (nov. 2026) — samme liste som TASK_TRADES i server.js. Enterprise bruges kun på sagen.
 var TASK_TRADES=['Gulvlægning','Gulvslibning','Tømrer','Maler','VVS','El','Murer','Fliser','Nedrivning','Andet'];
 var TASK_TRADE_COLORS={'Gulvlægning':'#3B82F6','Gulvslibning':'#22C55E','Tømrer':'#B45309','Maler':'#F59E0B','VVS':'#06B6D4','El':'#EAB308','Murer':'#EF4444','Fliser':'#EC4899','Nedrivning':'#64748B','Andet':'#94A3B8'};
@@ -14214,8 +14219,9 @@ function tpWorkCount(s,e){if(!s)return 1;var a=date(s),b=date(e||s),n=0;if(b<a)b
 function tpBkDates(b){var out=[],d=tpNextWork(date(b.start_date)),left=Math.max(0.5,+b.days||1);while(left>0){out.push({ds:iso(d),f:Math.min(1,left)});left-=1;d=tpNextWork(add(d,1));}return out;}
 function tpTask(id){return TP.taskById[String(id)];}
 function tpEmpTrade(u){return String(u.trade||(u.worker_type==='vendor'?'Vendor':'Medarbejder')).trim();}
-function tpAllUsers(){return users.filter(function(u){return u.active&&userBookable(u);});}
-function tpUsers(){var f=TP.empTrades||[];return tpAllUsers().filter(function(u){return !f.length||f.indexOf(tpEmpTrade(u))>-1;}).sort(function(a,b){var av=a.worker_type==='vendor'?1:0,bv=b.worker_type==='vendor'?1:0;return av-bv||a.name.localeCompare(b.name,'da');});}
+// v2.84 — vendors skjules som standard (de snyder 'ledige mandedage'); knappen 'Vis vendors' slår dem til.
+function tpAllUsers(){var hv=TP.hideVendors!==false;return users.filter(function(u){return u.active&&userBookable(u)&&!(hv&&u.worker_type==='vendor');});}
+function tpUsers(){var f=TP.empTrades||[],ids=(TP.empIds||[]).map(Number);return tpAllUsers().filter(function(u){return (!f.length||f.indexOf(tpEmpTrade(u))>-1)&&(!ids.length||ids.indexOf(+u.id)>-1);}).sort(function(a,b){var av=a.worker_type==='vendor'?1:0,bv=b.worker_type==='vendor'?1:0;return av-bv||a.name.localeCompare(b.name,'da');});}
 async function tpInit(){
   if(!TP.start)TP.start=mon(new Date());
   for(var w=0;w<40&&!(users&&users.length);w++)await new Promise(function(r){setTimeout(r,150);}); // vent på at medarbejdere er hentet ved direkte link
@@ -14267,7 +14273,8 @@ function tpRender(){
   us.forEach(function(u){real[u.id]={};tpl[u.id]={};});
   TP.bk.forEach(function(b){var m=tpl[b.user_id];if(!m)return;tpBkDates(b).forEach(function(x){m[x.ds]=(m[x.ds]||0)+x.f;});});
   var realNames={};
-  if(TP.showReal)bookings.forEach(function(b){if(isCapacityBooking(b))return;var m=real[b.user_id];if(!m)return;var w=planWorkDates(b).filter(function(ds){return idx[ds]!==undefined;});if(!w.length)return;var all=planWorkDates(b).filter(function(ds){return tpIsWork(date(ds));}),per=Math.min(1,(+b.days||all.length)/Math.max(1,all.length));w.forEach(function(ds){m[ds]=(m[ds]||0)+per;var k=b.user_id+':'+ds;(realNames[k]=realNames[k]||[]).push(b.job_name||b.task_name||'Opgave');});});
+  var visits={};
+  if(TP.showReal)bookings.forEach(function(b){if(isCapacityBooking(b))return;var m=real[b.user_id];if(!m)return;if(b.is_visit&&idx[String(b.start_date).slice(0,10)]!==undefined)(visits[b.user_id]=visits[b.user_id]||[]).push(b);var w=planWorkDates(b).filter(function(ds){return idx[ds]!==undefined;});if(!w.length)return;var all=planWorkDates(b).filter(function(ds){return tpIsWork(date(ds));}),per=Math.min(1,(+b.days||all.length)/Math.max(1,all.length));w.forEach(function(ds){m[ds]=(m[ds]||0)+per;var k=b.user_id+':'+ds;(realNames[k]=realNames[k]||[]).push(b.job_name||b.task_name||'Opgave');});});
   function used(u,ds){return (timeOffFor(u.id,ds)?1:0)+(real[u.id][ds]||0)+(tpl[u.id][ds]||0);}
   TP._real=real;TP._tpl=tpl;TP._first=first;TP._last=last;
   // ── hoved ──
@@ -14315,6 +14322,7 @@ function tpRender(){
       var ds=tpBkDates(b),a=colOf(ds[0].ds),bb=a+(+b.days||1);if(bb<=0||a>=N)return;
       var t=tpTask(b.gantt_task_id);var crew=TP.bk.filter(function(q){return String(q.gantt_task_id)===String(b.gantt_task_id);}).length;items.push({a:a,b:bb,bk:b,t:t,crew:crew});
     });
+    (visits[u.id]||[]).forEach(function(v){var a=idx[String(v.start_date).slice(0,10)];items.push({a:a,b:a+Math.max(1,Math.ceil(130/col)),visit:v});});
     var n=lanes(items),h=Math.max(44,n*32+12),cap=(+u.weekly_capacity||5)/5,cells='';
     days.forEach(function(ds,i){
       var off=timeOffFor(u.id,ds),r=(real[u.id][ds]||0)+(off?1:0),tot=r+(tpl[u.id][ds]||0);
@@ -14323,7 +14331,7 @@ function tpRender(){
     });
     var c=u.color||'#2563EB';
     eh+='<div class="tp-row tp-emp" data-tp-uid="'+u.id+'" style="height:'+h+'px"><div class="tp-lbl"><span class="tp-av" style="background:'+c+'1f;color:'+c+'">'+esc(u.initials||u.name.slice(0,2))+'</span><div class="tp-name"><b>'+esc(u.name)+'</b><small>'+esc(u.trade||(u.worker_type==='vendor'?'Vendor':'Medarbejder'))+'</small></div></div><div class="tp-track tp-drop" style="width:'+W+'px;'+grid+'">'+cells+today
-      +items.map(function(it){return bar('tp-b',it.a,it.b,(it.crew>1?'👥'+it.crew+' · ':'')+(it.t?(it.t.project_name||'')+' · '+(it.t.name||''):'(slettet opgave)'),'data-tp-bk="'+it.bk.id+'"',it.t?tpFagColor(it.t):'#9CA3AF',(it.t?it.t.project_name+' — '+it.t.name:'Opgaven findes ikke længere')+' · '+it.bk.days+' d. Træk for at flytte, træk i højre kant for længde, klik for valg.',6+it.lane*32);}).join('')+'</div></div>';
+      +items.map(function(it){if(it.visit){var v=it.visit,tm=bookingTimeOn(v,String(v.start_date).slice(0,10));return '<div class="tp-visit" style="left:'+(it.a*col+1)+'px;width:'+Math.max(col-3,Math.min(180,(it.b-it.a)*col-3))+'px;top:'+(6+it.lane*32)+'px" title="'+esc('Kundebesøg'+(tm?' kl. '+tm:'')+': '+(v.job_name||v.task_name||'')+(v.job_address?' · '+v.job_address:''))+'">📅 '+esc((tm?tm+' ':'')+(v.job_name||v.task_name||'Kundebesøg'))+'</div>';}return bar('tp-b',it.a,it.b,(it.crew>1?'👥'+it.crew+' · ':'')+(it.t?(it.t.project_name||'')+' · '+(it.t.name||''):'(slettet opgave)'),'data-tp-bk="'+it.bk.id+'"',it.t?tpFagColor(it.t):'#9CA3AF',(it.t?it.t.project_name+' — '+it.t.name:'Opgaven findes ikke længere')+' · '+it.bk.days+' d. Træk for at flytte, træk i højre kant for længde, klik for valg.',6+it.lane*32);}).join('')+'</div></div>';
   });
   var rng=date(first),rng2=date(last);
   page.querySelector('#tp-range').textContent='Uge '+weekNo(rng)+' – '+weekNo(rng2);
@@ -14343,7 +14351,7 @@ function tpRender(){
       +'<span class="tp-sec-r">Træk en opgave ned på en medarbejder</span></div>'
     +(TP.ganttOpen?trayH+'<div class="tp-pane tp-gantt" id="tp-gantt"><div class="tp-inner" style="width:'+(LBL+W)+'px">'+gh+'</div></div>':'')
     +'</div><div class="tp-card">'
-    +'<div class="tp-sec tp-sec2"><span class="tp-sec-t">Medarbejdere</span><span class="tp-fchips">'+chips+'</span><span class="tp-sec-r"><i class="tp-k busy"></i>optaget i rigtig plan<i class="tp-k ovr"></i>overbooket</span></div>'
+    +'<div class="tp-sec tp-sec2"><span class="tp-sec-t">Medarbejdere</span><span class="tp-ep"><button type="button" class="tp-fchip tp-ep-btn'+((TP.empIds||[]).length?' on':'')+'" data-tp-ep>👤 '+((TP.empIds||[]).length?(TP.empIds.length===1?esc((users.find(function(z){return +z.id===+TP.empIds[0];})||{}).name||'1 valgt'):TP.empIds.length+' valgt'):'Vælg medarbejdere')+' ▾</button><div class="gtf-pop tp-ep-pop'+(TP.epOpen?' open':'')+'" id="tp-ep-pop">'+tpEpPopHtml()+'</div></span><button type="button" class="tp-fchip tp-vend'+(TP.hideVendors!==false?'':' on')+'" data-tp-vend title="Vendors er skjult som standard, så ledige mandedage kun tæller jeres egne folk">'+(TP.hideVendors!==false?'🏢 Vendors skjult':'🏢 Vendors vises')+' <span>'+users.filter(function(u){return u.active&&userBookable(u)&&u.worker_type==='vendor';}).length+'</span></button><span class="tp-fchips">'+chips+'</span><span class="tp-sec-r"><i class="tp-k busy"></i>optaget i rigtig plan<i class="tp-k ovr"></i>overbooket</span></div>'
     +'<div class="tp-pane tp-head"><div class="tp-inner" style="width:'+(LBL+W)+'px">'+head2+'</div></div>'
     +'<div class="tp-pane tp-emp-pane" id="tp-emp"><div class="tp-inner" style="width:'+(LBL+W)+'px">'+(eh||'<div class="tp-empty">Ingen medarbejdere med det fag.</div>')+'</div></div></div>';
   var panes=boardEl.querySelectorAll('.tp-pane');
@@ -14520,6 +14528,9 @@ document.addEventListener('click',async function(e){
   var t;
   if((t=e.target.closest('[data-tp-zoom]'))){TP.zoom=t.dataset.tpZoom;tpSaveUi();tpRender();return;}
   if((t=e.target.closest('[data-tp-nav]'))){var v=t.dataset.tpNav;if(v==='today'){TP.start=mon(add(new Date(),-7));tpRender();}else tpShift(+v);return;}
+  if((t=e.target.closest('[data-tp-ep]'))){e.stopPropagation();TP.epOpen=!TP.epOpen;var pp=document.getElementById('tp-ep-pop');if(pp)pp.classList.toggle('open',TP.epOpen);return;}
+  if(TP.epOpen&&!e.target.closest('#tp-ep-pop')){TP.epOpen=false;var pp2=document.getElementById('tp-ep-pop');if(pp2)pp2.classList.remove('open');}
+  if((t=e.target.closest('[data-tp-vend]'))){TP.hideVendors=TP.hideVendors===false;tpSaveUi();tpRender();return;}
   if((t=e.target.closest('[data-tp-et]'))){var k=t.dataset.tpEt,a=(TP.empTrades||[]).slice();if(!k)a=[];else{var ix=a.indexOf(k);if(ix>-1)a.splice(ix,1);else a.push(k);}TP.empTrades=a;tpSaveUi();tpRender();return;}
   if((t=e.target.closest('[data-tp-tray]'))){e.stopPropagation();TP.trayOpen=!TP.trayOpen;tpRender();return;}
   if((t=e.target.closest('[data-tp-all]'))){e.stopPropagation();var open=t.dataset.tpAll==='1';TP.collapsed={};if(!open)tpGanttList().forEach(function(x){TP.collapsed[String(x.project_id)]=1;});tpSaveUi();tpRender();return;}
@@ -14529,6 +14540,10 @@ document.addEventListener('click',async function(e){
   if((t=e.target.closest('#tp-trade-btn'))){var pop=page.querySelector('#tp-trade-pop');pop.classList.toggle('open');tpTradePop();return;}
   if(!e.target.closest('#tp-trade-pop')){var p2=page.querySelector('#tp-trade-pop');if(p2)p2.classList.remove('open');}
 });
+function tpEpPopHtml(){
+  var sel=(TP.empIds||[]).map(Number);
+  return '<label class="gtf-all"><input type="checkbox"'+(!sel.length?' checked':'')+' data-tp-epall> <b>Alle medarbejdere</b></label>'+tpAllUsers().slice().sort(function(a,b){return a.name.localeCompare(b.name,'da');}).map(function(u){return '<label><input type="checkbox" data-tp-epid="'+u.id+'"'+(sel.indexOf(+u.id)>-1?' checked':'')+'> '+esc(u.name)+' <span class="tp-ep-t">'+esc(tpEmpTrade(u))+'</span></label>';}).join('');
+}
 function tpTradePop(){
   var pop=document.getElementById('tp-trade-pop');if(!pop)return;var sel=TP.trades;
   pop.innerHTML='<label class="gtf-all"><input type="checkbox"'+(!sel.length?' checked':'')+' data-tp-tall> <b>Alle fag</b></label>'+TASK_TRADES.map(function(t){return '<label><input type="checkbox" value="'+esc(t)+'"'+(sel.indexOf(t)>-1?' checked':'')+'> <span class="gtf-dot" style="background:'+taskTradeColor(t)+'"></span>'+esc(t)+'</label>';}).join('');
@@ -14536,6 +14551,7 @@ function tpTradePop(){
 document.addEventListener('change',function(e){
   var pop=e.target.closest&&e.target.closest('#tp-trade-pop');
   if(pop){if(e.target.hasAttribute('data-tp-tall'))TP.trades=[];else TP.trades=[].slice.call(pop.querySelectorAll('input[value]:checked')).map(function(x){return x.value;});tpSaveUi();tpTradePop();tpRender();return;}
+  if(e.target.closest&&e.target.closest('#tp-ep-pop')){if(e.target.hasAttribute('data-tp-epall'))TP.empIds=[];else TP.empIds=[].slice.call(document.querySelectorAll('#tp-ep-pop [data-tp-epid]:checked')).map(function(x){return +x.dataset.tpEpid;});TP.epOpen=true;tpSaveUi();tpRender();return;}
   if(e.target.id==='tp-real'){TP.showReal=e.target.checked;tpSaveUi();tpRender();}
 });
 document.addEventListener('input',function(e){if(e.target.id==='tp-q'){TP.q=e.target.value;clearTimeout(TP._qt);TP._qt=setTimeout(tpRender,150);}});
