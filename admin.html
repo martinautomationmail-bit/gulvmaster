@@ -5682,6 +5682,11 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
 #tp-gantt.tp-hover,.tp-sec.tp-hover{box-shadow:inset 0 0 0 2px #F59E0B}
 .tp-ghost{position:fixed!important;z-index:9999;pointer-events:none;opacity:.95;box-shadow:0 10px 24px rgba(16,24,40,.28);transform:rotate(-1deg)}
 body.tp-dragging,body.tp-dragging *{cursor:grabbing!important}
+.tp-drop-prev{position:absolute;top:6px;height:30px;display:flex;align-items:center;padding-left:4px;border:2px solid #fff;outline:2px solid #4F46E5;border-radius:8px;z-index:4;pointer-events:none;box-shadow:0 6px 16px rgba(79,70,229,.35)}
+.tp-dy-hit{background:#4F46E5;color:#fff!important;border-radius:5px}.tp-dy-hit span{color:#E0E7FF!important}
+.tp-drop-prev span{position:relative;background:#4F46E5;color:#fff;font-size:11.5px;font-weight:700;padding:3px 8px;border-radius:6px;white-space:nowrap;box-shadow:0 2px 6px rgba(0,0,0,.2)}
+.tp-drop-prev.clash{outline-color:#F59E0B}.tp-drop-prev.clash span{background:#D97706}
+.tp-emp .tp-track{overflow:visible}
 .tp-empty{padding:26px;text-align:center;color:#9CA3AF}
 </style>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
@@ -5910,7 +5915,7 @@ body.tp-dragging,body.tp-dragging *{cursor:grabbing!important}
        i browseren faktisk ER det nyeste deploy, eller om Render/GitHub bare
        ikke er nået at opdatere endnu — i stedet for at skulle gætte om en
        rettelse "stadig ikke virker" eller bare endnu ikke er live. -->
-  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build v2.81.1 · 2026-11-02</span></div>
+  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build v2.82.0 · 2026-11-02</span></div>
 </aside>
 <div class="app-content">
 <!-- RUNDE FB — AI-ASSISTENTEN (Martin: "en ai der er nede i venstre hjørne af
@@ -14257,6 +14262,7 @@ function tpRender(){
   var realNames={};
   if(TP.showReal)bookings.forEach(function(b){if(isCapacityBooking(b))return;var m=real[b.user_id];if(!m)return;var w=planWorkDates(b).filter(function(ds){return idx[ds]!==undefined;});if(!w.length)return;var all=planWorkDates(b).filter(function(ds){return tpIsWork(date(ds));}),per=Math.min(1,(+b.days||all.length)/Math.max(1,all.length));w.forEach(function(ds){m[ds]=(m[ds]||0)+per;var k=b.user_id+':'+ds;(realNames[k]=realNames[k]||[]).push(b.job_name||b.task_name||'Opgave');});});
   function used(u,ds){return (timeOffFor(u.id,ds)?1:0)+(real[u.id][ds]||0)+(tpl[u.id][ds]||0);}
+  TP._real=real;TP._tpl=tpl;TP._first=first;TP._last=last;
   // ── hoved ──
   var wk='',dy='',free='';
   for(var i=0;i<N;i+=5){
@@ -14341,16 +14347,24 @@ function tpRender(){
 window.addEventListener('resize',function(){if(document.getElementById('page-testplan')&&document.getElementById('page-testplan').classList.contains('active')){clearTimeout(TP._rz);TP._rz=setTimeout(tpRender,150);}});
 function tpShift(dir){var z=TP_ZOOM[TP.zoom]||TP_ZOOM.month;var step=Math.max(1,Math.round(z.weeks/2));TP.start=add(TP.start,dir*step*7);tpRender();}
 function tpDateAt(track,clientX){var r=track.getBoundingClientRect(),i=Math.floor((clientX-r.left)/TP.col);i=Math.max(0,Math.min(TP.days.length-1,i));return TP.days[i];}
-// ── træk ──
+// ── træk ── (v2.82: snapper til dagene + viser tydeligt hvor den lander)
+function tpTaskStart(t){ // opgavens egen startdag (eller i dag/periodens start hvis uden dato/forsinket)
+  var td=iso(tpNextWork(new Date())),s=t&&t.start_date?t.start_date.slice(0,10):null;
+  if(!s||s<td)s=td;return iso(tpNextWork(date(s)));
+}
+function tpDayLbl(ds){var d=date(ds);return ['søn','man','tir','ons','tor','fre','lør'][d.getDay()]+' '+d.getDate()+'/'+(d.getMonth()+1);}
+function tpAddWork(ds,n){var d=tpNextWork(date(ds)),k=Math.max(0,Math.ceil(n)-1);while(k>0){d=tpNextWork(add(d,1));k--;}return iso(d);}
 (function(){
   var drag=null;
+  function clearPrev(){var p=document.getElementById('tp-drop-prev');if(p)p.remove();document.querySelectorAll('.tp-dy-hit').forEach(function(x){x.classList.remove('tp-dy-hit');});document.querySelectorAll('.tp-hover').forEach(function(x){x.classList.remove('tp-hover');});}
   document.addEventListener('pointerdown',function(e){
     var page=document.getElementById('page-testplan');if(!page||!page.contains(e.target)||e.button!==0)return;
-    var rs=e.target.closest('.tp-rs');
     var el=e.target.closest('.tp-g,.tp-b');if(!el)return;
     e.preventDefault();
-    var r=el.getBoundingClientRect();
-    drag={el:el,task:el.dataset.tpTask||null,bk:el.dataset.tpBk?+el.dataset.tpBk:null,x0:e.clientX,y0:e.clientY,dx:e.clientX-r.left,moved:false,ghost:null,resize:!!(el.dataset.tpBk&&e.clientX>r.right-8),w0:r.width};
+    var r=el.getBoundingClientRect(),bk=el.dataset.tpBk?+el.dataset.tpBk:null,task=el.dataset.tpTask||null,len=1;
+    if(bk){var b=TP.bk.find(function(x){return +x.id===bk;});len=b?(+b.days||1):1;}
+    else{var t=tpTask(task);len=t?tpWorkCount(t.start_date&&t.start_date.slice(0,10),t.end_date&&t.end_date.slice(0,10)):1;}
+    drag={el:el,task:task,bk:bk,len:len,x0:e.clientX,y0:e.clientY,dx:e.clientX-r.left,moved:false,ghost:null,resize:!!(bk&&e.clientX>r.right-8),w0:r.width,chip:el.classList.contains('tp-chip'),target:null};
   });
   document.addEventListener('pointermove',function(e){
     if(!drag)return;
@@ -14358,38 +14372,64 @@ function tpDateAt(track,clientX){var r=track.getBoundingClientRect(),i=Math.floo
     if(!drag.moved){
       drag.moved=true;
       if(drag.resize){drag.el.classList.add('tp-resizing');}
-      else{var g=drag.el.cloneNode(true);g.className+=' tp-ghost';g.style.width=drag.w0+'px';document.body.appendChild(g);drag.ghost=g;drag.el.style.opacity='.35';}
+      else{var g=drag.el.cloneNode(true);g.className+=' tp-ghost';g.style.width=(drag.chip?Math.max(60,drag.len*TP.col):drag.w0)+'px';document.body.appendChild(g);drag.ghost=g;drag.el.style.opacity='.35';if(drag.chip)drag.dx=12;}
       document.body.classList.add('tp-dragging');
     }
-    if(drag.resize){var w=Math.max(TP.col*0.5,drag.w0+(e.clientX-drag.x0));drag.el.style.width=w+'px';drag.el.textContent=(Math.round(w/TP.col*2)/2)+' d';return;}
-    drag.ghost.style.left=(e.clientX-drag.dx)+'px';drag.ghost.style.top=(e.clientY-14)+'px';
-    document.querySelectorAll('.tp-hover').forEach(function(x){x.classList.remove('tp-hover');});
+    if(drag.resize){var w=Math.max(TP.col*0.5,drag.w0+(e.clientX-drag.x0)),nd=Math.max(0.5,Math.round(w/TP.col*2)/2);drag.el.style.width=w+'px';drag.el.textContent=nd+' dage';return;}
     var under=document.elementFromPoint(e.clientX,e.clientY),row=under&&under.closest('.tp-emp');
-    if(row)row.classList.add('tp-hover');
+    clearPrev();drag.target=null;
+    if(row){
+      var track=row.querySelector('.tp-track'),tr=track.getBoundingClientRect();
+      var i=Math.round((e.clientX-drag.dx-tr.left)/TP.col);
+      // Lige ned = samme dag: inden for et halvt dags-felt fra opgavens egen start snapper den dertil.
+      i=Math.max(0,Math.min(TP.days.length-1,i));
+      var ds=TP.days[i],uid=+row.dataset.tpUid,u=users.find(function(x){return +x.id===uid;});
+      drag.target={uid:uid,ds:ds};
+      row.classList.add('tp-hover');
+      var end=tpAddWork(ds,drag.len),busy=0;
+      for(var k=0;k<Math.ceil(drag.len);k++){var dk=TP.days[i+k];if(dk&&(((TP._real[uid]||{})[dk]||0)+((TP._tpl[uid]||{})[dk]||0)+(timeOffFor(uid,dk)?1:0))>0.01)busy++;}
+      var pv=document.createElement('div');pv.id='tp-drop-prev';pv.className='tp-drop-prev'+(busy?' clash':'');
+      pv.style.left=(i*TP.col)+'px';pv.style.width=(Math.max(0.5,drag.len)*TP.col)+'px';
+      pv.innerHTML='<span>'+tpDayLbl(ds)+(drag.len>1?' → '+tpDayLbl(end):'')+(busy?' · '+busy+' dag'+(busy>1?'e':'')+' optaget':'')+'</span>';
+      track.appendChild(pv);
+      // ghost snapper til felterne
+      pv.style.background=drag.el.style.background||'';drag.ghost.style.opacity='0';
+      var heads=document.querySelectorAll('#page-testplan .tp-card:last-child .tp-dy');for(var q=0;q<Math.ceil(drag.len);q++){if(heads[i+q])heads[i+q].classList.add('tp-dy-hit');}
+      return;
+    }
+    drag.ghost.style.opacity='';
+    drag.ghost.style.left=(e.clientX-drag.dx)+'px';drag.ghost.style.top=(e.clientY-14)+'px';
     var gz=under&&under.closest('#tp-gantt,[data-tp-toggle-gantt]');if(gz&&drag.bk)gz.classList.add('tp-hover');
   });
   document.addEventListener('pointerup',async function(e){
     if(!drag)return;var d=drag;drag=null;
-    document.body.classList.remove('tp-dragging');
-    document.querySelectorAll('.tp-hover').forEach(function(x){x.classList.remove('tp-hover');});
+    document.body.classList.remove('tp-dragging');clearPrev();
     if(d.ghost)d.ghost.remove();d.el.style.opacity='';
     if(!d.moved){if(d.bk)tpBkMenu(d.bk,e.clientX,e.clientY);else if(d.task)tpTaskMenu(d.task,e.clientX,e.clientY);return;}
     if(d.resize){var nd=Math.max(0.5,Math.round(parseFloat(d.el.style.width)/TP.col*2)/2);await tpUpdate(d.bk,{days:nd});return;}
-    var x=e.clientX-d.dx+4; // venstre kant af bjælken bestemmer startdagen
-    var under=document.elementFromPoint(e.clientX,e.clientY);
-    var row=under&&under.closest('.tp-emp');
-    if(row){
-      var ds=tpDateAt(row.querySelector('.tp-track'),x),uid=+row.dataset.tpUid;
-      if(d.task){
-        var t=tpTask(d.task),len=t?tpWorkCount(t.start_date&&t.start_date.slice(0,10),t.end_date&&t.end_date.slice(0,10)):1;
-        var r=await api('/api/testplan/bookings',{method:'POST',body:JSON.stringify({gantt_task_id:d.task,user_id:uid,start_date:ds,days:len})});
-        if(r&&r.ok){TP.bk.push(r.booking);tpRender();}else toast((r&&r.error)||'Kunne ikke gemme','❌');
-      }else await tpUpdate(d.bk,{user_id:uid,start_date:ds});
+    if(d.target){
+      if(d.task)await tpPlace(d.task,d.target.uid,d.target.ds);
+      else await tpUpdate(d.bk,{user_id:d.target.uid,start_date:d.target.ds});
       return;
     }
+    var under=document.elementFromPoint(e.clientX,e.clientY);
     if(d.bk&&under&&under.closest('#tp-gantt,[data-tp-toggle-gantt]'))await tpRemove(d.bk);
   });
+  document.addEventListener('contextmenu',function(e){
+    var page=document.getElementById('page-testplan');if(!page||!page.contains(e.target))return;
+    var el=e.target.closest('.tp-g,.tp-b');if(!el)return;
+    e.preventDefault();
+    if(el.dataset.tpBk)tpBkMenu(+el.dataset.tpBk,e.clientX,e.clientY);else tpTaskMenu(el.dataset.tpTask,e.clientX,e.clientY);
+  });
 })();
+async function tpPlace(taskId,uid,ds){
+  var t=tpTask(taskId),len=t?tpWorkCount(t.start_date&&t.start_date.slice(0,10),t.end_date&&t.end_date.slice(0,10)):1;
+  var r=await api('/api/testplan/bookings',{method:'POST',body:JSON.stringify({gantt_task_id:taskId,user_id:uid,start_date:ds,days:len})});
+  if(r&&r.ok){TP.bk.push(r.booking);tpRender();var u=users.find(function(x){return +x.id===+uid;});toast('Lagt på '+(u?u.name:'medarbejder')+' fra '+tpDayLbl(ds),'✓');}
+  else toast((r&&r.error)||'Kunne ikke gemme','❌');
+}
+// Hvor mange af dagene fra ds (len arbejdsdage) er medarbejderen allerede optaget?
+function tpBusyDays(uid,ds,len){var n=0,d=tpNextWork(date(ds));for(var k=0;k<Math.ceil(len);k++){var x=iso(d);if((((TP._real||{})[uid]||{})[x]||0)+(((TP._tpl||{})[uid]||{})[x]||0)+(timeOffFor(uid,x)?1:0)>0.01)n++;d=tpNextWork(add(d,1));}return n;}
 async function tpUpdate(id,ch){
   var b=TP.bk.find(function(x){return +x.id===+id;});if(!b)return;
   var old=Object.assign({},b);Object.assign(b,ch);tpRender();
@@ -14412,11 +14452,15 @@ function tpBkMenu(id,x,y){
 }
 function tpTaskMenu(tid,x,y){
   var t=tpTask(tid);if(!t)return;
-  setTimeout(function(){showCtxMenu(x,y,[
-    {label:true,text:(t.project_name||'')+' — '+(t.name||'')},
-    {text:'Træk bjælken ned på en medarbejder for at planlægge den',icon:'↓',onClick:function(){}},
-    t.project_id?{text:'Åbn sagen',icon:'↗',onClick:function(){window.open('#project-detail/'+t.project_id,'_blank');}}:null
-  ].filter(Boolean));},0);
+  var ds=tpTaskStart(t),len=tpWorkCount(t.start_date&&t.start_date.slice(0,10),t.end_date&&t.end_date.slice(0,10));
+  var trade=String(t.project_type||'').toLowerCase().slice(0,6);
+  var list=tpUsers().map(function(u){var b=tpBusyDays(u.id,ds,len),m=trade&&tpEmpTrade(u).toLowerCase().indexOf(trade)===0?1:0;return {u:u,b:b,m:m};})
+    .sort(function(a,b){return b.m-a.m||a.b-b.b||a.u.name.localeCompare(b.u.name,'da');});
+  var items=[{label:true,text:'Læg på medarbejder · '+tpDayLbl(ds)+(len>1?' → '+tpDayLbl(tpAddWork(ds,len)):'')+' ('+len+' d)'}];
+  list.forEach(function(o){items.push({icon:o.b?'🟠':'🟢',text:o.u.name+(o.b?' — '+o.b+' af '+Math.ceil(len)+' dage optaget':' — ledig')+(o.m?' · '+tpEmpTrade(o.u):''),onClick:function(){tpPlace(tid,o.u.id,ds);}});});
+  items.push({sep:true});
+  if(t.project_id)items.push({text:'Åbn sagen',icon:'↗',onClick:function(){window.open('#project-detail/'+t.project_id,'_blank');}});
+  setTimeout(function(){showCtxMenu(x,y,items);},0);
 }
 document.addEventListener('click',async function(e){
   var page=document.getElementById('page-testplan');if(!page||!page.contains(e.target))return;
