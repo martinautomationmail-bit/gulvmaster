@@ -2653,7 +2653,9 @@ async function initSchema() {
       created_by INTEGER,
       updated_at TEXT
     );
-    CREATE UNIQUE INDEX IF NOT EXISTS idx_testplan_task ON testplan_bookings(gantt_task_id);
+    -- v2.83: flere medarbejdere må have samme opgave ("2 på sagen i den periode")
+    DROP INDEX IF EXISTS idx_testplan_task;
+    CREATE INDEX IF NOT EXISTS idx_testplan_task2 ON testplan_bookings(gantt_task_id);
     CREATE TABLE IF NOT EXISTS project_rework (
       id SERIAL PRIMARY KEY,
       project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
@@ -18866,7 +18868,6 @@ app.post('/api/testplan/bookings', auth, panelAccess('plan'), asyncRoute(async (
   if (!b.gantt_task_id || !c.user_id || !c.start_date) return res.status(400).json({ error: 'Mangler opgave, medarbejder eller dato' });
   const r = await pgOne(`INSERT INTO testplan_bookings (gantt_task_id, user_id, start_date, days, created_by, updated_at)
     VALUES ($1,$2,$3,$4,$5,${nowTextSQL()})
-    ON CONFLICT (gantt_task_id) DO UPDATE SET user_id=EXCLUDED.user_id, start_date=EXCLUDED.start_date, days=EXCLUDED.days, updated_at=EXCLUDED.updated_at
     RETURNING *`, [String(b.gantt_task_id), c.user_id, c.start_date, c.days || 1, req.user.id]);
   res.json({ ok: true, booking: { ...r, days: Number(r.days) } });
 }));

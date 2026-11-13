@@ -5915,7 +5915,7 @@ body.tp-dragging,body.tp-dragging *{cursor:grabbing!important}
        i browseren faktisk ER det nyeste deploy, eller om Render/GitHub bare
        ikke er nået at opdatere endnu — i stedet for at skulle gætte om en
        rettelse "stadig ikke virker" eller bare endnu ikke er live. -->
-  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build v2.82.0 · 2026-11-02</span></div>
+  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build v2.83.0 · 2026-11-02</span></div>
 </aside>
 <div class="app-content">
 <!-- RUNDE FB — AI-ASSISTENTEN (Martin: "en ai der er nede i venstre hjørne af
@@ -14306,7 +14306,7 @@ function tpRender(){
     var items=[];
     TP.bk.filter(function(b){return +b.user_id===+u.id;}).forEach(function(b){
       var ds=tpBkDates(b),a=colOf(ds[0].ds),bb=a+(+b.days||1);if(bb<=0||a>=N)return;
-      var t=tpTask(b.gantt_task_id);items.push({a:a,b:bb,bk:b,t:t});
+      var t=tpTask(b.gantt_task_id);var crew=TP.bk.filter(function(q){return String(q.gantt_task_id)===String(b.gantt_task_id);}).length;items.push({a:a,b:bb,bk:b,t:t,crew:crew});
     });
     var n=lanes(items),h=Math.max(44,n*32+12),cap=(+u.weekly_capacity||5)/5,cells='';
     days.forEach(function(ds,i){
@@ -14316,7 +14316,7 @@ function tpRender(){
     });
     var c=u.color||'#2563EB';
     eh+='<div class="tp-row tp-emp" data-tp-uid="'+u.id+'" style="height:'+h+'px"><div class="tp-lbl"><span class="tp-av" style="background:'+c+'1f;color:'+c+'">'+esc(u.initials||u.name.slice(0,2))+'</span><div class="tp-name"><b>'+esc(u.name)+'</b><small>'+esc(u.trade||(u.worker_type==='vendor'?'Vendor':'Medarbejder'))+'</small></div></div><div class="tp-track tp-drop" style="width:'+W+'px;'+grid+'">'+cells+today
-      +items.map(function(it){return bar('tp-b',it.a,it.b,it.t?(it.t.project_name||'')+' · '+(it.t.name||''):'(slettet opgave)','data-tp-bk="'+it.bk.id+'"',it.t?tpFagColor(it.t):'#9CA3AF',(it.t?it.t.project_name+' — '+it.t.name:'Opgaven findes ikke længere')+' · '+it.bk.days+' d. Træk for at flytte, træk i højre kant for længde, klik for valg.',6+it.lane*32);}).join('')+'</div></div>';
+      +items.map(function(it){return bar('tp-b',it.a,it.b,(it.crew>1?'👥'+it.crew+' · ':'')+(it.t?(it.t.project_name||'')+' · '+(it.t.name||''):'(slettet opgave)'),'data-tp-bk="'+it.bk.id+'"',it.t?tpFagColor(it.t):'#9CA3AF',(it.t?it.t.project_name+' — '+it.t.name:'Opgaven findes ikke længere')+' · '+it.bk.days+' d. Træk for at flytte, træk i højre kant for længde, klik for valg.',6+it.lane*32);}).join('')+'</div></div>';
   });
   var rng=date(first),rng2=date(last);
   page.querySelector('#tp-range').textContent='Uge '+weekNo(rng)+' – '+weekNo(rng2);
@@ -14422,6 +14422,19 @@ function tpAddWork(ds,n){var d=tpNextWork(date(ds)),k=Math.max(0,Math.ceil(n)-1)
     if(el.dataset.tpBk)tpBkMenu(+el.dataset.tpBk,e.clientX,e.clientY);else tpTaskMenu(el.dataset.tpTask,e.clientX,e.clientY);
   });
 })();
+// v2.83 — "2 på sagen i den periode": samme opgave, samme dage, en medarbejder mere.
+function tpAddPersonMenu(b,x,y){
+  var t=tpTask(b.gantt_task_id),on={};TP.bk.forEach(function(q){if(String(q.gantt_task_id)===String(b.gantt_task_id))on[q.user_id]=1;});
+  var trade=String(t&&t.project_type||'').toLowerCase().slice(0,6);
+  var list=tpUsers().filter(function(u){return !on[u.id];}).map(function(u){return {u:u,b:tpBusyDays(u.id,b.start_date,b.days),m:trade&&tpEmpTrade(u).toLowerCase().indexOf(trade)===0?1:0};})
+    .sort(function(a,c){return c.m-a.m||a.b-c.b||a.u.name.localeCompare(c.u.name,'da');});
+  var items=[{label:true,text:'Også på opgaven · '+tpDayLbl(b.start_date)+(b.days>1?' → '+tpDayLbl(tpAddWork(b.start_date,b.days)):'')}];
+  list.forEach(function(o){items.push({icon:o.b?'🟠':'🟢',text:o.u.name+(o.b?' — '+o.b+' af '+Math.ceil(b.days)+' dage optaget':' — ledig'),onClick:async function(){
+    var r=await api('/api/testplan/bookings',{method:'POST',body:JSON.stringify({gantt_task_id:b.gantt_task_id,user_id:o.u.id,start_date:b.start_date,days:b.days})});
+    if(r&&r.ok){TP.bk.push(r.booking);tpRender();toast(o.u.name+' er sat på også','✓');}else toast((r&&r.error)||'Kunne ikke gemme','❌');}});});
+  if(!list.length)items.push({label:true,text:'Alle viste medarbejdere er allerede på'});
+  showCtxMenu(x,y,items);
+}
 async function tpPlace(taskId,uid,ds){
   var t=tpTask(taskId),len=t?tpWorkCount(t.start_date&&t.start_date.slice(0,10),t.end_date&&t.end_date.slice(0,10)):1;
   var r=await api('/api/testplan/bookings',{method:'POST',body:JSON.stringify({gantt_task_id:taskId,user_id:uid,start_date:ds,days:len})});
@@ -14445,8 +14458,9 @@ function tpBkMenu(id,x,y){
   var b=TP.bk.find(function(q){return +q.id===+id;});if(!b)return;var t=tpTask(b.gantt_task_id);
   setTimeout(function(){showCtxMenu(x,y,[
     {label:true,text:t?(t.project_name+' — '+t.name):'Opgave'},
+    {text:'Tilføj en medarbejder mere (samme dage)…',icon:'👥',onClick:function(){setTimeout(function(){tpAddPersonMenu(b,x,y);},0);}},
     {text:'Antal dage ('+b.days+')…',icon:'↔',onClick:async function(){var v=await gmPrompt('Hvor mange arbejdsdage?',String(b.days),'Antal dage');if(v==null)return;var n=parseFloat(String(v).replace(',','.'));if(!(n>0)){toast('Ugyldigt antal','⚠');return;}tpUpdate(id,{days:n});}},
-    {text:'Tilbage til Gantt',icon:'↩',onClick:function(){tpRemove(id);}},
+    (function(){var n=TP.bk.filter(function(q){return String(q.gantt_task_id)===String(b.gantt_task_id);}).length,u=users.find(function(z){return +z.id===+b.user_id;});return n>1?{text:'Fjern '+(u?u.name:'medarbejderen')+' fra opgaven',icon:'✕',onClick:function(){tpRemove(id);}}:{text:'Tilbage til Gantt',icon:'↩',onClick:function(){tpRemove(id);}};})(),
     t&&t.project_id?{text:'Åbn sagen',icon:'↗',onClick:function(){window.open('#project-detail/'+t.project_id,'_blank');}}:null
   ].filter(Boolean));},0);
 }
