@@ -5960,7 +5960,7 @@ body.tp-dragging,body.tp-dragging *{cursor:grabbing!important}
        i browseren faktisk ER det nyeste deploy, eller om Render/GitHub bare
        ikke er nået at opdatere endnu — i stedet for at skulle gætte om en
        rettelse "stadig ikke virker" eller bare endnu ikke er live. -->
-  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build v2.89.0 · 2026-11-02</span></div>
+  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build v2.89.1 · 2026-11-02</span></div>
 </aside>
 <div class="app-content">
 <!-- RUNDE FB — AI-ASSISTENTEN (Martin: "en ai der er nede i venstre hjørne af
@@ -21792,7 +21792,11 @@ function ftlRender(){
     +Object.keys(fags).sort().map(function(f){return '<button type="button" class="ftl-chip'+(ftlFag===f?' on':'')+'" data-ftl-fag="'+esc(f)+'"><i style="background:'+ftlColor(f)+'"></i>'+esc(f)+' <em>'+fags[f]+'</em></button>';}).join('');
   // Totaler for de viste sager
   var tot={};M.forEach(function(mk){tot[mk]={t:0,f:{}};});
-  jobs.forEach(function(j){var f=ftlF(j);Object.keys(j.months).forEach(function(mk){if(!tot[mk])return;tot[mk].t+=j.months[mk]*f;tot[mk].f[j.fag]=(tot[mk].f[j.fag]||0)+j.months[mk]*f;});});
+  // v2.89.1: totaler tæller ALLE sager i det valgte fag — også færdigfakturerede, som
+  // "Kun sager der ikke er færdigfaktureret" skjuler som rækker — så tallet altid
+  // matcher Oversigt. hid[mk] = den del der kommer fra skjulte rækker.
+  var hid={};M.forEach(function(mk){hid[mk]=0;});
+  d.jobs.filter(function(j){return !ftlFag||j.fag===ftlFag;}).forEach(function(j){var f=ftlF(j),hidden=ftlOpenOnly&&!ftlJobOpen(j);Object.keys(j.months).forEach(function(mk){if(!tot[mk])return;tot[mk].t+=j.months[mk]*f;tot[mk].f[j.fag]=(tot[mk].f[j.fag]||0)+j.months[mk]*f;if(hidden)hid[mk]+=j.months[mk]*f;});});
   var nextMk=M[M.indexOf(cur)+1];
   var periodTot=M.reduce(function(s,mk){return s+tot[mk].t;},0);
   function kpi(l,v,sub,cls){return '<div class="ftl-kpi'+(cls?' '+cls:'')+'"><small>'+l+'</small><b>'+v+'</b><span>'+sub+'</span></div>';}
@@ -21840,7 +21844,7 @@ function ftlRender(){
   h+='<div class="ftl-row ftl-trow" style="grid-template-columns:'+cols+'"><div class="ftl-name"><b>I alt pr. måned</b></div>'+M.map(function(mk){
     var t=tot[mk].t;
     var stack=Object.keys(tot[mk].f).sort(function(a,b){return tot[mk].f[b]-tot[mk].f[a];}).map(function(f){return '<i style="width:'+(t?tot[mk].f[f]/t*100:0)+'%;background:'+ftlColor(f)+'" title="'+esc(f)+': '+krFmt(tot[mk].f[f])+'"></i>';}).join('');
-    return '<div class="ftl-tc'+(mk===cur?' now':'')+'"><b>'+ftlK(t)+'</b><div class="ftl-stack">'+stack+'</div></div>';
+    return '<div class="ftl-tc'+(mk===cur?' now':'')+'"><b>'+ftlK(t)+'</b><div class="ftl-stack">'+stack+'</div>'+(hid[mk]>=1?'<div style="font-size:10.5px;color:var(--bly-sub);margin-top:4px" title="Færdigfakturerede sager der er skjult af filteret, men tæller med i totalen">heraf '+ftlK(hid[mk])+' færdigfakt.</div>':'')+'</div>';
   }).join('')+'</div>';
   document.getElementById('ftl-grid').innerHTML=h;
 }
