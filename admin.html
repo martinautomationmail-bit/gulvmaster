@@ -5959,7 +5959,7 @@ body.tp-dragging,body.tp-dragging *{cursor:grabbing!important}
        i browseren faktisk ER det nyeste deploy, eller om Render/GitHub bare
        ikke er nået at opdatere endnu — i stedet for at skulle gætte om en
        rettelse "stadig ikke virker" eller bare endnu ikke er live. -->
-  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build v2.88.1 · 2026-11-02</span></div>
+  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build v2.88.2 · 2026-11-02</span></div>
 </aside>
 <div class="app-content">
 <!-- RUNDE FB — AI-ASSISTENTEN (Martin: "en ai der er nede i venstre hjørne af
@@ -21808,6 +21808,9 @@ function ftlRender(){
   var coll=ftlCollapsed();
   var groups={};jobs.forEach(function(j){(groups[j.fag]=groups[j.fag]||[]).push(j);});
   var gOrder=Object.keys(groups).sort(function(a,b){return (a==='Ukendt')-(b==='Ukendt')||groups[b].reduce(function(s,x){return s+x.value;},0)-groups[a].reduce(function(s,x){return s+x.value;},0);});
+  // v2.88.2 — egen rækkefølge (højreklik → flyt op/ned); sager uden rækkefølge beholder den normale orden bagerst
+  Object.keys(groups).forEach(function(f){var L=groups[f];L.forEach(function(j,i){j._i=i;});L.sort(function(a,b){var sa=a.sortOrder==null?1e6+a._i:a.sortOrder,sb=b.sortOrder==null?1e6+b._i:b.sortOrder;return sa-sb;});});
+  ftlGroupsView=groups;
   h+=gOrder.map(function(f){
     var list=groups[f],c=ftlColor(f),closed=!!coll[f];
     var gsum={};M.forEach(function(mk){gsum[mk]=0;});list.forEach(function(j){var fx=ftlF(j);Object.keys(j.months).forEach(function(mk){if(gsum[mk]!==undefined)gsum[mk]+=j.months[mk]*fx;});});
@@ -21841,8 +21844,41 @@ function ftlRender(){
   }).join('')+'</div>';
   document.getElementById('ftl-grid').innerHTML=h;
 }
+var ftlGroupsView={};
+async function ftlMove(j,dir){
+  var L=(ftlGroupsView[j.fag]||[]).slice(),i=L.indexOf(j),k=i+dir;if(i<0||k<0||k>=L.length)return;
+  var t=L[i];L[i]=L[k];L[k]=t;
+  L.forEach(function(x,n){x.sortOrder=n;});ftlRender();
+  await api('/api/finance/job-order',{method:'PUT',body:JSON.stringify({keys:L.map(function(x){return x.key;})})});
+}
+async function ftlSetFag(j,f){
+  var r=await api('/api/finance/job-meta/'+encodeURIComponent(j.key),{method:'PUT',body:JSON.stringify({fag:f,project_id:j.projectId||undefined})});
+  if(r&&r.ok){j.fag=f;j.sortOrder=null;ftlRender();toast('Faggruppe sat til '+f+(j.projectId?' (også på sagen)':''),'✓');}else toast('Kunne ikke gemme','❌');
+}
+async function ftlRemove(j){
+  if(!await gmConfirm('Fjern "'+j.name+'" fra tidslinjen og den forventede omsætning? Sagen og tilbuddet slettes ikke.','Fjern fra tidslinjen'))return;
+  var r=await api('/api/finance/job-meta/'+encodeURIComponent(j.key),{method:'PUT',body:JSON.stringify({excluded:true})});
+  if(r&&r.ok){ftlData.jobs=ftlData.jobs.filter(function(x){return x.key!==j.key;});ftlRender();toast('Fjernet fra tidslinjen','✓');}else toast('Kunne ikke fjerne','❌');
+}
+async function ftlCtx(j,x,y){
+  if(!pjProjectTypes.length&&typeof loadPjProjectTypes==='function')await loadPjProjectTypes();
+  var L=ftlGroupsView[j.fag]||[],i=L.indexOf(j);
+  var types=(pjProjectTypes||[]).slice();if(types.indexOf(j.fag)<0&&j.fag!=='Ukendt')types.push(j.fag);
+  var items=[{label:true,text:j.name}];
+  if(i>0)items.push({text:'Flyt op',icon:'↑',onClick:function(){ftlMove(j,-1);}});
+  if(i>-1&&i<L.length-1)items.push({text:'Flyt ned',icon:'↓',onClick:function(){ftlMove(j,1);}});
+  items.push({label:true,text:'Faggruppe'+(j.fag==='Ukendt'?' (mangler)':'')});
+  types.forEach(function(f){items.push({text:(f===j.fag?'✓ ':'')+f,icon:'●',onClick:function(){if(f!==j.fag)ftlSetFag(j,f);}});});
+  items.push({sep:true},{text:'Fjern fra tidslinjen',icon:'🗑',onClick:function(){ftlRemove(j);}});
+  setTimeout(function(){showCtxMenu(x,y,items);},0);
+}
 function ftlBind(){
   if(ftlBound)return;ftlBound=true;
+  document.getElementById('ftl-grid').addEventListener('contextmenu',function(e){
+    var row=e.target.closest('[data-ftl-row]');if(!row||!ftlData)return;
+    var j=ftlData.jobs.find(function(x){return x.key===row.dataset.ftlRow;});if(!j)return;
+    e.preventDefault();ftlCtx(j,e.clientX,e.clientY);
+  });
   document.getElementById('ftl-prev').addEventListener('click',function(){ftlOffset-=3;ftlLoad();});
   document.getElementById('ftl-next').addEventListener('click',function(){ftlOffset+=3;ftlLoad();});
   document.getElementById('ftl-today').addEventListener('click',function(){ftlOffset=0;ftlLoad();});

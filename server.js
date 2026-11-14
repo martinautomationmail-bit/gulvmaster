@@ -621,6 +621,9 @@ async function initSchema() {
       note TEXT,
       updated_at TEXT DEFAULT ${nowTextSQL()}
     );
+    -- v2.88.2 — Tidslinje: egen faggruppe og rækkefølge pr. sag (højreklik-menu)
+    ALTER TABLE finance_job_overrides ADD COLUMN IF NOT EXISTS fag TEXT;
+    ALTER TABLE finance_job_overrides ADD COLUMN IF NOT EXISTS sort_order INTEGER;
     -- Manuelt tilføjede omsætningslinjer under "Omsætning pr. fag" — for sager der
     -- ikke findes i JobTread, eller som admin vil have med af andre grunde.
     CREATE TABLE IF NOT EXISTS finance_manual_revenue (
@@ -22574,7 +22577,7 @@ async function fetchFinanceTimeline(fromMk, toMk) {
     jobs.push({
       key, kind: 'quote', quoteId: q.id, projectId: q.project_id || null,
       name: q.project_name || q.job_name || q.job_number || ('Tilbud #' + q.id), jobNumber: q.job_number || '',
-      fag: q.fag || 'Ukendt', value, invoiced: Number(q.invoiced) || 0, amountEdited: !!(ov && ov.amount !== null && ov.amount !== undefined),
+      fag: (ov && ov.fag) || q.fag || 'Ukendt', sortOrder: ov && ov.sort_order != null ? Number(ov.sort_order) : null, value, invoiced: Number(q.invoiced) || 0, amountEdited: !!(ov && ov.amount !== null && ov.amount !== undefined),
       start: days[0] || null, end: days[days.length - 1] || null, workDays: days.length, mode, months,
       netRatio: Number(q.total) > 0 ? Math.max(0, (Number(q.total) - (Number(q.tax_amount) || 0)) / Number(q.total)) : 0.8
     });
@@ -22594,11 +22597,11 @@ async function fetchFinanceTimeline(fromMk, toMk) {
     const invMonths = {};
     if (splits[key]) splits[key].forEach(sp => { invMonths[sp.month_key] = (invMonths[sp.month_key] || 0) + Math.round(sp.amount); }); else invMonths[mk] = Math.round(value);
     jobs.push({ key, kind: 'invoice', projectId: i.project_id || null, name: (i.project_name || i.job_name || i.invoice_number) , jobNumber: i.job_number || '',
-      fag: i.fag || 'Ukendt', value, invoiced: value, start: i.d, end: i.d, workDays: 0, mode: splits[key] ? 'manual' : 'invoice', months: invMonths,
+      fag: (ov && ov.fag) || i.fag || 'Ukendt', sortOrder: ov && ov.sort_order != null ? Number(ov.sort_order) : null, value, invoiced: value, start: i.d, end: i.d, workDays: 0, mode: splits[key] ? 'manual' : 'invoice', months: invMonths,
       netRatio: Number(i.total) > 0 ? Math.max(0, (Number(i.total) - (Number(i.tax_amount) || 0)) / Number(i.total)) : 0.8 });
   }
   const manual = (await pool.query('SELECT * FROM finance_manual_revenue')).rows;
-  for (const m of manual) jobs.push({ key: 'manual-' + m.id, kind: 'manual', manualId: m.id, name: m.name, fag: m.fag || 'Ukendt', value: Number(m.amount) || 0, invoiced: 0, start: null, end: null, workDays: 0, mode: 'manual-line', months: { [m.month_key]: Math.round(Number(m.amount) || 0) }, netRatio: 0.8 });
+  for (const m of manual) jobs.push({ key: 'manual-' + m.id, kind: 'manual', manualId: m.id, name: m.name, fag: (overrides['manual-' + m.id] && overrides['manual-' + m.id].fag) || m.fag || 'Ukendt', sortOrder: overrides['manual-' + m.id] && overrides['manual-' + m.id].sort_order != null ? Number(overrides['manual-' + m.id].sort_order) : null, value: Number(m.amount) || 0, invoiced: 0, start: null, end: null, workDays: 0, mode: 'manual-line', months: { [m.month_key]: Math.round(Number(m.amount) || 0) }, netRatio: 0.8 });
 
   // Kun sager der rammer det valgte vindue.
   const inWin = mk => mk >= fromMk && mk <= toMk;
@@ -22675,6 +22678,23 @@ app.delete('/api/finance/dashboard-widgets/:id', auth, panelAccess('finance'), a
 }));
 
 
+// v2.88.2 — Tidslinje højreklik: skift faggruppe / fjern fra tidslinjen, uden at røre beløbet.
+app.put('/api/finance/job-meta/:jobId', auth, panelAccess('finance'), asyncRoute(async (req, res) => {
+  const b = req.body || {}, id = String(req.params.jobId);
+  await pool.query(`INSERT INTO finance_job_overrides (job_id, updated_at) VALUES ($1, ${nowTextSQL()}) ON CONFLICT (job_id) DO NOTHING`, [id]);
+  if (b.fag !== undefined) await pool.query('UPDATE finance_job_overrides SET fag=$2 WHERE job_id=$1', [id, b.fag ? String(b.fag).slice(0, 80) : null]);
+  if (b.excluded !== undefined) await pool.query('UPDATE finance_job_overrides SET excluded=$2 WHERE job_id=$1', [id, b.excluded ? 1 : 0]);
+  // Sagens egen faggruppe følger med, så Projekter/Gantt/Omsætning pr. fag er enige.
+  if (b.fag && b.project_id) await pool.query('UPDATE projects SET project_type=$1 WHERE id=$2', [String(b.fag).slice(0, 80), Number(b.project_id)]);
+  res.json({ ok: true });
+}));
+app.put('/api/finance/job-order', auth, panelAccess('finance'), asyncRoute(async (req, res) => {
+  const keys = Array.isArray(req.body && req.body.keys) ? req.body.keys.map(String).slice(0, 500) : [];
+  for (let i = 0; i < keys.length; i++) {
+    await pool.query(`INSERT INTO finance_job_overrides (job_id, sort_order, updated_at) VALUES ($1,$2,${nowTextSQL()}) ON CONFLICT (job_id) DO UPDATE SET sort_order=$2`, [keys[i], i]);
+  }
+  res.json({ ok: true });
+}));
 app.put('/api/finance/job-override/:jobId', auth, panelAccess('finance'), asyncRoute(async (req, res) => {
   const body = req.body || {};
   const amount = body.amount === '' || body.amount === null || body.amount === undefined ? null : Number(body.amount);
