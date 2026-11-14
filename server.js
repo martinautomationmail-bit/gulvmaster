@@ -23351,6 +23351,15 @@ app.get('/api/finance/expenses-totals', auth, panelAccess('finance'), asyncRoute
   }
   res.json(out);
 }));
+// v2.89.3: betalt pr. måned til udgiftsringen på Oversigt.
+app.get('/api/finance/expenses-paid', auth, panelAccess('finance'), asyncRoute(async (req, res) => {
+  const months = String(req.query.months || '').split(',').filter(m => /^\d{4}-\d{2}$/.test(m));
+  const out = {};
+  if (!months.length) return res.json(out);
+  const r = await pool.query('SELECT month_key, COALESCE(SUM(amount) FILTER (WHERE paid=1),0)::float AS paid, COALESCE(SUM(amount),0)::float AS total FROM finance_expenses WHERE month_key = ANY($1) GROUP BY month_key', [months]);
+  r.rows.forEach(x => { out[x.month_key] = { paid: x.paid, itemized: x.total }; });
+  res.json(out);
+}));
 // HURTIG MÅNEDS-UDGIFT — se kommentar ved CREATE TABLE finance_expense_month_totals.
 // Returnerer BÅDE override-beløbet (hvis sat) OG den udspecificerede sum, så frontenden
 // kan vise "X kr (manuelt sat) — ville ellers have været Y kr fra Udgifter-fanen".

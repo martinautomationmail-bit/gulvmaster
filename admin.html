@@ -5969,7 +5969,7 @@ body.tp-dragging,body.tp-dragging *{cursor:grabbing!important}
        i browseren faktisk ER det nyeste deploy, eller om Render/GitHub bare
        ikke er nået at opdatere endnu — i stedet for at skulle gætte om en
        rettelse "stadig ikke virker" eller bare endnu ikke er live. -->
-  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build v2.89.2 · 2026-11-02</span></div>
+  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build v2.89.3 · 2026-11-02</span></div>
 </aside>
 <div class="app-content">
 <!-- RUNDE FB — AI-ASSISTENTEN (Martin: "en ai der er nede i venstre hjørne af
@@ -7313,7 +7313,7 @@ body.ai-has-reply #ai-fab{animation:ai-nudge 1.4s ease-in-out 3}
         <div class="bly-col" id="fin-card-bank"></div>
         <div class="bly-col" id="fin-card-fagomsaetning"></div>
         <div class="bly-col" id="fin-card-udgifter"></div>
-        <div class="bly-col" id="fin-card-moms"></div>
+        <div class="bly-col" id="fin-card-moms" style="grid-column:1/-1"></div>
       </div>
       <div class="bly-col" id="fin-card-todo" style="margin-top:20px"></div>
     </div>
@@ -23174,6 +23174,7 @@ async function renderFinMomsCard(){
 // samme to måneder og samme udregning som "+ Tilføj graf"-widget'erne og det nye
 // Omsætning pr. fag-kort allerede bruger, så alle tre matcher hinanden.
 function renderFinExpenseCard(){
+  // v2.89.3 (Martin valgte mockup A): delt ring — betalt mod mangler at betale.
   var el=document.getElementById('fin-card-udgifter');
   if(!el)return;
   var curKey=(finLastTrendArgs&&finLastTrendArgs.curKey)||iso(new Date()).slice(0,7);
@@ -23182,16 +23183,19 @@ function renderFinExpenseCard(){
     if(finLastTrendArgs&&finLastTrendArgs.udgForMonth)return finLastTrendArgs.udgForMonth(mk);
     return (finExpenseTotalsByMonth&&finExpenseTotalsByMonth[mk]!=null)?finExpenseTotalsByMonth[mk]:(mk===finExpenseMonth?finExpenseTotal():null);
   }
-  var curLbl=UDG_MONTH_NAMES[+curKey.slice(5,7)-1]+' '+curKey.slice(0,4);
-  var nextLbl=nextKey?(UDG_MONTH_NAMES[+nextKey.slice(5,7)-1]+' '+nextKey.slice(0,4)):null;
-  var curAmt=amtFor(curKey),nextAmt=nextKey?amtFor(nextKey):null;
-  el.innerHTML='<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:18px"><div style="font-size:15px;font-weight:800;color:var(--bly-ink)">Udgifter</div><button class="bly-btn outline small" data-action="fin-goto-udgifter">Se detaljer</button></div>'+
-    '<div style="display:flex;gap:28px;flex-wrap:wrap">'+
-    '<div><div class="fin-muted" style="font-size:11.5px;font-weight:600;margin-bottom:4px">'+esc(curLbl)+'</div><div style="font-size:22px;font-weight:800;color:#DC2626">'+(curAmt!=null?(negKr(curAmt)):'–')+'</div></div>'+
-    (nextLbl?('<div><div class="fin-muted" style="font-size:11.5px;font-weight:600;margin-bottom:4px">'+esc(nextLbl)+'</div><div style="font-size:22px;font-weight:800;color:'+(nextAmt?'#DC2626':'var(--bly-sub)')+'">'+(nextAmt!=null?(negKr(nextAmt)):'–')+'</div></div>'):'')+
-    '</div>';
-  var btn=el.querySelector('[data-action="fin-goto-udgifter"]');
-  if(btn)btn.addEventListener('click',function(){var t=document.querySelector('[data-fintab="udgifter"]');if(t)t.click();});
+  var keys=[curKey].concat(nextKey?[nextKey]:[]);
+  function draw(paid){
+    var rings=keys.map(function(mk){
+      var tot=Math.abs(Number(amtFor(mk))||0),lbl=UDG_MONTH_NAMES[+mk.slice(5,7)-1]+' '+mk.slice(0,4);
+      return finSplitRingHtml({label:lbl,total:tot,done:paid&&paid[mk]?paid[mk].paid:0,dark:'#B91C1C',light:'#FECACA',amtColor:'#B91C1C',neg:true,doneWord:'betalt',doneLabel:'Betalt',restLabel:'Mangler at betale'});
+    }).join('');
+    el.innerHTML='<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:18px"><div style="font-size:15px;font-weight:800;color:var(--bly-ink)">Udgifter</div><button class="bly-btn outline small" data-action="fin-goto-udgifter">Se detaljer</button></div>'
+      +'<div class="fin-fagrev-cols">'+rings+'</div>';
+    var btn=el.querySelector('[data-action="fin-goto-udgifter"]');
+    if(btn)btn.addEventListener('click',function(){var t=document.querySelector('[data-fintab="udgifter"]');if(t)t.click();});
+  }
+  draw(null);
+  api('/api/finance/expenses-paid?months='+keys.join(',')).then(function(r){if(r)draw(r);});
 }
 // RUNDE DH (Martin: "Moms vil jeg gerne have rykket en ned da der skal være
 // Omsætning pr Fag den skal være dynamisk og altid tage den aktuelle måned og
@@ -23223,6 +23227,18 @@ function finFagRevRingGradient(sorted,byFag,total){
     acc=to;
   });
   return 'conic-gradient('+stops.join(',')+')';
+}
+function finSplitRingHtml(o){
+  var total=Math.max(0,o.total||0),done=Math.max(0,Math.min(Number(o.done)||0,total)),rest=Math.max(0,total-done);
+  var pct=total>0?Math.round(done/total*100):0,R=70,C=2*Math.PI*R,dash=total>0?C*done/total:0;
+  return '<div class="fin-fagrev-ringcol">'
+    +'<div class="fin-split-ring"><svg viewBox="0 0 180 180" width="180" height="180" aria-hidden="true">'
+      +'<circle cx="90" cy="90" r="'+R+'" fill="none" stroke="'+o.light+'" stroke-width="16"/>'
+      +(dash>0?'<circle cx="90" cy="90" r="'+R+'" fill="none" stroke="'+o.dark+'" stroke-width="16" stroke-linecap="'+(pct>=100?'butt':'round')+'" stroke-dasharray="'+dash.toFixed(1)+' '+C.toFixed(1)+'" transform="rotate(-90 90 90)"/>':'')
+    +'</svg><div class="fin-split-ring-in"><div class="fin-split-amt"'+(o.amtColor?' style="color:'+o.amtColor+'"':'')+'>'+(o.neg&&total?'−':'')+krFmt(total)+'</div><div class="fin-split-pct">'+pct+' % '+esc(o.doneWord)+'</div></div></div>'
+    +'<div class="fin-fagrev-ring-label" style="font-size:13px;font-weight:800;color:var(--bly-ink)">'+esc(o.label)+'</div>'
+    +'<div class="fin-split-legend"><div><span><i style="background:'+o.dark+'"></i>'+esc(o.doneLabel)+'</span><b>'+krFmt(done)+'</b></div><div><span><i style="background:'+o.light+'"></i>'+esc(o.restLabel)+'</span><b>'+krFmt(rest)+'</b></div></div>'
+  +'</div>';
 }
 function finFagRevRingHtml(label,byFag,invoiced){
   // v2.89.2 (Martin valgte mockup A): delt ring — faktureret (mørk) mod mangler (lys).
