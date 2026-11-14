@@ -22545,7 +22545,7 @@ async function fetchFinanceTimeline(fromMk, toMk) {
     const key = 'tilbud-' + q.id;
     const ov = overrides[key];
     if (ov && ov.excluded) continue;
-    if (q.project_status === 'ikke_udfoert') continue;
+    if (q.project_status === 'ikke_udfoert' || q.project_status === 'on_hold') continue; // v2.88.1: sager på hold er ikke forventet omsætning
     const value = ov && ov.amount !== null && ov.amount !== undefined ? Number(ov.amount) : (Number(q.total) || 0);
     if (!(value > 0)) continue;
     // Arbejdsdage fra sagens opgaver (en dag tæller én gang pr. opgave).
