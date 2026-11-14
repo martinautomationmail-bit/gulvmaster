@@ -667,6 +667,30 @@ input.bly-search-lg{padding:13px 16px 13px 40px;font-size:14px;background-size:1
 .fin-split-legend>div{display:flex;justify-content:space-between;gap:10px;font-size:12.5px;color:var(--bly-sub)}
 .fin-split-legend b{color:var(--bly-ink);font-weight:700;white-space:nowrap}
 .fin-split-legend i{display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:7px}
+.pf-tbl{display:flex;flex-direction:column}
+.pf-row{display:grid;grid-template-columns:110px minmax(0,1fr) 140px 130px 40px;gap:16px;align-items:center;padding:12px 8px;font-size:13px}
+.pf-head{font-size:11.5px;font-weight:700;color:var(--bly-sub);padding-top:0}
+.pf-item{border-top:1px solid var(--bly-border-soft)}
+.pf-main{cursor:pointer;border-radius:10px}
+.pf-main:hover{background:var(--bly-hover)}
+.pf-mon{font-weight:800;color:var(--bly-ink);white-space:nowrap}
+.pf-car{display:inline-block;width:14px;color:var(--bly-sub);transition:transform .15s}
+.pf-item.open .pf-car{transform:rotate(90deg)}
+.pf-track{height:10px;border-radius:6px;background:var(--bly-border-soft);overflow:hidden}
+.pf-fill{height:100%;border-radius:6px;background:#4338CA}
+.pf-fill.neg{background:#DC2626}
+.pf-pill{display:inline-block;font-size:11.5px;font-weight:700;padding:3px 9px;border-radius:999px;white-space:nowrap}
+.pf-pill.up{background:#DCFCE7;color:#15803D}
+.pf-pill.dn{background:#FEE2E2;color:#B91C1C}
+.pf-del{border:0;background:transparent;cursor:pointer;opacity:.45;font-size:13px;padding:4px}
+.pf-del:hover{opacity:1}
+.pf-det{display:none;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px 28px;padding:4px 8px 16px 32px}
+.pf-item.open .pf-det{display:grid}
+.pf-kv{display:flex;justify-content:space-between;font-size:12.5px;color:var(--bly-sub);padding:3px 0}
+.pf-kv b{font-weight:700;white-space:nowrap}
+.pf-sum{border-top:1px dashed var(--bly-border)}
+.pf-sum b{color:var(--bly-ink);font-weight:800}
+@media(max-width:700px){.pf-row{grid-template-columns:80px minmax(0,1fr) 100px 0 30px}.pf-row>span:nth-child(4){display:none}.pf-det{grid-template-columns:1fr}}
 .fin-fagrev-cols{display:flex;gap:18px;justify-content:space-between}
 .fin-fagrev-ringcol{flex:1;min-width:0;display:flex;flex-direction:column;align-items:center;text-align:center;gap:10px}
 .fin-fagrev-ring{position:relative;width:100%;max-width:120px;aspect-ratio:1/1;border-radius:50%}
@@ -5969,7 +5993,7 @@ body.tp-dragging,body.tp-dragging *{cursor:grabbing!important}
        i browseren faktisk ER det nyeste deploy, eller om Render/GitHub bare
        ikke er nået at opdatere endnu — i stedet for at skulle gætte om en
        rettelse "stadig ikke virker" eller bare endnu ikke er live. -->
-  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build v2.89.3 · 2026-11-02</span></div>
+  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build v2.89.4 · 2026-11-02</span></div>
 </aside>
 <div class="app-content">
 <!-- RUNDE FB — AI-ASSISTENTEN (Martin: "en ai der er nede i venstre hjørne af
@@ -22869,40 +22893,37 @@ async function loadProfitSnapshots(){
     el.innerHTML='<p class="fin-muted" style="padding:10px 0">Intet snapshot endnu — det næste tages automatisk d. 15. i måneden, eller tryk "Gem snapshot nu" for at tage ét med det samme.</p>';
     return;
   }
-  var html='<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:12.5px">'+
-    '<thead><tr style="text-align:left;border-bottom:1px solid var(--bly-border-soft)">'+
-    '<th style="padding:8px 10px;color:var(--muted);font-weight:700">Måned</th>'+
-    '<th style="padding:8px 10px;color:var(--muted);font-weight:700;text-align:right">Udgifter</th>'+
-    '<th style="padding:8px 10px;color:var(--muted);font-weight:700;text-align:right">Cash i banken</th>'+
-    '<th style="padding:8px 10px;color:var(--muted);font-weight:700;text-align:right">Fakturaer sendt</th>'+
-    '<th style="padding:8px 10px;color:var(--muted);font-weight:700;text-align:right">Skal sendes</th>'+
-    '<th style="padding:8px 10px;color:var(--muted);font-weight:700;text-align:right">Moms (forventet)</th>'+
-    '<th style="padding:8px 10px;color:var(--muted);font-weight:700;text-align:right">Bundlinje</th>'+
-    '<th style="padding:8px 10px;color:var(--muted);font-weight:700;text-align:right">vs. forrige mdr.</th>'+
-    '<th style="padding:8px 10px;width:34px"></th>'+
-    '</tr></thead><tbody>'+
+  // v2.89.4 (Martin valgte mockup A): ren tabel med bundlinje-søjle; klik på en måned
+  // folder udgifter/cash/fakturaer/moms ud.
+  var max=rows.reduce(function(m,r){return Math.max(m,Math.abs(+r.bottom_line||0));},0)||1;
+  var html='<div class="pf-tbl"><div class="pf-row pf-head"><span>Måned</span><span>Bundlinje</span><span style="text-align:right">Beløb</span><span style="text-align:right">vs. forrige</span><span></span></div>'+
     rows.map(function(r,i){
-      var prev=i>0?rows[i-1]:null;
-      var delta=prev?(+r.bottom_line-+prev.bottom_line):null;
-      var deltaHtml=delta==null?'<span class="fin-muted">–</span>':
-        (delta>=0?'<span style="color:#15803D;font-weight:700">▲ '+krFmt(delta)+'</span>':'<span style="color:#DC2626;font-weight:700">▼ '+krFmt(Math.abs(delta))+'</span>');
-      return '<tr style="border-bottom:1px solid var(--bly-border-soft)">'+
-        '<td style="padding:9px 10px;font-weight:700">'+profitMonthLabel(r.month_key)+'</td>'+
-        '<td style="padding:9px 10px;text-align:right;color:#DC2626">−'+krFmt(r.expenses)+'</td>'+
-        '<td style="padding:9px 10px;text-align:right;color:#15803D">'+(r.bank_cash!=null?krFmt(r.bank_cash):'–')+'</td>'+
-        '<td style="padding:9px 10px;text-align:right;color:#15803D">'+krFmt(r.invoices_sent)+'</td>'+
-        '<td style="padding:9px 10px;text-align:right;color:#B45309">'+krFmt(r.invoices_pending)+'</td>'+
-        '<td style="padding:9px 10px;text-align:right;color:#DC2626">−'+krFmt(r.expected_moms||0)+'</td>'+
-        '<td style="padding:9px 10px;text-align:right;font-weight:800">'+krFmt(r.bottom_line)+'</td>'+
-        '<td style="padding:9px 10px;text-align:right">'+deltaHtml+'</td>'+
-        '<td style="padding:9px 10px;text-align:right"><button type="button" class="bly-btn outline small" style="padding:4px 8px" title="Slet dette snapshot (f.eks. hvis det er lavet med forkerte tal)" onclick="deleteProfitSnapshot(\''+r.month_key+'\')">🗑</button></td>'+
-      '</tr>';
-    }).join('')+
-    '</tbody></table></div>';
+      var prev=i>0?rows[i-1]:null,bl=+r.bottom_line||0;
+      var delta=prev?(bl-(+prev.bottom_line||0)):null;
+      var deltaHtml=delta==null?'<span class="fin-muted">–</span>':'<span class="pf-pill '+(delta>=0?'up':'dn')+'">'+(delta>=0?'▲ ':'▼ ')+krFmt(Math.abs(delta)).replace(' kr','')+'</span>';
+      var w=Math.max(2,Math.round(Math.abs(bl)/max*100));
+      function kv(l,v,c){return '<div class="pf-kv"><span>'+l+'</span><b'+(c?' style="color:'+c+'"':'')+'>'+v+'</b></div>';}
+      return '<div class="pf-item"><div class="pf-row pf-main" data-pf="'+r.month_key+'">'+
+        '<b class="pf-mon"><span class="pf-car">▸</span>'+profitMonthLabel(r.month_key)+'</b>'+
+        '<div class="pf-track"><div class="pf-fill'+(bl<0?' neg':'')+'" style="width:'+w+'%"></div></div>'+
+        '<b style="text-align:right">'+krFmt(bl)+'</b>'+
+        '<span style="text-align:right">'+deltaHtml+'</span>'+
+        '<span style="text-align:right"><button type="button" class="pf-del" title="Slet dette snapshot" data-pf-del="'+r.month_key+'">🗑</button></span></div>'+
+        '<div class="pf-det">'+
+          kv('Cash i banken',r.bank_cash!=null?krFmt(r.bank_cash):'–','#15803D')+
+          kv('Fakturaer sendt','+'+krFmt(r.invoices_sent),'#15803D')+
+          kv('Skal sendes','+'+krFmt(r.invoices_pending),'#B45309')+
+          kv('Udgifter','−'+krFmt(r.expenses),'#DC2626')+
+          kv('Moms (forventet)','−'+krFmt(r.expected_moms||0),'#DC2626')+
+          '<div class="pf-kv pf-sum"><span>Bundlinje</span><b>'+krFmt(bl)+'</b></div>'+
+        '</div></div>';
+    }).join('')+'</div><div class="fin-muted" style="font-size:11.5px;margin-top:10px">Klik på en måned for at se hvordan bundlinjen er regnet ud</div>';
   el.innerHTML=html;
+  el.querySelectorAll('[data-pf]').forEach(function(row){row.addEventListener('click',function(e){if(e.target.closest('[data-pf-del]'))return;row.parentNode.classList.toggle('open');});});
+  el.querySelectorAll('[data-pf-del]').forEach(function(b){b.addEventListener('click',function(e){e.stopPropagation();deleteProfitSnapshot(b.dataset.pfDel);});});
 }
 async function deleteProfitSnapshot(monthKey){
-  if(!confirm('Slet profit-snapshottet for '+profitMonthLabel(monthKey)+'? Du kan tage et nyt bagefter med "Gem snapshot nu".'))return;
+  if(!(await gmConfirm('Slet profit-snapshottet for '+profitMonthLabel(monthKey)+'? Du kan tage et nyt bagefter med "Gem snapshot nu".')))return;
   var r=await api('/api/finance/profit-snapshots/'+monthKey,{method:'DELETE'});
   if(r&&r.ok){toast('Snapshot slettet','🗑');await loadProfitSnapshots();}
 }
