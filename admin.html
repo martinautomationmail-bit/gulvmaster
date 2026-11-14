@@ -5959,7 +5959,7 @@ body.tp-dragging,body.tp-dragging *{cursor:grabbing!important}
        i browseren faktisk ER det nyeste deploy, eller om Render/GitHub bare
        ikke er nået at opdatere endnu — i stedet for at skulle gætte om en
        rettelse "stadig ikke virker" eller bare endnu ikke er live. -->
-  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build v2.88.2 · 2026-11-02</span></div>
+  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build v2.88.3 · 2026-11-02</span></div>
 </aside>
 <div class="app-content">
 <!-- RUNDE FB — AI-ASSISTENTEN (Martin: "en ai der er nede i venstre hjørne af
@@ -21865,6 +21865,13 @@ async function ftlCtx(j,x,y){
   var L=ftlGroupsView[j.fag]||[],i=L.indexOf(j);
   var types=(pjProjectTypes||[]).slice();if(types.indexOf(j.fag)<0&&j.fag!=='Ukendt')types.push(j.fag);
   var items=[{label:true,text:j.name}];
+  // v2.88.3 — genveje fra navnet
+  if(j.projectId)items.push({text:'Åbn sagen',icon:'📁',onClick:function(){location.hash='#project-detail/'+j.projectId;}},{text:'Åbn sagen i ny fane',icon:'🔗',onClick:function(){gmOpenBg('#project-detail/'+j.projectId);}});
+  if(j.kind==='quote'&&j.quoteId)items.push({text:'Åbn tilbuddet',icon:'📄',onClick:function(){gmOpenBg('#quotes/tilbud/'+j.quoteId);}});
+  if(j.kind==='invoice')items.push({text:'Åbn fakturaen',icon:'🧾',onClick:function(){gmOpenBg('#qz-invoices/faktura/'+String(j.key).replace('faktura-',''));}});
+  var firstMk=Object.keys(j.months||{}).sort().filter(function(mk){return (ftlData.months||[]).indexOf(mk)>-1;})[0];
+  if(firstMk)items.push({text:'Ret beløb / fordeling…',icon:'✏️',onClick:function(){var b=document.querySelector('[data-ftl-row="'+(window.CSS&&CSS.escape?CSS.escape(j.key):j.key)+'"] [data-ftl-job]');ftlEditPop(j,(b&&b.dataset.ftlFrom)||firstMk,b||document.querySelector('[data-ftl-row]'));}});
+  items.push({sep:true});
   if(i>0)items.push({text:'Flyt op',icon:'↑',onClick:function(){ftlMove(j,-1);}});
   if(i>-1&&i<L.length-1)items.push({text:'Flyt ned',icon:'↓',onClick:function(){ftlMove(j,1);}});
   items.push({label:true,text:'Faggruppe'+(j.fag==='Ukendt'?' (mangler)':'')});
