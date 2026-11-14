@@ -5993,7 +5993,7 @@ body.tp-dragging,body.tp-dragging *{cursor:grabbing!important}
        i browseren faktisk ER det nyeste deploy, eller om Render/GitHub bare
        ikke er nået at opdatere endnu — i stedet for at skulle gætte om en
        rettelse "stadig ikke virker" eller bare endnu ikke er live. -->
-  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build v2.89.5 · 2026-11-02</span></div>
+  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build v2.89.6 · 2026-11-02</span></div>
 </aside>
 <div class="app-content">
 <!-- RUNDE FB — AI-ASSISTENTEN (Martin: "en ai der er nede i venstre hjørne af
@@ -22914,7 +22914,9 @@ async function loadProfitSnapshots(){
           kv(+r.formula===2?'Udestående fakturaer':'Fakturaer sendt','+'+krFmt(r.invoices_sent),'#15803D')+
           kv(+r.formula===2?'Mangler at fakturere':'Skal sendes','+'+krFmt(r.invoices_pending),'#B45309')+
           kv(+r.formula===2?'Udgifter ikke betalt':'Udgifter','−'+krFmt(r.expenses),'#DC2626')+
-          kv(+r.formula===2&&+r.moms_paid?'Moms (betalt ✓)':'Moms (forventet)','−'+krFmt(r.expected_moms||0),'#DC2626')+
+          (function(){var md=[];try{md=JSON.parse(r.moms_detail||'[]')||[];}catch(e){}
+            if(!md.length)return kv(+r.formula===2&&+r.moms_paid?'Moms (betalt ✓)':'Moms (forventet)','−'+krFmt(r.expected_moms||0),'#DC2626');
+            return md.map(function(d){return kv('Moms '+(d.q+1)+'. kvt'+(d.running?' (til dato)':'')+(d.paid?' · betalt ✓':''),d.paid?'0 kr':'−'+krFmt(d.amount),d.paid?'#15803D':'#DC2626');}).join('');})()+
           '<div class="pf-kv pf-sum"><span>Bundlinje</span><b>'+krFmt(bl)+'</b></div>'+
         '</div></div>';
     }).join('')+'</div><div class="fin-muted" style="font-size:11.5px;margin-top:10px">Klik på en måned for at se hvordan bundlinjen er regnet ud</div>';

@@ -557,6 +557,7 @@ async function initSchema() {
     );
     ALTER TABLE profit_snapshots ADD COLUMN IF NOT EXISTS formula INTEGER DEFAULT 1;
     ALTER TABLE profit_snapshots ADD COLUMN IF NOT EXISTS moms_paid INTEGER DEFAULT 0;
+    ALTER TABLE profit_snapshots ADD COLUMN IF NOT EXISTS moms_detail TEXT;
     -- Bagudgående måneders "rigtige" udgiftstal — Martin uploader en bank-CSV/Excel
     -- PR. MÅNED (adskilt fra den løbende bankafstemnings-session ovenfor, som kun
     -- husker den nyeste fil og bruges til fakturamatching). Her gemmes hver måneds
@@ -5639,7 +5640,7 @@ async function migrateShiftExpensesBackOneMonth() {
 }
 async function migrateProfitSnapshotFormula2() {
   try {
-    const name = 'profit_snapshot_formula2_20261114';
+    const name = 'profit_snapshot_formula2b_20261114';
     if (await pgOne('SELECT 1 FROM app_migrations WHERE name=$1', [name])) return;
     const mk = new Date().toISOString().slice(0, 7);
     let redone = 0;
@@ -23746,28 +23747,35 @@ async function computeMonthlyProfitSnapshot() {
   const m = revenue[monthKey] || {};
   const invoicesPending = Math.max(0, (Number(m.total) || 0) - (Number(m.invoiced) || 0));
 
-  const vatInfo = nextVatDeadlineServer();
-  const momsPaid = await pgOne('SELECT 1 FROM finance_moms_payments WHERE year=$1 AND quarter=$2', [vatInfo.year, vatInfo.q]).catch(() => null);
+  // v2.89.6 (Martin: "hvis du har 3 kvartal og 4 kvartal i denne udregning er den ikke
+  // kun dette?") — moms for BÅDE det kvartal der skal betales næste gang OG det
+  // kvartal der er i gang (til dato). Hvert kvartal trækkes kun fra, hvis det ikke er
+  // markeret betalt på Moms-kortet.
+  const now = new Date();
+  const qs = [nextVatDeadlineServer(), vatQuarterInfoServer(now.getFullYear(), Math.floor(now.getMonth() / 3))];
+  const seen = new Set(), momsDetail = [];
   let expectedMoms = 0;
-  if (!momsPaid) {
-    const quarterMonthKeys = [0, 1, 2].map(i => `${vatInfo.year}-${String(vatInfo.startMonth + i + 1).padStart(2, '0')}`);
-    const quarterTotal = invoices
-      .filter(i => i.createdAt && quarterMonthKeys.includes(i.createdAt.slice(0, 7)))
-      .reduce((s, i) => s + (i.priceWithTax || 0), 0);
-    expectedMoms = quarterTotal * 0.25; // samme formel som Moms-kortet
+  for (const vq of qs) {
+    const k = vq.year + '-' + vq.q; if (seen.has(k)) continue; seen.add(k);
+    const paid = await pgOne('SELECT 1 FROM finance_moms_payments WHERE year=$1 AND quarter=$2', [vq.year, vq.q]).catch(() => null);
+    const mks = [0, 1, 2].map(i => `${vq.year}-${String(vq.startMonth + i + 1).padStart(2, '0')}`);
+    const qTotal = invoices.filter(i => i.createdAt && mks.includes(i.createdAt.slice(0, 7))).reduce((s, i) => s + (i.priceWithTax || 0), 0);
+    const amt = paid ? 0 : qTotal * 0.25; // samme formel som Moms-kortet
+    momsDetail.push({ year: vq.year, q: vq.q, amount: Math.round(qTotal * 0.25), paid: !!paid, running: vq.q === Math.floor(now.getMonth() / 3) && vq.year === now.getFullYear() });
+    expectedMoms += amt;
   }
-
+  const momsPaid = momsDetail.length > 0 && momsDetail.every(d => d.paid);
   const bottomLine = (bankCash || 0) + invoicesSent + invoicesPending - expenses - expectedMoms;
-  return { monthKey, expenses, bankCash, invoicesSent, invoicesPending, expectedMoms, bottomLine, momsPaid: !!momsPaid, formula: 2 };
+  return { monthKey, expenses, bankCash, invoicesSent, invoicesPending, expectedMoms, bottomLine, momsPaid: !!momsPaid, momsDetail, formula: 2 };
 }
 async function saveMonthlyProfitSnapshot() {
   const snap = await computeMonthlyProfitSnapshot();
   const today = new Date().toISOString().slice(0, 10);
   await pool.query(`
-    INSERT INTO profit_snapshots (month_key,snap_date,expenses,bank_cash,invoices_sent,invoices_pending,expected_moms,bottom_line,formula,moms_paid,updated_at)
-    VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,${nowTextSQL()})
-    ON CONFLICT (month_key) DO UPDATE SET snap_date=$2,expenses=$3,bank_cash=$4,invoices_sent=$5,invoices_pending=$6,expected_moms=$7,bottom_line=$8,formula=$9,moms_paid=$10,updated_at=${nowTextSQL()}
-  `, [snap.monthKey, today, snap.expenses, snap.bankCash, snap.invoicesSent, snap.invoicesPending, snap.expectedMoms, snap.bottomLine, snap.formula, snap.momsPaid ? 1 : 0]);
+    INSERT INTO profit_snapshots (month_key,snap_date,expenses,bank_cash,invoices_sent,invoices_pending,expected_moms,bottom_line,formula,moms_paid,moms_detail,updated_at)
+    VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,${nowTextSQL()})
+    ON CONFLICT (month_key) DO UPDATE SET snap_date=$2,expenses=$3,bank_cash=$4,invoices_sent=$5,invoices_pending=$6,expected_moms=$7,bottom_line=$8,formula=$9,moms_paid=$10,moms_detail=$11,updated_at=${nowTextSQL()}
+  `, [snap.monthKey, today, snap.expenses, snap.bankCash, snap.invoicesSent, snap.invoicesPending, snap.expectedMoms, snap.bottomLine, snap.formula, snap.momsPaid ? 1 : 0, JSON.stringify(snap.momsDetail || [])]);
   return snap;
 }
 app.get('/api/finance/profit-snapshots', auth, panelAccess('finance'), asyncRoute(async (req, res) => {
