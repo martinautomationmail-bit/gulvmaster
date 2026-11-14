@@ -5722,6 +5722,7 @@ body.tp-dragging,body.tp-dragging *{cursor:grabbing!important}
 .ds-seg{display:inline-flex;background:#F3F4F6;border-radius:9px;padding:3px}.ds-seg button{border:0;background:transparent;padding:6px 12px;border-radius:7px;font-weight:600;font-size:12.5px;color:#4B5563;cursor:pointer}.ds-seg button.on{background:#fff;color:#111827;box-shadow:0 1px 2px rgba(0,0,0,.08)}
 .ds-quick{display:flex;flex-wrap:wrap;gap:6px}.ds-q{border:1px solid #E5E7EB;background:#fff;border-radius:8px;padding:5px 9px;font-size:12px;font-weight:600;cursor:pointer}.ds-q span{color:#9CA3AF;font-weight:500;margin-left:3px}.ds-q:hover{border-color:#818CF8}
 .ds-pend{margin-top:10px;background:#EEF2FF;color:#3730A3;border-radius:9px;padding:8px 10px;font-size:12.5px;display:flex;align-items:center;gap:8px}.ds-pend.fail{background:#FEF2F2;color:#B91C1C}.ds-cancel{margin-left:auto;border:1px solid #C7D2FE;background:#fff;border-radius:7px;padding:3px 8px;font-size:12px;font-weight:600;cursor:pointer}
+.cap-grp-btn[draggable="true"]{cursor:grab}.grp-dragging{opacity:.4}.grp-drop{box-shadow:inset 0 -3px 0 #6366F1;background:#EEF2FF!important}
 </style>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
@@ -5949,7 +5950,7 @@ body.tp-dragging,body.tp-dragging *{cursor:grabbing!important}
        i browseren faktisk ER det nyeste deploy, eller om Render/GitHub bare
        ikke er nået at opdatere endnu — i stedet for at skulle gætte om en
        rettelse "stadig ikke virker" eller bare endnu ikke er live. -->
-  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build v2.87.1 · 2026-11-02</span></div>
+  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build v2.87.2 · 2026-11-02</span></div>
 </aside>
 <div class="app-content">
 <!-- RUNDE FB — AI-ASSISTENTEN (Martin: "en ai der er nede i venstre hjørne af
@@ -16502,18 +16503,43 @@ function capLabelParts(b){
 function capOffDaysInWeek(uid,m){var n=0;for(var i=0;i<5;i++)if(timeOffFor(uid,iso(add(m,i))))n++;return n;}
 function capEffCap(u,m){var c=+u.weekly_capacity||5;return Math.max(0,c-capOffDaysInWeek(u.id,m)*c/5);}
 function capTradeLabel(u){return u.trade?String(u.trade):'Kontor';}
+// v2.87.2 — faggruppernes rækkefølge kan trækkes om (Martin: "hvis jeg ønsker slib først").
+// Gemmes i localStorage gm_trade_order; grupper der ikke er i listen kommer efter (alfabetisk, Kontor sidst).
+function capTradeOrder(){try{return JSON.parse(localStorage.getItem('gm_trade_order')||'[]')||[];}catch(e){return [];}}
 function capSortByTrade(list){
+  var ord=capTradeOrder();
+  function rank(t){var i=ord.indexOf(t);return i>-1?i:1000;}
   return list.map(function(u,i){return {u:u,i:i};}).sort(function(a,b){
-    var ta=a.u.trade?String(a.u.trade):'',tb=b.u.trade?String(b.u.trade):'';
-    if(!ta!==!tb)return ta?-1:1; // Kontor (uden fag) sidst
+    var ta=capTradeLabel(a.u),tb=capTradeLabel(b.u),ra=rank(ta),rb=rank(tb);
+    if(ra!==rb)return ra-rb;
+    var ka=a.u.trade?0:1,kb=b.u.trade?0:1;if(ka!==kb)return ka-kb; // Kontor (uden fag) sidst
     return ta.localeCompare(tb,'da')||a.i-b.i;
   }).map(function(x){return x.u;});
 }
+// Træk en faggruppe-overskrift op/ned (Daglig planlægning og Kapacitet)
+(function(){
+  var dragT=null;
+  document.addEventListener('dragstart',function(e){var b=e.target.closest&&e.target.closest('[data-plan-grp],[data-cap-grp]');if(!b)return;dragT=b.dataset.planGrp||b.dataset.capGrp;e.dataTransfer.effectAllowed='move';try{e.dataTransfer.setData('text/plain','grp:'+dragT);}catch(_){}b.classList.add('grp-dragging');});
+  document.addEventListener('dragover',function(e){if(!dragT)return;var b=e.target.closest&&e.target.closest('[data-plan-grp],[data-cap-grp]');if(!b)return;e.preventDefault();document.querySelectorAll('.grp-drop').forEach(function(x){x.classList.remove('grp-drop');});b.classList.add('grp-drop');});
+  document.addEventListener('dragend',function(){dragT=null;document.querySelectorAll('.grp-drop,.grp-dragging').forEach(function(x){x.classList.remove('grp-drop','grp-dragging');});});
+  document.addEventListener('drop',function(e){
+    if(!dragT)return;var b=e.target.closest&&e.target.closest('[data-plan-grp],[data-cap-grp]');if(!b)return;e.preventDefault();
+    var to=b.dataset.planGrp||b.dataset.capGrp;if(to===dragT){dragT=null;return;}
+    var all=[].slice.call(document.querySelectorAll(b.dataset.planGrp!==undefined?'[data-plan-grp]':'[data-cap-grp]')).map(function(x){return x.dataset.planGrp||x.dataset.capGrp;});
+    all=all.filter(function(t){return t!==dragT;});var at=all.indexOf(to);
+    var r=b.getBoundingClientRect(),after=e.clientY>r.top+r.height/2;all.splice(after?at+1:at,0,dragT);
+    var ord=capTradeOrder().filter(function(t){return all.indexOf(t)<0;});
+    try{localStorage.setItem('gm_trade_order',JSON.stringify(all.concat(ord)));}catch(_){}
+    dragT=null;
+    if(typeof planRenderAlt==='function'&&document.querySelector('[data-plan-grp]'))planRenderAlt();
+    if(typeof renderCapacity==='function'&&document.querySelector('[data-cap-grp]'))try{renderCapacity();}catch(_){}
+  });
+})();
 function capGrpCollapsed(){try{return JSON.parse(localStorage.getItem('gm_cap_collapsed')||'{}')||{};}catch(e){return {};}}
 function capGrpHeadHTML(t,n,collapsed){
   var tt=(taskTypesList||[]).find(function(y){return String(y.label||'').toLowerCase()===String(t).toLowerCase();});
   var c=t==='Kontor'?'#64748B':((tt&&tt.color)||'#94A3B8');
-  return '<button type="button" class="cap-grp-btn" data-cap-grp="'+esc(t)+'" title="'+(collapsed[t]?'Fold ud':'Fold sammen')+'"><span class="cap-grp-car">'+(collapsed[t]?'▸':'▾')+'</span><i style="background:'+c+'"></i>'+esc(t)+' <em>'+n+'</em></button>';
+  return '<button type="button" class="cap-grp-btn" draggable="true" data-cap-grp="'+esc(t)+'" title="'+(collapsed[t]?'Fold ud':'Fold sammen')+' · træk for at flytte gruppen op/ned"><span class="cap-grp-car">'+(collapsed[t]?'▸':'▾')+'</span><i style="background:'+c+'"></i>'+esc(t)+' <em>'+n+'</em></button>';
 }
 document.addEventListener('click',function(e){
   var g=e.target.closest('[data-cap-grp]');if(!g)return;

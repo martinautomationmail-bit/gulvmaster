@@ -5593,6 +5593,16 @@ const PANEL_PAGE_KEYS = new Set(PANEL_PAGES.map(p => p.key));
 // RUNDE FK — engangs: roller der allerede har "Tilbud & Faktura" (og dermed
 // kunne se Timetracking-siden) får 'timetrack' med, så Kontor virker med det
 // samme. Lønnen ('timetrack_pay') gives IKKE automatisk.
+// v2.87.2 — engangs (Martin: "i stedet for at smide mig under Diverse, kan du ikke også gøre mig
+// til kontor"): Martin B (id 1383) havde fag 'Diverse'; uden fag = Kontor-gruppen i planlægningen.
+async function migrateMartinBToKontor() {
+  try {
+    const name = 'martin_b_kontor_20261114';
+    if (await pgOne('SELECT 1 FROM app_migrations WHERE name=$1', [name])) return;
+    const r = await pool.query("UPDATE users SET trade=NULL WHERE id=1383 AND trade='Diverse'");
+    await pool.query('INSERT INTO app_migrations (name, details) VALUES ($1, $2)', [name, JSON.stringify({ updated: r.rowCount || 0 })]);
+  } catch (e) { console.error('migrateMartinBToKontor fejlede:', e.message); }
+}
 async function migrateTimetrackPanelPage() {
   try {
     const name = 'panel_timetrack_from_quotes_20261029';
@@ -30468,6 +30478,7 @@ async function start() {
   await migrateKbFagEnterprise();
   await syncQuoteProjectLinks();
   await migrateReopenPartlyInvoicedQuotes();
+  await migrateMartinBToKontor();
   await migrateNotPerformedStage();
   await migrateSubcontractorCosts();
   await syncProjectTaskMirrorDates();
