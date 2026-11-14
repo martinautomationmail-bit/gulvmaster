@@ -5723,6 +5723,15 @@ body.tp-dragging,body.tp-dragging *{cursor:grabbing!important}
 .ds-quick{display:flex;flex-wrap:wrap;gap:6px}.ds-q{border:1px solid #E5E7EB;background:#fff;border-radius:8px;padding:5px 9px;font-size:12px;font-weight:600;cursor:pointer}.ds-q span{color:#9CA3AF;font-weight:500;margin-left:3px}.ds-q:hover{border-color:#818CF8}
 .ds-pend{margin-top:10px;background:#EEF2FF;color:#3730A3;border-radius:9px;padding:8px 10px;font-size:12.5px;display:flex;align-items:center;gap:8px}.ds-pend.fail{background:#FEF2F2;color:#B91C1C}.ds-cancel{margin-left:auto;border:1px solid #C7D2FE;background:#fff;border-radius:7px;padding:3px 8px;font-size:12px;font-weight:600;cursor:pointer}
 .cap-grp-btn[draggable="true"]{cursor:grab}.grp-dragging{opacity:.4}.grp-drop{box-shadow:inset 0 -3px 0 #6366F1;background:#EEF2FF!important}
+.fbu-box{margin:4px 0 14px}
+.fbu-main{display:flex;align-items:stretch;gap:0;background:#fff;border:1px solid #E5E7EB;border-radius:14px;overflow:hidden}
+.fbu-col{flex:1;padding:12px 16px;border-right:1px solid #F1F2F4;min-width:0}.fbu-lbl{font-size:11px;font-weight:700;color:#9CA3AF;text-transform:uppercase;letter-spacing:.04em}
+.fbu-val{font-size:14px;font-weight:700;color:#111827;margin-top:3px}.fbu-next{color:#047857}.fbu-sub{font-size:12px;color:#6B7280;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.fbu-act{display:flex;flex-direction:column;justify-content:center;gap:6px;padding:10px 14px}
+.fbu-dl,.fbu-hist{border:1px solid #E5E7EB;background:#fff;border-radius:8px;padding:6px 10px;font-weight:600;font-size:12.5px;cursor:pointer;white-space:nowrap}.fbu-dl:hover,.fbu-hist:hover{border-color:#818CF8}
+.fbu-nofile{font-size:11.5px;color:#9CA3AF}
+.fbu-warn{margin-top:8px;background:#FFFBEB;border:1px solid #FDE68A;color:#92400E;border-radius:10px;padding:9px 12px;font-size:13px}
+.fbu-tbl{width:100%;margin-top:8px;border-collapse:collapse;background:#fff;border:1px solid #E5E7EB;border-radius:12px;overflow:hidden;font-size:12.5px}.fbu-tbl th{text-align:left;background:#F9FAFB;color:#6B7280;font-size:11px;text-transform:uppercase;padding:8px 10px}.fbu-tbl td{padding:8px 10px;border-top:1px solid #F1F2F4;vertical-align:top}.fbu-tbl small{color:#9CA3AF}
 </style>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
@@ -5950,7 +5959,7 @@ body.tp-dragging,body.tp-dragging *{cursor:grabbing!important}
        i browseren faktisk ER det nyeste deploy, eller om Render/GitHub bare
        ikke er nået at opdatere endnu — i stedet for at skulle gætte om en
        rettelse "stadig ikke virker" eller bare endnu ikke er live. -->
-  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build v2.87.2 · 2026-11-02</span></div>
+  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build v2.88.0 · 2026-11-02</span></div>
 </aside>
 <div class="app-content">
 <!-- RUNDE FB — AI-ASSISTENTEN (Martin: "en ai der er nede i venstre hjørne af
@@ -7406,6 +7415,7 @@ body.ai-has-reply #ai-fab{animation:ai-nudge 1.4s ease-in-out 3}
         <button class="bly-btn" id="fin-bank-watermark-btn" type="button" style="display:none;background:var(--bly-dot-paid);border-color:var(--bly-dot-paid);color:#fff" title="Markerer at du har gennemgået alt til og med den seneste dato i det aktuelt indlæste udtog. Næste upload springer automatisk alt på eller før den dato over.">✓ Færdig — gem seneste dato</button>
       </div>
     </div>
+    <div id="fin-bank-uploads-box" class="fbu-box"></div>
     <div id="fin-bank-results" style="margin-top:4px"></div>
   </div>
 
@@ -22199,6 +22209,7 @@ document.getElementById('fin-bank-upload-input').addEventListener('change',async
   }
   renderFinBankResults();
   renderFinBankWatermarkUi();
+  loadFinBankUploads();
 });
 // RUNDE H #303 (Martins ønske om et "hint" med sidste dato, og en "✓ Færdig"-knap der
 // sørger for at næste upload kun viser nye linjer). Formaterer en ISO-dato (yyyy-mm-dd)
@@ -22212,7 +22223,7 @@ async function loadFinBankWatermark(){
   finBankWatermarkLoaded=true;
   var r=await api('/api/finance/bank-statement/watermark');
   finBankWatermark=(r&&r.lastDate)?r.lastDate:null;
-  renderFinBankWatermarkUi();
+  renderFinBankWatermarkUi();renderFinBankUploads();
 }
 // Viser "Sidst gennemgået: dd.mm.yyyy" i værktøjslinjen, og viser kun "✓ Færdig"-knappen
 // når der rent faktisk er transaktioner indlæst at sætte datoen ud fra.
@@ -22232,14 +22243,47 @@ async function markBankReconciliationDone(){
   var ok=await gmConfirm('Sidste dato i det indlæste udtog: '+finBankFmtDate(maxDate)+'. Gemmes dette som "gennemgået til"? Næste gang du uploader et bankudtog, springes alle posteringer på eller før denne dato automatisk over.','✓ Færdig med bankafstemning');
   if(!ok)return;
   var r=await api('/api/finance/bank-statement/watermark',{method:'POST',body:JSON.stringify({date:maxDate})});
-  if(r&&r.ok){finBankWatermark=r.lastDate;renderFinBankWatermarkUi();toast('Gemt — gennemgået til og med '+finBankFmtDate(maxDate),'✓');}
+  if(r&&r.ok){finBankWatermark=r.lastDate;renderFinBankWatermarkUi();loadFinBankUploads();toast('Gemt — gennemgået til og med '+finBankFmtDate(maxDate),'✓');}
   else toast((r&&r.error)||'Kunne ikke gemme datoen','❌');
 }
 document.getElementById('fin-bank-watermark-btn').addEventListener('click',markBankReconciliationDone);
 // Genindlæser automatisk det senest uploadede bankudtog, så man ikke behøver uploade
 // det igen bare fordi man har genindlæst browseren eller skiftet fane og er kommet
 // tilbage — det ligger gemt server-side indtil næste fil uploades.
+// v2.88 — uploadhistorik: sidste upload, periode, download, og hvad næste udtog skal starte fra
+var finBankUploads=null,finBankWmUpdated=null,fbuOpen=false;
+async function loadFinBankUploads(){
+  var r=await Promise.all([api('/api/finance/bank-uploads'),api('/api/finance/bank-statement/watermark')]);
+  finBankUploads=(r[0]&&r[0].uploads)||[];finBankWmUpdated=r[1]&&r[1].updatedAt;
+  renderFinBankUploads();
+}
+function fbuDT(ts){if(!ts)return '—';var d=new Date(ts);if(isNaN(d))return String(ts);return ['søn','man','tir','ons','tor','fre','lør'][d.getDay()]+' '+d.getDate()+'/'+(d.getMonth()+1)+' '+d.getFullYear()+' kl. '+String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0');}
+function fbuNext(iso){if(!iso)return null;var d=new Date(iso+'T12:00:00');d.setDate(d.getDate()+1);return d.toISOString().slice(0,10);}
+function renderFinBankUploads(){
+  var box=document.getElementById('fin-bank-uploads-box');if(!box||!finBankUploads)return;
+  var L=finBankUploads,u=L[0];
+  if(!u){box.innerHTML='<div class="fbu-main"><div>📄 <b>Ingen bankudtog uploadet endnu.</b></div></div>';return;}
+  var maxTo=L.map(function(x){return x.to_date||'';}).sort().pop()||null,nxt=fbuNext(maxTo);
+  var wmBehind=finBankWatermark&&maxTo&&finBankWatermark<maxTo;
+  var dl=function(x){return x.has_file?'<button type="button" class="fbu-dl" data-fbu-dl="'+x.id+'" data-fbu-name="'+esc(x.filename||'bankudtog')+'">⬇ Download</button>':'<span class="fbu-nofile" title="Uploads fra før historikken blev indført blev ikke gemt som fil">fil ikke gemt</span>';};
+  box.innerHTML='<div class="fbu-main">'
+    +'<div class="fbu-col"><div class="fbu-lbl">Sidste upload</div><div class="fbu-val">'+esc(fbuDT(u.uploaded_at))+(u.uploaded_by_name?' · '+esc(u.uploaded_by_name):'')+'</div><div class="fbu-sub">'+esc(u.filename||'')+'</div></div>'
+    +'<div class="fbu-col"><div class="fbu-lbl">Udtoget dækker</div><div class="fbu-val">'+finBankFmtDate(u.from_date)+' – '+finBankFmtDate(u.to_date)+'</div><div class="fbu-sub">'+(u.count_total||0)+' posteringer · '+(u.count_new||0)+' nye</div></div>'
+    +'<div class="fbu-col"><div class="fbu-lbl">Næste udtog skal starte fra</div><div class="fbu-val fbu-next">'+(nxt?finBankFmtDate(nxt):'—')+'</div><div class="fbu-sub">Alt til og med '+finBankFmtDate(maxTo)+' er uploadet</div></div>'
+    +'<div class="fbu-act">'+dl(u)+'<button type="button" class="fbu-hist" data-fbu-hist>'+(fbuOpen?'Skjul historik ▴':'Historik ('+L.length+') ▾')+'</button></div>'
+    +'</div>'
+    +(wmBehind?'<div class="fbu-warn">⚠ Du har uploadet posteringer til og med <b>'+finBankFmtDate(maxTo)+'</b>, men "gennemgået til" står stadig på <b>'+finBankFmtDate(finBankWatermark)+'</b>'+(finBankWmUpdated?' (sat '+esc(fbuDT(String(finBankWmUpdated).replace(' ','T')+(String(finBankWmUpdated).indexOf('Z')>-1?'':'Z')))+')':'')+'. Tryk "✓ Færdig — gem seneste dato", når du er igennem posteringerne.</div>':'')
+    +(fbuOpen?'<table class="fbu-tbl"><thead><tr><th>Uploadet</th><th>Fil</th><th>Periode</th><th>Posteringer</th><th></th></tr></thead><tbody>'+L.map(function(x){return '<tr><td>'+esc(fbuDT(x.uploaded_at))+(x.uploaded_by_name?'<br><small>'+esc(x.uploaded_by_name)+'</small>':'')+'</td><td>'+esc(x.filename||'')+'</td><td>'+finBankFmtDate(x.from_date)+' – '+finBankFmtDate(x.to_date)+'</td><td>'+(x.count_total||0)+' <small>('+(x.count_new||0)+' nye)</small></td><td>'+dl(x)+'</td></tr>';}).join('')+'</tbody></table>':'');
+}
+document.addEventListener('click',async function(e){
+  var t=e.target.closest&&e.target.closest('[data-fbu-hist],[data-fbu-dl]');if(!t)return;
+  if(t.hasAttribute('data-fbu-hist')){fbuOpen=!fbuOpen;renderFinBankUploads();return;}
+  var r=await fetch(API+'/api/finance/bank-uploads/'+t.dataset.fbuDl+'/file',{headers:{'Authorization':'Bearer '+token}});
+  if(!r.ok){var j=await r.json().catch(function(){return{};});toast(j.error||'Kunne ikke hente filen','❌');return;}
+  var blob=await r.blob(),a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=t.dataset.fbuName||'bankudtog';document.body.appendChild(a);a.click();setTimeout(function(){a.remove();},0);
+});
 async function loadFinBankSessionIfNeeded(){
+  loadFinBankUploads();
   if(!finBankWatermarkLoaded)loadFinBankWatermark();
   if(finBankSessionLoaded||finBankTxns.length)return;
   finBankSessionLoaded=true;

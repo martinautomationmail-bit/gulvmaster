@@ -769,6 +769,21 @@ async function initSchema() {
     -- Gemmer det senest uploadede bankudtog (med alle match-forslag) server-side, så
     -- man kan forlade siden eller genindlæse browseren uden at skulle uploade filen
     -- igen — den ligger her indtil næste fil uploades og overskriver den.
+    -- v2.88 — historik over ALLE uploadede bankudtog (Martin: "100 procent kan se hvornår sidste upload
+    -- blev lavet, hvornår den var fra og til, og at man kan downloade den"). Filen gemmes som bytea.
+    CREATE TABLE IF NOT EXISTS finance_bank_uploads (
+      id SERIAL PRIMARY KEY,
+      filename TEXT,
+      mime TEXT,
+      file BYTEA,
+      from_date TEXT,
+      to_date TEXT,
+      count_total INTEGER,
+      count_new INTEGER,
+      uploaded_by INTEGER,
+      uploaded_by_name TEXT,
+      uploaded_at TIMESTAMPTZ DEFAULT now()
+    );
     CREATE TABLE IF NOT EXISTS finance_bank_session (
       id INTEGER PRIMARY KEY DEFAULT 1,
       filename TEXT,
@@ -22953,6 +22968,13 @@ app.post('/api/finance/bank-statement/parse', auth, panelAccess('finance'), uplo
   const watermarkRow = await pgOne('SELECT last_date FROM finance_bank_watermark WHERE id=1');
   const watermarkDate = watermarkRow?.last_date || null;
   const totalParsed = transactions.length;
+  // v2.88 — gem uploadet i historikken (periode = første/sidste dato i filen), før vandmærke-filtreringen
+  const allDates = transactions.map(t => t.date).filter(Boolean).sort();
+  const fnPer = /(\d{4}-\d{2}-\d{2})-(\d{4}-\d{2}-\d{2})/.exec(req.file.originalname || ''); // Lunar-filnavn har selve perioden
+  if (fnPer) { allDates.unshift(fnPer[1]); allDates.push(fnPer[2]); allDates.sort(); }
+  const newCount = watermarkDate ? transactions.filter(t => t.date > watermarkDate).length : transactions.length;
+  await pool.query('INSERT INTO finance_bank_uploads (filename, mime, file, from_date, to_date, count_total, count_new, uploaded_by, uploaded_by_name) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)',
+    [req.file.originalname || null, req.file.mimetype || null, req.file.buffer, allDates[0] || null, allDates[allDates.length - 1] || null, totalParsed, newCount, req.user.id, req.user.name || ((await pgOne('SELECT name FROM users WHERE id=$1', [req.user.id]).catch(() => null)) || {}).name || null]).catch(e => console.error('Bank-upload historik:', e.message));
   if (watermarkDate) transactions = transactions.filter(t => t.date > watermarkDate);
   const skippedByWatermark = totalParsed - transactions.length;
   if (!transactions.length) {
@@ -22968,6 +22990,33 @@ app.post('/api/finance/bank-statement/parse', auth, panelAccess('finance'), uplo
   `, [req.file.originalname || null, JSON.stringify(matched)]);
   res.json({ transactions: matched, count: transactions.length, filename: req.file.originalname, watermarkDate, skippedByWatermark });
 }));
+app.get('/api/finance/bank-uploads', auth, panelAccess('finance'), asyncRoute(async (req, res) => {
+  const r = await pool.query('SELECT id, filename, from_date, to_date, count_total, count_new, uploaded_by_name, uploaded_at, (file IS NOT NULL) AS has_file FROM finance_bank_uploads ORDER BY uploaded_at DESC, id DESC LIMIT 50');
+  res.json({ uploads: r.rows });
+}));
+app.get('/api/finance/bank-uploads/:id/file', auth, panelAccess('finance'), asyncRoute(async (req, res) => {
+  const r = await pgOne('SELECT filename, mime, file FROM finance_bank_uploads WHERE id=$1', [Number(req.params.id)]);
+  if (!r || !r.file) return res.status(404).json({ error: 'Filen findes ikke (uploads fra før v2.88 blev ikke gemt)' });
+  res.setHeader('Content-Type', r.mime || 'application/octet-stream');
+  res.setHeader('Content-Disposition', 'attachment; filename="' + String(r.filename || 'bankudtog').replace(/[^\w.\- æøåÆØÅ]/g, '_') + '"');
+  res.send(r.file);
+}));
+// Engangs: det senest uploadede udtog (fra før historikken fandtes) lægges ind som første række.
+async function backfillBankUploadHistory() {
+  try {
+    const name = 'bank_upload_history_backfill_v1';
+    if (await pgOne('SELECT 1 FROM app_migrations WHERE name=$1', [name])) return;
+    const sess = await pgOne('SELECT filename, transactions_json, uploaded_at FROM finance_bank_session WHERE id=1');
+    if (sess) {
+      let tx = []; try { tx = JSON.parse(sess.transactions_json || '[]'); } catch (_) {}
+      const d = tx.map(t => t.date).filter(Boolean).sort();
+      const fm = /(\d{4}-\d{2}-\d{2})-(\d{4}-\d{2}-\d{2})/.exec(sess.filename || ''); // Lunar: transactions-FRA-TIL-….csv
+      await pool.query('INSERT INTO finance_bank_uploads (filename, from_date, to_date, count_total, count_new, uploaded_at) VALUES ($1,$2,$3,$4,$5,$6)',
+        [sess.filename, fm ? fm[1] : (d[0] || null), fm ? fm[2] : (d[d.length - 1] || null), tx.length, tx.length, sess.uploaded_at ? new Date(String(sess.uploaded_at).replace(' ', 'T') + (String(sess.uploaded_at).includes('Z') ? '' : 'Z')) : new Date()]);
+    }
+    await pool.query('INSERT INTO app_migrations (name, details) VALUES ($1, $2)', [name, '{}']);
+  } catch (e) { console.error('backfillBankUploadHistory:', e.message); }
+}
 app.get('/api/finance/bank-statement/session', auth, panelAccess('finance'), asyncRoute(async (req, res) => {
   const row = await pgOne('SELECT * FROM finance_bank_session WHERE id=1');
   if (!row) return res.json({ transactions: null });
@@ -30479,6 +30528,7 @@ async function start() {
   await syncQuoteProjectLinks();
   await migrateReopenPartlyInvoicedQuotes();
   await migrateMartinBToKontor();
+  await backfillBankUploadHistory();
   await migrateNotPerformedStage();
   await migrateSubcontractorCosts();
   await syncProjectTaskMirrorDates();
