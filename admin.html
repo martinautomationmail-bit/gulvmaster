@@ -5719,6 +5719,9 @@ body.tp-dragging,body.tp-dragging *{cursor:grabbing!important}
 .tp-wover:hover{height:6px;bottom:1px}
 .tp-lg .tp-wl{width:18px;height:4px;border-radius:2px;background:#EF4444}
 .tp-empty{padding:26px;text-align:center;color:#9CA3AF}
+.ds-seg{display:inline-flex;background:#F3F4F6;border-radius:9px;padding:3px}.ds-seg button{border:0;background:transparent;padding:6px 12px;border-radius:7px;font-weight:600;font-size:12.5px;color:#4B5563;cursor:pointer}.ds-seg button.on{background:#fff;color:#111827;box-shadow:0 1px 2px rgba(0,0,0,.08)}
+.ds-quick{display:flex;flex-wrap:wrap;gap:6px}.ds-q{border:1px solid #E5E7EB;background:#fff;border-radius:8px;padding:5px 9px;font-size:12px;font-weight:600;cursor:pointer}.ds-q span{color:#9CA3AF;font-weight:500;margin-left:3px}.ds-q:hover{border-color:#818CF8}
+.ds-pend{margin-top:10px;background:#EEF2FF;color:#3730A3;border-radius:9px;padding:8px 10px;font-size:12.5px;display:flex;align-items:center;gap:8px}.ds-pend.fail{background:#FEF2F2;color:#B91C1C}.ds-cancel{margin-left:auto;border:1px solid #C7D2FE;background:#fff;border-radius:7px;padding:3px 8px;font-size:12px;font-weight:600;cursor:pointer}
 </style>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
@@ -5946,7 +5949,7 @@ body.tp-dragging,body.tp-dragging *{cursor:grabbing!important}
        i browseren faktisk ER det nyeste deploy, eller om Render/GitHub bare
        ikke er nået at opdatere endnu — i stedet for at skulle gætte om en
        rettelse "stadig ikke virker" eller bare endnu ikke er live. -->
-  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build v2.86.3 · 2026-11-02</span></div>
+  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build v2.87.0 · 2026-11-02</span></div>
 </aside>
 <div class="app-content">
 <!-- RUNDE FB — AI-ASSISTENTEN (Martin: "en ai der er nede i venstre hjørne af
@@ -12487,6 +12490,17 @@ body.ai-has-reply #ai-fab{animation:ai-nudge 1.4s ease-in-out 3}
            tilføje den til tilbuddet man sender") — kun vist for et tilbud
            der rent faktisk HAR en gemt betalingsplan, se mlOpenModal-
            mønsteret ovenfor/openDocSendModal nedenfor. -->
+      <!-- v2.87 — planlagt afsendelse -->
+      <div class="ds-when">
+        <label class="form-label" style="margin-top:12px">Hvornår?</label>
+        <div class="ds-seg"><button type="button" class="on" data-ds-when="now">Send nu</button><button type="button" data-ds-when="later">🕒 Planlæg afsendelse</button></div>
+        <div id="ds-later" style="display:none;margin-top:8px">
+          <div class="ds-quick" id="ds-quick"></div>
+          <input id="ds-at" class="input" type="datetime-local" style="margin-top:6px">
+          <div class="geo-hint" id="ds-at-hint" style="margin-top:4px"></div>
+        </div>
+        <div id="ds-pending" style="display:none"></div>
+      </div>
       <div id="doc-send-payment-plan-row" style="display:none;margin-top:10px">
         <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer">
           <input type="checkbox" id="doc-send-include-payment-plan" checked>
@@ -21208,8 +21222,42 @@ async function openDocSendModal(kind,id){
   var hasPaymentPlan=kind==='quote'&&rec.payment_plan&&Array.isArray(rec.payment_plan.phases)&&rec.payment_plan.phases.length>0;
   document.getElementById('doc-send-payment-plan-row').style.display=hasPaymentPlan?'':'none';
   document.getElementById('doc-send-include-payment-plan').checked=true;
+  dsInitWhen();
   document.getElementById('doc-send-modal').classList.add('open');
 }
+// v2.87 — planlagt afsendelse (Martin: arbejder om søndagen → send mandag morgen)
+function dsLocalVal(d){var p=function(n){return String(n).padStart(2,'0');};return d.getFullYear()+'-'+p(d.getMonth()+1)+'-'+p(d.getDate())+'T'+p(d.getHours())+':'+p(d.getMinutes());}
+function dsNextWorkday7(){var d=new Date();d.setDate(d.getDate()+1);while(d.getDay()===0||d.getDay()===6)d.setDate(d.getDate()+1);d.setHours(7,0,0,0);return d;}
+function dsFmt(d){return ['søn','man','tir','ons','tor','fre','lør'][d.getDay()]+' '+d.getDate()+'/'+(d.getMonth()+1)+' kl. '+String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0');}
+function dsSetWhen(w){
+  document.querySelectorAll('[data-ds-when]').forEach(function(b){b.classList.toggle('on',b.dataset.dsWhen===w);});
+  document.getElementById('ds-later').style.display=w==='later'?'':'none';
+  var btn=document.getElementById('doc-send-confirm-btn');btn.textContent=w==='later'?'🕒 Planlæg afsendelse':'📧 Send';
+  dsHint();
+}
+function dsHint(){var v=document.getElementById('ds-at').value,h=document.getElementById('ds-at-hint');if(!v){h.textContent='';return;}var d=new Date(v);h.textContent=d<=new Date()?'⚠ Tidspunktet er passeret':'Mailen sendes automatisk '+dsFmt(d)+' — også selvom din computer er slukket.';}
+async function dsInitWhen(){
+  var nw=dsNextWorkday7(),mon=new Date();mon.setDate(mon.getDate()+((8-mon.getDay())%7||7));mon.setHours(7,0,0,0);
+  var opts=[{l:'Næste hverdag 07:00',d:nw},{l:'Mandag 07:00',d:mon},{l:'Næste hverdag 08:00',d:new Date(nw.getTime()+3600000)}];
+  var seen={};opts=opts.filter(function(o){var k=o.d.getTime();if(seen[k])return false;seen[k]=1;return true;});
+  document.getElementById('ds-quick').innerHTML=opts.map(function(o){return '<button type="button" class="ds-q" data-ds-q="'+dsLocalVal(o.d)+'">'+esc(o.l)+' <span>'+esc(dsFmt(o.d))+'</span></button>';}).join('');
+  document.getElementById('ds-at').value=dsLocalVal(nw);
+  dsSetWhen((new Date().getDay()===0||new Date().getDay()===6||new Date().getHours()>=20||new Date().getHours()<6)?'later':'now');
+  // Allerede planlagt?
+  var box=document.getElementById('ds-pending');box.style.display='none';box.innerHTML='';
+  var r=await api('/api/scheduled-sends?kind='+docSendCtx.kind+'&doc_id='+docSendCtx.id);
+  var list=(r&&r.sends)||[];
+  if(list.length){var x=list[0],d=new Date(x.send_at);
+    box.innerHTML='<div class="ds-pend'+(x.status==='failed'?' fail':'')+'">'+(x.status==='failed'?'⚠ Planlagt afsendelse fejlede: '+esc(x.error||''):'🕒 Allerede planlagt til <b>'+esc(dsFmt(d))+'</b>'+(x.recipient?' til '+esc(x.recipient):''))+' <button type="button" class="ds-cancel" data-ds-cancel="'+x.id+'">Annullér</button></div>';
+    box.style.display='';}
+}
+document.addEventListener('click',async function(e){
+  var t=e.target.closest&&e.target.closest('[data-ds-when],[data-ds-q],[data-ds-cancel]');if(!t)return;
+  if(t.dataset.dsWhen){dsSetWhen(t.dataset.dsWhen);return;}
+  if(t.dataset.dsQ){document.getElementById('ds-at').value=t.dataset.dsQ;dsHint();return;}
+  if(t.dataset.dsCancel){var r=await api('/api/scheduled-sends/'+t.dataset.dsCancel,{method:'DELETE'});if(r&&r.ok){toast('Planlagt afsendelse annulleret','✓');dsInitWhen();}}
+});
+document.addEventListener('input',function(e){if(e.target&&e.target.id==='ds-at')dsHint();});
 function docSendUpdatePreview(){
   var rec=docSendCtx.record;if(!rec)return;
   var kind=docSendCtx.kind;
@@ -21237,8 +21285,11 @@ async function confirmDocSend(){
   btn.disabled=true;btn.textContent='Sender…';
   var path='/api/'+(docSendCtx.kind==='quote'?'quotes':'invoices')+'/'+docSendCtx.id+'/send';
   var includePaymentPlan=docSendCtx.kind==='quote'&&document.getElementById('doc-send-payment-plan-row').style.display!=='none'&&document.getElementById('doc-send-include-payment-plan').checked;
-  var r=await api(path,{method:'POST',body:JSON.stringify({to:to,template_id:tplId||undefined,include_payment_plan:includePaymentPlan||undefined})});
-  btn.disabled=false;btn.textContent='📧 Send';
+  var later=document.querySelector('[data-ds-when="later"]').classList.contains('on'),sendAt=null;
+  if(later){var v=document.getElementById('ds-at').value;if(!v||new Date(v)<=new Date()){btn.disabled=false;btn.textContent='🕒 Planlæg afsendelse';toast('Vælg et tidspunkt i fremtiden','⚠️');return;}sendAt=new Date(v).toISOString();}
+  var r=await api(path,{method:'POST',body:JSON.stringify({to:to,template_id:tplId||undefined,include_payment_plan:includePaymentPlan||undefined,send_at:sendAt||undefined})});
+  btn.disabled=false;btn.textContent=later?'🕒 Planlæg afsendelse':'📧 Send';
+  if(r&&r.ok&&r.scheduled){toast('Planlagt – sendes '+dsFmt(new Date(r.send_at)),'🕒');closeModal('doc-send-modal');return;}
   if(r&&r.ok){
     toast('Sendt ✓','✓');
     closeModal('doc-send-modal');

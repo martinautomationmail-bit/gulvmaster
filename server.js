@@ -2643,6 +2643,21 @@ async function initSchema() {
     -- Nov. 2026 — Testplan: et lukket planlægningsrum hvor Gantt-opgaver kan lægges på
     -- medarbejdere måneder frem UDEN at røre planning_bookings, kunde-/medarbejderbeskeder
     -- eller medarbejdernes app. Én række = én Gantt-opgave lagt på én medarbejder.
+    -- v2.87 — planlagt afsendelse af tilbud/faktura (Martin: "når jeg arbejder om søndagen vil jeg
+    -- gerne kunne sætte den til tidligt mandag morgen"). payload = præcis den body /send ville have fået.
+    CREATE TABLE IF NOT EXISTS scheduled_doc_sends (
+      id SERIAL PRIMARY KEY,
+      kind TEXT NOT NULL,
+      doc_id INTEGER NOT NULL,
+      payload JSONB,
+      send_at TIMESTAMPTZ NOT NULL,
+      status TEXT NOT NULL DEFAULT 'pending',
+      error TEXT,
+      created_by INTEGER,
+      created_at TIMESTAMPTZ DEFAULT now(),
+      sent_at TIMESTAMPTZ
+    );
+    CREATE INDEX IF NOT EXISTS idx_sched_sends_due ON scheduled_doc_sends(status, send_at);
     CREATE TABLE IF NOT EXISTS testplan_bookings (
       id SERIAL PRIMARY KEY,
       gantt_task_id TEXT NOT NULL,
@@ -27463,7 +27478,59 @@ app.put('/api/settings/email-template-assignments', auth, panelAccess('email-tem
   res.json({ ok: true, assignments: await getEmailTemplateAssignments() });
 }));
 
+// ── Planlagt afsendelse (v2.87) ─────────────────────────────────────────
+async function scheduleDocSend(kind, req, res) {
+  const id = Number(req.params.id);
+  const when = new Date(req.body.send_at);
+  if (isNaN(when.getTime())) return res.status(400).json({ error: 'Ugyldigt tidspunkt' });
+  if (when.getTime() < Date.now() + 60 * 1000) return res.status(400).json({ error: 'Tidspunktet skal ligge i fremtiden' });
+  const exists = await pgOne(kind === 'quote' ? 'SELECT id, status FROM quotes WHERE id=$1' : 'SELECT id, status FROM invoices WHERE id=$1', [id]);
+  if (!exists) return res.status(404).json({ error: 'Findes ikke' });
+  if (kind === 'invoice' && exists.status === 'draft') return res.status(400).json({ error: 'Fakturaen er stadig en kladde — aktivér den først.' });
+  const payload = { ...req.body }; delete payload.send_at;
+  // Kun én ventende afsendelse pr. dokument — en ny planlægning erstatter den gamle.
+  await pool.query("UPDATE scheduled_doc_sends SET status='cancelled' WHERE kind=$1 AND doc_id=$2 AND status='pending'", [kind, id]);
+  const r = await pgOne('INSERT INTO scheduled_doc_sends (kind, doc_id, payload, send_at, created_by) VALUES ($1,$2,$3,$4,$5) RETURNING id, send_at', [kind, id, JSON.stringify(payload), when.toISOString(), req.user.id]);
+  res.json({ ok: true, scheduled: true, id: r.id, send_at: r.send_at });
+}
+app.get('/api/scheduled-sends', auth, panelAccess('quotes'), asyncRoute(async (req, res) => {
+  const kind = req.query.kind, docId = Number(req.query.doc_id) || null;
+  const r = await pool.query(`SELECT s.id, s.kind, s.doc_id, s.send_at, s.status, s.error, s.payload->>'to' AS recipient, u.name AS created_by_name
+    FROM scheduled_doc_sends s LEFT JOIN users u ON u.id = s.created_by
+    WHERE s.status IN ('pending','failed') AND ($1::text IS NULL OR s.kind=$1) AND ($2::int IS NULL OR s.doc_id=$2)
+    ORDER BY s.send_at`, [kind || null, docId]);
+  res.json({ sends: r.rows });
+}));
+app.delete('/api/scheduled-sends/:id', auth, panelAccess('quotes'), asyncRoute(async (req, res) => {
+  await pool.query("UPDATE scheduled_doc_sends SET status='cancelled' WHERE id=$1 AND status IN ('pending','failed')", [Number(req.params.id)]);
+  res.json({ ok: true });
+}));
+let schedSendRunning = false;
+async function runScheduledDocSends() {
+  if (schedSendRunning) return; schedSendRunning = true;
+  try {
+    const due = (await pool.query("UPDATE scheduled_doc_sends SET status='sending' WHERE id IN (SELECT id FROM scheduled_doc_sends WHERE status='pending' AND send_at <= now() ORDER BY send_at LIMIT 10) RETURNING *")).rows;
+    for (const d of due) {
+      try {
+        const u = await pgOne('SELECT id, name, role, email FROM users WHERE id=$1', [d.created_by]);
+        if (!u) throw new Error('Brugeren der planlagde afsendelsen findes ikke længere');
+        const token = jwt.sign({ id: u.id, name: u.name, role: u.role, email: u.email }, JWT_SECRET, { expiresIn: '10m' });
+        // Samme rute som "Send nu" → præcis samme mail, PDF, status-opdatering og log.
+        const resp = await fetch(`http://127.0.0.1:${PORT}/api/${d.kind === 'quote' ? 'quotes' : 'invoices'}/${d.doc_id}/send`, {
+          method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token }, body: JSON.stringify(d.payload || {}),
+        });
+        const j = await resp.json().catch(() => ({}));
+        if (!resp.ok || !j.ok) throw new Error(j.error || ('HTTP ' + resp.status));
+        await pool.query("UPDATE scheduled_doc_sends SET status='sent', sent_at=now(), error=NULL WHERE id=$1", [d.id]);
+      } catch (e) {
+        await pool.query("UPDATE scheduled_doc_sends SET status='failed', error=$2 WHERE id=$1", [d.id, String(e.message || e).slice(0, 500)]);
+        await logSystemEvent('scheduled_send', 'error', `Planlagt afsendelse af ${d.kind === 'quote' ? 'tilbud' : 'faktura'} #${d.doc_id} fejlede: ${e.message}`).catch(() => {});
+      }
+    }
+  } finally { schedSendRunning = false; }
+}
 app.post('/api/quotes/:id/send', auth, panelAccess('quotes'), asyncRoute(async (req, res) => {
+  if (req.body && req.body.send_at) return scheduleDocSend('quote', req, res);
   const quote = await loadQuoteFull(req.params.id);
   if (!quote) return res.status(404).json({ error: 'Tilbuddet blev ikke fundet' });
   const b = req.body || {};
@@ -27596,6 +27663,7 @@ app.get('/api/quotes/:id/sends/:sendId/pdf', auth, panelAccess('quotes'), asyncR
 }));
 
 app.post('/api/invoices/:id/send', auth, panelAccess('quotes'), asyncRoute(async (req, res) => {
+  if (req.body && req.body.send_at) return scheduleDocSend('invoice', req, res);
   const invoice = await loadInvoiceFull(req.params.id);
   if (!invoice) return res.status(404).json({ error: 'Fakturaen blev ikke fundet' });
   // RUNDE H #306 (Martins ønske: "jeg kan lave en faktura men når [jeg] sætte[r]
@@ -30391,6 +30459,7 @@ async function start() {
   await sprog.initSchema();
   await notes.initSchema();
   notes.startJobs(cron);
+  cron.schedule('* * * * *', () => runScheduledDocSends().catch(e => console.error('Planlagt afsendelse:', e.message)));
   setTimeout(() => autoTagTaskTrades().catch(e => console.error('AI-fag-tagging:', e.message)), 30000);
   cron.schedule('*/15 * * * *', () => autoTagTaskTrades().catch(() => {}));
   await migrateTimetrackPanelPage();
