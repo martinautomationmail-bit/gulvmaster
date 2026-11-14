@@ -223,6 +223,9 @@
 .action.day-done-btn{background:#fff;color:#15803D;border-color:#86EFAC;font-weight:800}.action.day-done-btn:hover{background:#F0FDF4;color:#15803D;border-color:#22C55E}
 @media(max-width:560px){.main{padding:12px}.user-name{display:none}.week-buttons{gap:4px}.week-buttons .small-btn{padding:7px}.task{padding:12px}.topbar{padding:8px 12px}.actions{grid-template-columns:1fr 1fr}.action{font-size:10px;padding:9px 6px}.week-nav{align-items:flex-start}.week-buttons{flex-wrap:wrap;justify-content:flex-end}.week-title{font-size:17px}}
 .task.done{background:linear-gradient(135deg,#F0FDF4,#fff)}.task{box-shadow:0 1px 2px rgba(17,19,24,.05),0 8px 20px rgba(17,19,24,.035)}.task:hover{transform:translateY(-1px)}
+.pmt-line-warn{margin:8px 0 14px;background:#FEF2F2;border:1.5px solid #FCA5A5;border-radius:12px;padding:10px 12px;color:#991B1B;font-size:13px;line-height:1.45}
+.pmt-line-warn b{display:block;margin-bottom:3px;font-size:13.5px}
+.pmt-line-warn span{display:block;color:#7F1D1D}
 </style>
 </head>
 <body>
@@ -873,8 +876,11 @@ async function pmOpenTimeForm(){
   const qlo=(p.quote_line_options||[]).filter(l=>l.line_type!=='text');
   const qnums=[...new Set(qlo.map(l=>l.quote_number||''))];
   const lineOptions=qnums.length>1
-    ? qnums.map(n=>`<optgroup label="Tilbud ${esc(n)}">`+qlo.filter(l=>(l.quote_number||'')===n).map(l=>`<option value="${l.id}">${esc(l.description)}</option>`).join('')+'</optgroup>').join('')
-    : qlo.map(l=>`<option value="${l.id}">${esc(l.description)}</option>`).join('');
+    ? qnums.map(n=>`<optgroup label="Tilbud ${esc(n)}">`+qlo.filter(l=>(l.quote_number||'')===n).map(l=>`<option value="${l.id}">${esc(String(l.description||'').split('\n')[0].trim())}</option>`).join('')+'</optgroup>').join('')
+    : qlo.map(l=>`<option value="${l.id}">${esc(String(l.description||'').split('\n')[0].trim())}</option>`).join('');
+  // v2.87.1 (Martin: "de skal vælge en post fra tilbuddet ... og en rød boks på engelsk") —
+  // posten er nu påkrævet når sagen har et tilbud, så vi kan se hvad hver time er brugt på.
+  const lineRequired=qlo.length>0&&!isAkkord;
   // RUNDE H #31 — flueben-liste i stedet for ét enkelt <select>, se CSS-
   // kommentaren ved .akkord-check-row for baggrunden. Antal-feltet vises/
   // aktiveres kun for de poster der rent faktisk er sat flueben ved, se
@@ -906,8 +912,13 @@ async function pmOpenTimeForm(){
     <label class="req-label">Billeder — anbefales (kan springes over ved dårligt netværk)</label>
     <div id="pmt-photos-preview" style="display:flex;gap:8px;flex-wrap:wrap;margin:6px 0"></div>
     <label class="small-btn primary" style="cursor:pointer;display:inline-flex;margin-bottom:10px">+ Tilføj billeder/video<input type="file" accept="image/*,video/*" multiple id="pmt-photo" style="display:none" onchange="pmAddTimePhoto(event)"></label>
-    <label class="req-label">Post fra tilbud — valgfrit</label>
-    <select class="req-input" id="pmt-line"><option value="">Ingen valgt</option>${lineOptions}</select>
+    ${lineRequired?`<label class="req-label">Hvilken post har du arbejdet på? <span style="color:#DC2626">*</span></label>
+    <select class="req-input" id="pmt-line"><option value="">— Choose the item you worked on —</option>${lineOptions}<option value="other">Other work (not in the quote)</option></select>
+    <div class="pmt-line-warn">
+      <b>⚠️ Only log the hours for THIS item.</b>
+      <span>Worked on more than one item? Save one registration for each item.<br>Example: 4 h sanding + 3 h lacquer = 2 registrations.</span>
+    </div>`:`<label class="req-label">Post fra tilbud — valgfrit</label>
+    <select class="req-input" id="pmt-line"><option value="">Ingen valgt</option>${lineOptions}</select>`}
     ${rwOpts?`<label class="req-label">🔧 Fejl &amp; mangler — er det en rettelse?</label>
     <select class="req-input" id="pmt-rework"><option value="">Nej — almindeligt arbejde</option>${rwOpts}</select>`:''}
     <label class="req-label">Købt materialer — valgfrit</label>
@@ -988,6 +999,8 @@ async function pmSubmitTime(){
   const lineId=document.getElementById('pmt-line').value;
   const materials=document.getElementById('pmt-materials').value.trim();
   let akkordLines=null,minutesPayload=null;
+  const p0=pmState.current||{},needLine=!isAkkord&&((p0.quote_line_options||[]).some(l=>l.line_type!=='text'));
+  if(needLine&&!lineId){pmFeedback('pmt-feedback','Choose which item from the quote you worked on',false);const sel=document.getElementById('pmt-line');if(sel){sel.focus();sel.style.borderColor='#DC2626';}return}
   if(isAkkord){
     // RUNDE H #31 — én eller flere fluebenede akkordposter, hver med sit eget
     // antal, i stedet for kun ét valgt dropdown-item. Se .akkord-check-row.
@@ -1021,7 +1034,7 @@ async function pmSubmitTime(){
       }catch(_){photoFails++}
     }
     const rwSel=document.getElementById('pmt-rework');
-    const baseBody={note,photo_urls:photoUrls,bought_materials:materials||null,quote_line_id:lineId||null,entry_date:date,rework_id:rwSel&&rwSel.value?Number(rwSel.value):null};
+    const baseBody={note,photo_urls:photoUrls,bought_materials:materials||null,quote_line_id:(lineId&&lineId!=='other')?lineId:null,entry_date:date,rework_id:rwSel&&rwSel.value?Number(rwSel.value):null};
     if(isAkkord){
       // Databasen gemmer ét akkord-item pr. tidsregistrerings-række (se
       // akkord_item_id/akkord_quantity i server.js) — flere fluebenede poster
