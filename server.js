@@ -22457,6 +22457,13 @@ app.put('/api/finance/manual-revenue/:id', auth, panelAccess('finance'), asyncRo
   if (/^\d{4}-\d{2}$/.test(String(body.month_key || ''))) await pool.query('UPDATE finance_manual_revenue SET month_key=$1 WHERE id=$2', [body.month_key, req.params.id]);
   res.json({ ok: true });
 }));
+app.put('/api/finance/manual-revenue-rename', auth, panelAccess('finance'), asyncRoute(async (req, res) => {
+  const ids = (Array.isArray((req.body || {}).ids) ? req.body.ids : []).map(Number).filter(Boolean);
+  const name = String((req.body || {}).name || '').trim().slice(0, 200);
+  if (!ids.length || !name) return res.status(400).json({ error: 'Navn mangler' });
+  await pool.query(`UPDATE finance_manual_revenue SET name=$1,updated_at=${nowTextSQL()} WHERE id = ANY($2)`, [name, ids]);
+  res.json({ ok: true });
+}));
 app.delete('/api/finance/manual-revenue/:id', auth, panelAccess('finance'), asyncRoute(async (req, res) => {
   await pool.query('DELETE FROM finance_manual_revenue WHERE id=$1', [req.params.id]);
   res.json({ ok: true });
@@ -22623,7 +22630,17 @@ async function fetchFinanceTimeline(fromMk, toMk) {
       netRatio: Number(i.total) > 0 ? Math.max(0, (Number(i.total) - (Number(i.tax_amount) || 0)) / Number(i.total)) : 0.8 });
   }
   const manual = (await pool.query('SELECT * FROM finance_manual_revenue')).rows;
-  for (const m of manual) jobs.push({ key: 'manual-' + m.id, kind: 'manual', manualId: m.id, name: m.name, fag: (overrides['manual-' + m.id] && overrides['manual-' + m.id].fag) || m.fag || 'Ukendt', sortOrder: overrides['manual-' + m.id] && overrides['manual-' + m.id].sort_order != null ? Number(overrides['manual-' + m.id].sort_order) : null, value: Number(m.amount) || 0, invoiced: 0, start: null, end: null, workDays: 0, mode: 'manual-line', months: { [m.month_key]: Math.round(Number(m.amount) || 0) }, netRatio: 0.8 });
+  // v2.88.9: manuelle linjer med samme navn + faggruppe samles i én række (fx en
+  // "ledig kapacitet"-linje gentaget hver måned). manualIds holder alle rækkerne.
+  const manualGroups = {};
+  manual.sort((a, b) => a.id - b.id).forEach(m => { const k = (m.name || '') + '|' + (m.fag || ''); (manualGroups[k] = manualGroups[k] || []).push(m); });
+  for (const grp of Object.values(manualGroups)) {
+    if (grp.length < 2) continue;
+    const m0 = grp[0], key = 'manual-' + m0.id, months = {};
+    grp.forEach(m => { months[m.month_key] = (months[m.month_key] || 0) + Math.round(Number(m.amount) || 0); });
+    jobs.push({ key, kind: 'manual', manualId: m0.id, manualIds: grp.map(m => m.id), name: m0.name, fag: (overrides[key] && overrides[key].fag) || m0.fag || 'Ukendt', sortOrder: overrides[key] && overrides[key].sort_order != null ? Number(overrides[key].sort_order) : null, value: Object.values(months).reduce((a, b) => a + b, 0), invoiced: 0, start: null, end: null, workDays: 0, mode: 'manual-line', months, netRatio: 0.8 });
+  }
+  for (const m of manual.filter(m => manualGroups[(m.name || '') + '|' + (m.fag || '')].length < 2)) jobs.push({ key: 'manual-' + m.id, kind: 'manual', manualId: m.id, name: m.name, fag: (overrides['manual-' + m.id] && overrides['manual-' + m.id].fag) || m.fag || 'Ukendt', sortOrder: overrides['manual-' + m.id] && overrides['manual-' + m.id].sort_order != null ? Number(overrides['manual-' + m.id].sort_order) : null, value: Number(m.amount) || 0, invoiced: 0, start: null, end: null, workDays: 0, mode: 'manual-line', months: { [m.month_key]: Math.round(Number(m.amount) || 0) }, netRatio: 0.8 });
 
   // Kun sager der rammer det valgte vindue.
   const inWin = mk => mk >= fromMk && mk <= toMk;

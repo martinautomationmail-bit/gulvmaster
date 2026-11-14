@@ -5960,7 +5960,7 @@ body.tp-dragging,body.tp-dragging *{cursor:grabbing!important}
        i browseren faktisk ER det nyeste deploy, eller om Render/GitHub bare
        ikke er nået at opdatere endnu — i stedet for at skulle gætte om en
        rettelse "stadig ikke virker" eller bare endnu ikke er live. -->
-  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build v2.88.8 · 2026-11-02</span></div>
+  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build v2.88.9 · 2026-11-02</span></div>
 </aside>
 <div class="app-content">
 <!-- RUNDE FB — AI-ASSISTENTEN (Martin: "en ai der er nede i venstre hjørne af
@@ -21879,12 +21879,64 @@ async function ftlCtx(j,x,y){
   if(i>-1&&i<L.length-1)items.push({text:'Flyt ned',icon:'↓',onClick:function(){ftlMove(j,1);}});
   items.push({label:true,text:'Faggruppe'+(j.fag==='Ukendt'?' (mangler)':'')});
   types.forEach(function(f){items.push({text:(f===j.fag?'✓ ':'')+f,icon:'●',onClick:function(){if(f!==j.fag)ftlSetFag(j,f);}});});
-  items.push({sep:true},{text:'Fjern fra tidslinjen',icon:'🗑',onClick:function(){ftlRemove(j);}});
+  items.push({sep:true},{text:'Tilføj ekstra indtægt…',icon:'➕',onClick:function(){ftlAddExtraPop(j.fag,ftlMkAt(x),x,y);}});
+  if(j.kind==='manual'){
+    var mIds=j.manualIds||[j.manualId],nM=mIds.length;
+    items.push({text:'Omdøb…',icon:'✏️',onClick:async function(){var n=await gmPrompt('Nyt navn',j.name);if(!n||!n.trim())return;
+      var r=await api('/api/finance/manual-revenue-rename',{method:'PUT',body:JSON.stringify({ids:mIds,name:n.trim()})});
+      if(r&&r.ok){toast('Omdøbt','✓');ftlLoad();}else toast('Kunne ikke omdøbe','❌');}});
+    items.push({text:nM>1?'Slet linjen (alle '+nM+' måneder)':'Slet linjen',icon:'🗑',danger:true,onClick:async function(){if(!await gmConfirm('Slet den ekstra indtægt "'+j.name+'"'+(nM>1?' i alle '+nM+' måneder':'')+'?'))return;
+      for(var i=0;i<mIds.length;i++)await api('/api/finance/manual-revenue/'+mIds[i],{method:'DELETE'});toast('Slettet','✓');ftlLoad();}});
+  }else items.push({text:'Fjern fra tidslinjen',icon:'🗑',onClick:function(){ftlRemove(j);}});
   setTimeout(function(){showCtxMenu(x,y,items);},0);
+}
+// v2.88.9 (Martin: "når jeg højreklikker fx ved Martin kan jeg tilføje en ekstra
+// indtægt og give den et navn og beløb ... vi har ledige pladser så det forventer vi
+// også at omsætte for") — forventet ekstra omsætning som manuelle linjer
+// (finance_manual_revenue), evt. gentaget flere måneder frem.
+function ftlMkAt(x){
+  var M=(ftlData&&ftlData.months)||[],cur=ftlData&&ftlData.currentMonth;
+  var cells=document.querySelectorAll('#ftl-grid .ftl-grow')[0];
+  if(cells){var gc=cells.querySelectorAll('.ftl-gc');for(var i=0;i<gc.length;i++){var r=gc[i].getBoundingClientRect();if(x>=r.left&&x<r.right&&M[i])return M[i];}}
+  return cur||M[0];
+}
+function ftlAddExtraPop(fag,mk,x,y){
+  var old=document.getElementById('ftl-pop');if(old)old.remove();
+  var types=(pjProjectTypes||[]).slice();if(fag&&fag!=='Ukendt'&&types.indexOf(fag)<0)types.push(fag);
+  var pop=document.createElement('div');pop.id='ftl-pop';pop.className='ftl-pop';
+  pop.innerHTML='<div class="ftl-pop-h">Ekstra forventet indtægt</div><div class="ftl-pop-s">Fx ledige pladser du forventer at fylde</div>'
+    +'<label class="ftl-pop-l">Navn</label><input type="text" class="ftl-pop-name" placeholder="Fx Ledig kapacitet – gulvslibning" style="width:100%;box-sizing:border-box;padding:8px 10px;border:1px solid var(--bly-border);border-radius:8px;font:inherit">'
+    +'<label class="ftl-pop-l">Beløb pr. måned ('+(ftlEx?'ekskl.':'inkl.')+' moms)</label><div class="ftl-pop-amt"><input type="text" inputmode="decimal" class="ftl-pop-amtin" placeholder="0"><em>kr</em></div>'
+    +'<label class="ftl-pop-l">Måned</label><select class="ftl-pop-sel ftl-pop-mk">'+finYearMonthOptions().map(function(o){return '<option value="'+o+'"'+(o===mk?' selected':'')+'>'+esc(ftlMonLabel(o,true))+'</option>';}).join('')+'</select>'
+    +'<label class="ftl-pop-l">Gentag</label><select class="ftl-pop-sel ftl-pop-rep"><option value="1">Kun denne måned</option><option value="3">3 måneder i træk</option><option value="6">6 måneder i træk</option><option value="12">12 måneder i træk</option></select>'
+    +'<label class="ftl-pop-l">Faggruppe</label><select class="ftl-pop-sel ftl-pop-fag">'+types.map(function(t){return '<option'+(t===fag?' selected':'')+'>'+esc(t)+'</option>';}).join('')+'<option value="Ukendt"'+(!fag||fag==='Ukendt'?' selected':'')+'>Ukendt</option></select>'
+    +'<div class="ftl-pop-f"><span></span><div><button type="button" class="ftl-pop-ok">Tilføj</button></div></div>';
+  document.body.appendChild(pop);
+  pop.style.left=Math.max(8,Math.min(x,window.innerWidth-pop.offsetWidth-8))+'px';
+  pop.style.top=Math.max(8,Math.min(y,window.innerHeight-pop.offsetHeight-8))+'px';
+  var nm=pop.querySelector('.ftl-pop-name'),am=pop.querySelector('.ftl-pop-amtin');setTimeout(function(){nm.focus();},20);
+  function close(){pop.remove();document.removeEventListener('mousedown',out,true);}
+  function out(e){if(!pop.contains(e.target))close();}
+  setTimeout(function(){document.addEventListener('mousedown',out,true);},0);
+  async function save(){
+    var name=nm.value.trim();if(!name){nm.focus();toast('Giv indtægten et navn','⚠');return;}
+    var v=Math.max(0,Math.round(Number(String(am.value).replace(/\s/g,'').replace(/\.(?=\d{3}(\D|$))/g,'').replace(',','.'))||0));
+    if(!v){am.focus();toast('Skriv et beløb','⚠');return;}
+    if(ftlEx)v=Math.round(v/0.8); // gemmes altid inkl. moms
+    var start=pop.querySelector('.ftl-pop-mk').value,n=+pop.querySelector('.ftl-pop-rep').value||1,f=pop.querySelector('.ftl-pop-fag').value;
+    close();
+    for(var i=0;i<n;i++){var mk2=finExpenseAdjMonthKey(start,i);
+      await api('/api/finance/manual-revenue',{method:'POST',body:JSON.stringify({name:name,amount:v,fag:f,month_key:mk2})});}
+    toast(n>1?'Tilføjet i '+n+' måneder':'Tilføjet','✓');ftlLoad();
+  }
+  pop.querySelector('.ftl-pop-ok').addEventListener('click',save);
+  pop.addEventListener('keydown',function(e){if(e.key==='Enter')save();if(e.key==='Escape')close();});
 }
 function ftlBind(){
   if(ftlBound)return;ftlBound=true;
   document.getElementById('ftl-grid').addEventListener('contextmenu',function(e){
+    var grp=e.target.closest('[data-ftl-group]');
+    if(grp&&ftlData){e.preventDefault();var gx=e.clientX,gy=e.clientY,gf=grp.dataset.ftlGroup;setTimeout(function(){showCtxMenu(gx,gy,[{label:true,text:gf},{text:'Tilføj ekstra indtægt…',icon:'➕',onClick:function(){ftlAddExtraPop(gf,ftlMkAt(gx),gx,gy);}}]);},0);return;}
     var row=e.target.closest('[data-ftl-row]');if(!row||!ftlData)return;
     var j=ftlData.jobs.find(function(x){return x.key===row.dataset.ftlRow;});if(!j)return;
     e.preventDefault();ftlCtx(j,e.clientX,e.clientY);
@@ -21921,7 +21973,13 @@ function ftlCollapsed(){try{return JSON.parse(localStorage.getItem('gm_ftl_colla
 // manuelle linjer → linjens egen måned/beløb.
 async function ftlSaveMonths(j,months,msg){
   var r;
-  if(j.kind==='manual'){
+  if(j.kind==='manual'&&j.manualIds&&j.manualIds.length>1){
+    // samlet linje (flere måneder): slet alle og opret én pr. måned med beløb
+    for(var di=0;di<j.manualIds.length;di++)await api('/api/finance/manual-revenue/'+j.manualIds[di],{method:'DELETE'});
+    var mk3=Object.keys(months).filter(function(k){return months[k]>0;});
+    for(var ci=0;ci<mk3.length;ci++)r=await api('/api/finance/manual-revenue',{method:'POST',body:JSON.stringify({name:j.name,fag:j.fag,amount:Math.round(months[mk3[ci]]),month_key:mk3[ci]})});
+    if(!mk3.length)r={ok:true};
+  }else if(j.kind==='manual'){
     var mks=Object.keys(months).filter(function(k){return months[k]>0;});
     if(mks.length>1){toast('En manuel linje kan kun ligge i én måned','⚠');return;}
     r=await api('/api/finance/manual-revenue/'+j.manualId,{method:'PUT',body:JSON.stringify({name:j.name,fag:j.fag,amount:mks.length?months[mks[0]]:0,month_key:mks[0]||null})});
