@@ -23233,23 +23233,27 @@ app.post('/api/finance/bank-statement/unreconcile', auth, panelAccess('finance')
   res.json({ ok: true });
 }));
 // ── Faste udgifter ──
+// Ny/tom måned: klon poster (navn + beløb) fra den seneste tidligere måned der HAR
+// data, som udgangspunkt — undgår at skulle genindtaste 30 linjer hver måned. Betalt-
+// status nulstilles altid, da det er en ny måneds regninger.
+// v2.88.6: trukket ud i en funktion, så "flyt post til anden måned" kan sikre at
+// målmåneden er klonet FØR posten lander der (ellers ville en tom fremtidig måned
+// kun indeholde den flyttede post og aldrig få sine faste poster).
+async function ensureExpenseMonthSeeded(monthKey) {
+  const has = await pgOne('SELECT 1 FROM finance_expenses WHERE month_key=$1 LIMIT 1', [monthKey]);
+  if (has) return;
+  const prior = await pgOne("SELECT month_key FROM finance_expenses WHERE month_key < $1 ORDER BY month_key DESC LIMIT 1", [monthKey]);
+  if (!prior) return;
+  const priorItems = await pool.query('SELECT * FROM finance_expenses WHERE month_key=$1 ORDER BY id ASC', [prior.month_key]);
+  for (const it of priorItems.rows) {
+    await pool.query('INSERT INTO finance_expenses (category_id,name,amount,paid,month_key) VALUES ($1,$2,$3,0,$4)', [it.category_id, it.name, it.amount, monthKey]);
+  }
+}
 app.get('/api/finance/expenses', auth, panelAccess('finance'), asyncRoute(async (req, res) => {
   const monthKey = /^\d{4}-\d{2}$/.test(req.query.month) ? req.query.month : new Date().toISOString().slice(0, 7);
   const cats = await pool.query('SELECT * FROM finance_expense_categories ORDER BY sort_order ASC');
-  let items = await pool.query('SELECT * FROM finance_expenses WHERE month_key=$1 ORDER BY id ASC', [monthKey]);
-  // Ny/tom måned: klon poster (navn + beløb) fra den seneste tidligere måned der HAR
-  // data, som udgangspunkt — undgår at skulle genindtaste 30 linjer hver måned. Betalt-
-  // status nulstilles altid, da det er en ny måneds regninger.
-  if (items.rows.length === 0) {
-    const prior = await pgOne("SELECT month_key FROM finance_expenses WHERE month_key < $1 ORDER BY month_key DESC LIMIT 1", [monthKey]);
-    if (prior) {
-      const priorItems = await pool.query('SELECT * FROM finance_expenses WHERE month_key=$1', [prior.month_key]);
-      for (const it of priorItems.rows) {
-        await pool.query('INSERT INTO finance_expenses (category_id,name,amount,paid,month_key) VALUES ($1,$2,$3,0,$4)', [it.category_id, it.name, it.amount, monthKey]);
-      }
-      items = await pool.query('SELECT * FROM finance_expenses WHERE month_key=$1 ORDER BY id ASC', [monthKey]);
-    }
-  }
+  await ensureExpenseMonthSeeded(monthKey);
+  const items = await pool.query('SELECT * FROM finance_expenses WHERE month_key=$1 ORDER BY id ASC', [monthKey]);
   const byCategory = cats.rows.map(c => ({ ...c, items: items.rows.filter(i => i.category_id === c.id) }));
   res.json({ month: monthKey, categories: byCategory });
 }));
@@ -23332,6 +23336,12 @@ app.put('/api/finance/expenses/:id', auth, panelAccess('finance'), asyncRoute(as
     await pool.query(`UPDATE finance_expenses SET name=$1,amount=$2,paid=$3,category_id=$4,updated_at=${nowTextSQL()} WHERE id=$5`, [String(body.name || '').slice(0, 200), Number(body.amount) || 0, body.paid ? 1 : 0, body.category_id, req.params.id]);
   } else {
     await pool.query(`UPDATE finance_expenses SET name=$1,amount=$2,paid=$3,updated_at=${nowTextSQL()} WHERE id=$4`, [String(body.name || '').slice(0, 200), Number(body.amount) || 0, body.paid ? 1 : 0, req.params.id]);
+  }
+  // v2.88.6 (Martin: "lav så jeg kan flytte måned også") — month_key flytter posten
+  // til en anden måned. Målmåneden klones først, så den beholder sine faste poster.
+  if (body.month_key && /^\d{4}-\d{2}$/.test(body.month_key)) {
+    await ensureExpenseMonthSeeded(body.month_key);
+    await pool.query(`UPDATE finance_expenses SET month_key=$1,paid=0,updated_at=${nowTextSQL()} WHERE id=$2`, [body.month_key, req.params.id]);
   }
   res.json({ ok: true });
 }));

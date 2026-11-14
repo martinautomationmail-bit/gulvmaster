@@ -5959,7 +5959,7 @@ body.tp-dragging,body.tp-dragging *{cursor:grabbing!important}
        i browseren faktisk ER det nyeste deploy, eller om Render/GitHub bare
        ikke er nået at opdatere endnu — i stedet for at skulle gætte om en
        rettelse "stadig ikke virker" eller bare endnu ikke er live. -->
-  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build v2.88.5 · 2026-11-02</span></div>
+  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build v2.88.6 · 2026-11-02</span></div>
 </aside>
 <div class="app-content">
 <!-- RUNDE FB — AI-ASSISTENTEN (Martin: "en ai der er nede i venstre hjørne af
@@ -24795,7 +24795,7 @@ function renderFinExpenseCardGrid(){
   el.innerHTML=finExpenses.map(function(cat){
     var catTotal=cat.items.reduce(function(s,i){return s+(+i.amount||0);},0);
     var items=cat.items.filter(function(it){return finExpensePassesFilter({catId:cat.id,name:it.name,amount:+it.amount||0,paid:!!it.paid});});
-    var moveOptionsHtml='<option value="">Flyt til…</option>'+finExpenses.filter(function(c){return c.id!==cat.id;}).map(function(c){return '<option value="'+c.id+'">'+esc(c.name)+'</option>';}).join('');
+    var moveOptionsHtml='<option value="">Flyt til…</option><optgroup label="Anden måned">'+[-1,1,2,3,4,5,6].map(function(d){var mk=finExpenseAdjMonthKey(finExpenseMonth,d);return '<option value="m:'+mk+'">📅 '+esc(finExpenseMonthLabel(mk))+'</option>';}).join('')+'</optgroup><optgroup label="Anden boks">'+finExpenses.filter(function(c){return c.id!==cat.id;}).map(function(c){return '<option value="'+c.id+'">'+esc(c.name)+'</option>';}).join('')+'</optgroup>';
     var rowsHtml=items.length?items.map(function(it){
       return '<div class="udg-exp-row '+(it.paid?'paid':'unpaid')+'" data-id="'+it.id+'">'+
         '<input type="checkbox" class="udg-exp-paid" '+(it.paid?'checked':'')+'>'+
@@ -24822,6 +24822,7 @@ function renderFinExpenseCardGrid(){
     row.querySelector('.udg-exp-move').addEventListener('change',function(e){
       var newCatId=e.target.value;
       if(!newCatId)return;
+      if(newCatId.indexOf('m:')===0){finExpenseUpdateItem(id,{month_key:newCatId.slice(2)});return;}
       finExpenseUpdateItem(id,{category_id:newCatId});
     });
   });
@@ -24908,6 +24909,7 @@ async function finExpenseUpdateItem(id,patch){
     // hopper den lokale kopi ud af den forkerte kategoris items-array. Nemmest og
     // mest robust er en fuld genindlæsning (samme mønster som slet/tilføj-post
     // allerede bruger), fremfor at flytte posten manuelt mellem arrays her.
+    if(patch.month_key){toast('Post flyttet til '+finExpenseMonthLabel(patch.month_key)+' ✓','✓');loadFinance();return;}
     if(patch.category_id&&String(patch.category_id)!==String(found.cat.id)){
       toast('Post flyttet ✓','✓');loadFinance();return;
     }
