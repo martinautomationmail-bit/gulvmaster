@@ -5959,7 +5959,7 @@ body.tp-dragging,body.tp-dragging *{cursor:grabbing!important}
        i browseren faktisk ER det nyeste deploy, eller om Render/GitHub bare
        ikke er nået at opdatere endnu — i stedet for at skulle gætte om en
        rettelse "stadig ikke virker" eller bare endnu ikke er live. -->
-  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build v2.88.4 · 2026-11-02</span></div>
+  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build v2.88.5 · 2026-11-02</span></div>
 </aside>
 <div class="app-content">
 <!-- RUNDE FB — AI-ASSISTENTEN (Martin: "en ai der er nede i venstre hjørne af
@@ -7251,7 +7251,6 @@ body.ai-has-reply #ai-fab{animation:ai-nudge 1.4s ease-in-out 3}
   <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;margin-bottom:16px">
   <div class="tabs fin-pill-tabs" style="margin-bottom:0">
     <a class="tab-btn-sm active" data-fintab="oversigt" href="#finance/oversigt">📊 Oversigt</a>
-    <a class="tab-btn-sm" data-fintab="omsaetning" href="#finance/omsaetning">💰 Omsætning pr. fag</a>
     <a class="tab-btn-sm" data-fintab="tidslinje" href="#finance/tidslinje">🗓 Tidslinje <span class="ftl-new">NY</span></a>
     <a class="tab-btn-sm" data-fintab="bankafstemning" href="#finance/bankafstemning">🏦 Bankafstemning</a>
     <a class="tab-btn-sm" data-fintab="udgifter" href="#finance/udgifter">📖 Udgifter</a>
@@ -21960,6 +21959,7 @@ function ftlEditPop(j,mk,anchor){
   var rs=pop.querySelector('.ftl-pop-reset');if(rs)rs.addEventListener('click',async function(){close();var x=await api('/api/finance/job-month-split/'+encodeURIComponent(j.key),{method:'DELETE'});if(x&&x.ok!==false){toast('Fordeles automatisk igen','✓');ftlLoad();}});
 }
 function switchFintab(name){
+  if(name==='omsaetning')name='tidslinje'; // v2.88.5: fanen "Omsætning pr. fag" er fjernet — Tidslinjen afløser den
   var btn=document.querySelector('[data-fintab="'+name+'"]');
   if(!btn)name='oversigt';
   document.querySelectorAll('[data-fintab]').forEach(function(b){b.classList.remove('active');});
@@ -23172,10 +23172,10 @@ function renderFinFagRevenueCard(){
   var nextLbl=nextKey?(UDG_MONTH_NAMES[+nextKey.slice(5,7)-1]+' '+nextKey.slice(0,4)):'Næste måned';
   var curFag=(finRevenue&&curKey&&finRevenue[curKey]&&finRevenue[curKey].byFag)||{};
   var nextFag=(finRevenue&&nextKey&&finRevenue[nextKey]&&finRevenue[nextKey].byFag)||{};
-  el.innerHTML='<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:18px"><div style="font-size:15px;font-weight:800;color:var(--bly-ink)">Omsætning pr. fag</div><button class="bly-btn outline small" data-action="fin-goto-omsaetning">Se alle måneder</button></div>'
+  el.innerHTML='<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:18px"><div style="font-size:15px;font-weight:800;color:var(--bly-ink)">Omsætning pr. fag</div><button class="bly-btn outline small" data-action="fin-goto-omsaetning">Se tidslinjen</button></div>'
     +'<div class="fin-fagrev-cols">'+finFagRevRingHtml(curLbl,curFag)+finFagRevRingHtml(nextLbl,nextFag)+'</div>';
   var btn=el.querySelector('[data-action="fin-goto-omsaetning"]');
-  if(btn)btn.addEventListener('click',function(){var t=document.querySelector('[data-fintab="omsaetning"]');if(t)t.click();});
+  if(btn)btn.addEventListener('click',function(){var t=document.querySelector('[data-fintab="tidslinje"]');if(t)t.click();});
 }
 async function renderFinTodoCard(){
   var el=document.getElementById('fin-card-todo');
@@ -23627,7 +23627,7 @@ async function renderTodoTodayWidget(body){
   });
   if(stillWorking.length){
     var stillWorkingSum=stillWorking.reduce(function(s,j){return s+(j.value||0);},0);
-    items.push({icon:'🟢',color:'#15803D',bg:'#F0FDF4',title:stillWorking.length+' sag(er) arbejdes der stadig på i denne måned',sub:krFmt(stillWorkingSum)+' i alt — se under Omsætning pr. fag',tab:'omsaetning'});
+    items.push({icon:'🟢',color:'#15803D',bg:'#F0FDF4',title:stillWorking.length+' sag(er) arbejdes der stadig på i denne måned',sub:krFmt(stillWorkingSum)+' i alt — se under Tidslinje',tab:'tidslinje'});
   }
   // 3) Moms-frist hvis den nærmer sig
   var vatInfo=nextVatDeadline();
