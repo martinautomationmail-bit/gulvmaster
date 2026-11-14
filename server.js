@@ -5613,6 +5613,28 @@ const PANEL_PAGE_KEYS = new Set(PANEL_PAGES.map(p => p.key));
 // samme. Lønnen ('timetrack_pay') gives IKKE automatisk.
 // v2.87.2 — engangs (Martin: "i stedet for at smide mig under Diverse, kan du ikke også gøre mig
 // til kontor"): Martin B (id 1383) havde fag 'Diverse'; uden fag = Kontor-gruppen i planlægningen.
+// v2.88.7 (Martin: "kan du under udgifter forskyde alt en måned tilbage ... jeg har
+// brugt november for regninger der faktisk skulle have været oktober") — hele året
+// har stået én måned for sent. Alle poster i finance_expenses rykkes én måned tilbage
+// (inkl. betalt-flueben). Fuld kopi gemmes først i finance_expenses_bak_20261114, så
+// det kan rulles tilbage. Bank-CSV-tal og manuelle måneds-totaler røres IKKE (de er
+// knyttet til den rigtige kalendermåned).
+async function migrateShiftExpensesBackOneMonth() {
+  const name = 'expenses_shift_back_1m_20261114';
+  const client = await pool.connect();
+  try {
+    if (await pgOne('SELECT 1 FROM app_migrations WHERE name=$1', [name])) return;
+    await client.query('BEGIN');
+    await client.query('CREATE TABLE IF NOT EXISTS finance_expenses_bak_20261114 AS SELECT * FROM finance_expenses');
+    const r = await client.query(`UPDATE finance_expenses
+      SET month_key = to_char(to_date(month_key || '-01', 'YYYY-MM-DD') - interval '1 month', 'YYYY-MM')
+      WHERE month_key ~ '^\\d{4}-\\d{2}$'`);
+    await client.query('INSERT INTO app_migrations (name, details) VALUES ($1, $2)', [name, JSON.stringify({ shifted: r.rowCount || 0 })]);
+    await client.query('COMMIT');
+    console.log('Udgifter rykket én måned tilbage: ' + (r.rowCount || 0) + ' poster.');
+  } catch (e) { try { await client.query('ROLLBACK'); } catch (_) {} console.error('migrateShiftExpensesBackOneMonth fejlede:', e.message); }
+  finally { client.release(); }
+}
 async function migrateMartinBToKontor() {
   try {
     const name = 'martin_b_kontor_20261114';
@@ -30558,6 +30580,7 @@ async function start() {
   await syncQuoteProjectLinks();
   await migrateReopenPartlyInvoicedQuotes();
   await migrateMartinBToKontor();
+  await migrateShiftExpensesBackOneMonth();
   await backfillBankUploadHistory();
   await migrateNotPerformedStage();
   await migrateSubcontractorCosts();
