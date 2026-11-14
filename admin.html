@@ -865,6 +865,7 @@ input.bly-search-lg{padding:13px 16px 13px 40px;font-size:14px;background-size:1
 #page-finance #fintab-privatbudget .udg-cat-head .amt{font-weight:800;font-size:13px}
 #page-finance #fintab-udgifter .udg-cat-body,
 #page-finance #fintab-privatbudget .udg-cat-body{padding:6px 10px;flex:1}
+#page-finance #fintab-udgifter .udg-exp-row.udg-sel{background:#EEF2FF!important;box-shadow:inset 0 0 0 1.5px var(--bly-accent)}
 #page-finance #fintab-udgifter .udg-exp-row,
 #page-finance #fintab-privatbudget .udg-exp-row{display:grid;grid-template-columns:20px 1fr 80px 84px 26px;align-items:center;gap:6px;padding:7px 6px;border-radius:8px;border-left:3px solid transparent}
 #page-finance #fintab-udgifter .udg-exp-row:hover,
@@ -5959,7 +5960,7 @@ body.tp-dragging,body.tp-dragging *{cursor:grabbing!important}
        i browseren faktisk ER det nyeste deploy, eller om Render/GitHub bare
        ikke er nået at opdatere endnu — i stedet for at skulle gætte om en
        rettelse "stadig ikke virker" eller bare endnu ikke er live. -->
-  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build v2.88.7 · 2026-11-02</span></div>
+  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build v2.88.8 · 2026-11-02</span></div>
 </aside>
 <div class="app-content">
 <!-- RUNDE FB — AI-ASSISTENTEN (Martin: "en ai der er nede i venstre hjørne af
@@ -24789,6 +24790,75 @@ function renderFinExpenseBreakdown(){
 // Fordelingsgraf/KPI-række/kategori-filtre ovenover er allerede 100% data-drevne
 // (de looper bare finExpenses igennem), så nye/slettede/omdøbte bokse slår automatisk
 // igennem der uden yderligere kode — det var kun selve kort-gridet der manglede.
+// v2.88.8 (Martin: "når jeg markerer burde jeg have masse handlinger ved højre klik
+// fx slet osv") — markér poster med ⌘/Ctrl-klik (enkelt) eller Shift-klik (område) på
+// rækken, og højreklik for handlinger på alle markerede (eller kun den du klikker på).
+var udgSel=new Set(),udgSelLast=null;
+function udgApplySel(root){(root||document).querySelectorAll('#fin-expense-categories .udg-exp-row[data-id]').forEach(function(r){r.classList.toggle('udg-sel',udgSel.has(r.dataset.id));});}
+function udgClearSel(){udgSel.clear();udgSelLast=null;udgApplySel();}
+function udgBindRowMenu(el){
+  var rows=[].slice.call(el.querySelectorAll('.udg-exp-row[data-id]'));
+  var ids=rows.map(function(r){return r.dataset.id;});
+  udgSel.forEach(function(id){if(ids.indexOf(id)<0)udgSel.delete(id);});
+  rows.forEach(function(row){
+    var id=row.dataset.id;
+    row.addEventListener('mousedown',function(e){
+      if(!(e.metaKey||e.ctrlKey||e.shiftKey)||e.button!==0)return;
+      e.preventDefault();
+      if(e.shiftKey&&udgSelLast&&ids.indexOf(udgSelLast)>-1){
+        var a=ids.indexOf(udgSelLast),b=ids.indexOf(id);
+        ids.slice(Math.min(a,b),Math.max(a,b)+1).forEach(function(x){udgSel.add(x);});
+      }else{if(udgSel.has(id))udgSel.delete(id);else udgSel.add(id);}
+      udgSelLast=id;udgApplySel(el);
+    });
+    row.addEventListener('contextmenu',function(e){
+      e.preventDefault();
+      if(!udgSel.has(id)){udgSel.clear();udgSel.add(id);udgSelLast=id;udgApplySel(el);}
+      var x=e.clientX,y=e.clientY;
+      setTimeout(function(){udgOpenMenu(x,y);},0);
+    });
+  });
+  udgApplySel(el);
+}
+function udgSelItems(){
+  var out=[];finExpenses.forEach(function(c){c.items.forEach(function(it){if(udgSel.has(String(it.id)))out.push({cat:c,item:it});});});return out;
+}
+async function udgBulk(patchFn,msg){
+  var list=udgSelItems();if(!list.length)return;
+  for(var i=0;i<list.length;i++){
+    var it=list[i].item,body=Object.assign({name:it.name,amount:it.amount,paid:!!it.paid},patchFn(it));
+    await api('/api/finance/expenses/'+it.id,{method:'PUT',body:JSON.stringify(body)});
+  }
+  udgClearSel();toast(msg.replace('{n}',list.length),'✓');loadFinance();
+}
+function udgOpenMenu(x,y){
+  var list=udgSelItems();if(!list.length)return;
+  var n=list.length,one=n===1,lbl=one?list[0].item.name:(n+' poster markeret');
+  var sum=list.reduce(function(s,o){return s+(+o.item.amount||0);},0);
+  var allPaid=list.every(function(o){return o.item.paid;});
+  var items=[{label:true,text:lbl+' · '+krFmt(sum)}];
+  items.push(allPaid?{text:'Markér som ubetalt',icon:'⏳',onClick:function(){udgBulk(function(){return {paid:false};},'{n} markeret ubetalt');}}
+                    :{text:'Markér som betalt',icon:'✅',onClick:function(){udgBulk(function(){return {paid:true};},'{n} markeret betalt');}});
+  items.push({sep:true});
+  items.push({text:'Flyt til måned…',icon:'📅',onClick:function(){setTimeout(function(){
+    showCtxMenu(x,y,[{label:true,text:'Flyt '+(one?'posten':n+' poster')+' til'}].concat([-2,-1,1,2,3,4,5,6].map(function(d){var mk=finExpenseAdjMonthKey(finExpenseMonth,d);
+      return {text:finExpenseMonthLabel(mk),icon:d<0?'←':'→',onClick:function(){udgBulk(function(){return {month_key:mk};},'{n} flyttet til '+finExpenseMonthLabel(mk));}};})));},0);}});
+  items.push({text:'Flyt til boks…',icon:'🗂',onClick:function(){setTimeout(function(){
+    showCtxMenu(x,y,[{label:true,text:'Flyt '+(one?'posten':n+' poster')+' til'}].concat(finExpenses.map(function(c){
+      return {text:c.name,icon:'●',onClick:function(){udgBulk(function(){return {category_id:c.id};},'{n} flyttet til '+c.name);}};})));},0);}});
+  items.push({text:one?'Duplikér':'Duplikér alle '+n,icon:'⧉',onClick:async function(){
+    for(var i=0;i<list.length;i++){var o=list[i];await api('/api/finance/expenses',{method:'POST',body:JSON.stringify({category_id:o.cat.id,name:o.item.name,amount:+o.item.amount||0,month_key:finExpenseMonth})});}
+    udgClearSel();toast(n+' duplikeret','✓');loadFinance();}});
+  if(one)items.push({text:'Omdøb',icon:'✏️',onClick:function(){var r=document.querySelector('#fin-expense-categories .udg-exp-row[data-id="'+list[0].item.id+'"] .udg-exp-name');if(r){r.focus();r.select();}}});
+  items.push({sep:true});
+  if(!one)items.push({text:'Fjern markering',icon:'○',onClick:udgClearSel});
+  items.push({text:one?'Slet':'Slet alle '+n,icon:'🗑',danger:true,onClick:async function(){
+    if(!(await gmConfirm(one?'Slet "'+list[0].item.name+'"?':'Slet '+n+' poster ('+krFmt(sum)+')?')))return;
+    for(var i=0;i<list.length;i++)await api('/api/finance/expenses/'+list[i].item.id,{method:'DELETE'});
+    udgClearSel();toast(n+' slettet','✓');loadFinance();}});
+  showCtxMenu(x,y,items);
+}
+document.addEventListener('keydown',function(e){if(e.key==='Escape'&&udgSel.size)udgClearSel();});
 function renderFinExpenseCardGrid(){
   var el=document.getElementById('fin-expense-categories');
   if(!el)return;
@@ -24826,6 +24896,7 @@ function renderFinExpenseCardGrid(){
       finExpenseUpdateItem(id,{category_id:newCatId});
     });
   });
+  udgBindRowMenu(el);
   el.querySelectorAll('[data-qa-btn]').forEach(function(btn){
     var catId=btn.dataset.qaBtn;
     btn.addEventListener('click',function(){
