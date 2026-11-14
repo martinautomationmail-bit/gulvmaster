@@ -21788,6 +21788,27 @@ async function fetchFinanceJobsByMonth(monthsBack, monthsForward) {
     poolTotal += j.value || 0;
   }
   result.__pool__ = { jobs: poolJobs, byFag: poolByFag, total: poolTotal, missingBudgetCount: poolJobs.filter(j => j.value === null).length };
+  // v2.88.9 (Martin: "hvorfor siger den [Tidslinjen] vi i december har 600k men på
+  // dashboard kun 263.845?") — indeværende og kommende måneder hentes nu fra
+  // Tidslinjen (sagernes beløb fordelt på arbejdsdage + manuelle fordelinger +
+  // ekstra indtægter), så Oversigt, rapport og Tidslinje viser samme forecast.
+  // Bagudgående måneder er stadig de faktisk sendte fakturaer.
+  try {
+    const fut = Object.keys(result).filter(k => /^\d{4}-\d{2}$/.test(k) && k >= currentMonthKey).sort();
+    if (fut.length) {
+      const tl = await fetchFinanceTimeline(fut[0], fut[fut.length - 1]);
+      for (const mk of fut) {
+        const t = tl.totals[mk]; if (!t) continue;
+        const byFag = {};
+        const cnt = {};
+        tl.jobs.forEach(j => { if (j.months[mk]) cnt[j.fag] = (cnt[j.fag] || 0) + 1; });
+        Object.keys(t.byFag).forEach(f => { byFag[f] = { count: cnt[f] || 0, sum: Math.round(t.byFag[f]) }; });
+        result[mk].byFag = byFag;
+        result[mk].total = Math.round(t.total);
+        result[mk].source = 'timeline';
+      }
+    }
+  } catch (e) { console.error('Forecast fra tidslinje fejlede:', e.message); }
   return result;
 }
 
