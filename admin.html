@@ -658,6 +658,15 @@ input.bly-search-lg{padding:13px 16px 13px 40px;font-size:14px;background-size:1
    opskrift som Fakturaer-kortets ringe (RUNDE DH), men farvet HELE vejen rundt i
    proportionelle buer (én pr. fag) i stedet for én farve + lys bane — og med KUN
    totalbeløbet i midten, ingen navne/enkelt-beløb. */
+.fin-split-ring{position:relative;width:180px;height:180px;max-width:100%}
+.fin-split-ring svg{display:block;width:100%;height:auto}
+.fin-split-ring-in{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:0 20px}
+.fin-split-amt{font-size:20px;font-weight:800;color:var(--bly-ink);letter-spacing:-.01em;white-space:nowrap}
+.fin-split-pct{font-size:12px;font-weight:600;color:var(--bly-sub);margin-top:4px}
+.fin-split-legend{width:100%;max-width:240px;display:flex;flex-direction:column;gap:6px;margin-top:2px}
+.fin-split-legend>div{display:flex;justify-content:space-between;gap:10px;font-size:12.5px;color:var(--bly-sub)}
+.fin-split-legend b{color:var(--bly-ink);font-weight:700;white-space:nowrap}
+.fin-split-legend i{display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:7px}
 .fin-fagrev-cols{display:flex;gap:18px;justify-content:space-between}
 .fin-fagrev-ringcol{flex:1;min-width:0;display:flex;flex-direction:column;align-items:center;text-align:center;gap:10px}
 .fin-fagrev-ring{position:relative;width:100%;max-width:120px;aspect-ratio:1/1;border-radius:50%}
@@ -5960,7 +5969,7 @@ body.tp-dragging,body.tp-dragging *{cursor:grabbing!important}
        i browseren faktisk ER det nyeste deploy, eller om Render/GitHub bare
        ikke er nået at opdatere endnu — i stedet for at skulle gætte om en
        rettelse "stadig ikke virker" eller bare endnu ikke er live. -->
-  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build v2.89.1 · 2026-11-02</span></div>
+  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build v2.89.2 · 2026-11-02</span></div>
 </aside>
 <div class="app-content">
 <!-- RUNDE FB — AI-ASSISTENTEN (Martin: "en ai der er nede i venstre hjørne af
@@ -23215,16 +23224,19 @@ function finFagRevRingGradient(sorted,byFag,total){
   });
   return 'conic-gradient('+stops.join(',')+')';
 }
-function finFagRevRingHtml(label,byFag){
-  var fags=Object.keys(byFag||{});
-  var total=fags.reduce(function(s,f){return s+(byFag[f].sum||0);},0);
-  var sorted=fags.slice().sort(function(a,b){return (byFag[b].sum||0)-(byFag[a].sum||0);});
-  var gradient=finFagRevRingGradient(sorted,byFag,total);
+function finFagRevRingHtml(label,byFag,invoiced){
+  // v2.89.2 (Martin valgte mockup A): delt ring — faktureret (mørk) mod mangler (lys).
+  var total=Object.keys(byFag||{}).reduce(function(s,f){return s+(byFag[f].sum||0);},0);
+  var inv=Math.max(0,Math.min(Number(invoiced)||0,total)),rest=Math.max(0,total-inv);
+  var pct=total>0?Math.round(inv/total*100):0;
+  var R=70,C=2*Math.PI*R,dash=total>0?C*inv/total:0;
   return '<div class="fin-fagrev-ringcol">'
-    +'<div class="fin-fagrev-ring" style="background:'+gradient+'">'
-      +'<div class="fin-fagrev-ring-inner"><div class="fin-fagrev-ring-amt">'+krFmt(total)+'</div></div>'
-    +'</div>'
-    +'<div class="fin-fagrev-ring-label">'+esc(label)+'</div>'
+    +'<div class="fin-split-ring"><svg viewBox="0 0 180 180" width="180" height="180" aria-hidden="true">'
+      +'<circle cx="90" cy="90" r="'+R+'" fill="none" stroke="#C7D2FE" stroke-width="16"/>'
+      +(dash>0?'<circle cx="90" cy="90" r="'+R+'" fill="none" stroke="#4338CA" stroke-width="16" stroke-linecap="'+(pct>=100?'butt':'round')+'" stroke-dasharray="'+dash.toFixed(1)+' '+C.toFixed(1)+'" transform="rotate(-90 90 90)"/>':'')
+    +'</svg><div class="fin-split-ring-in"><div class="fin-split-amt">'+krFmt(total)+'</div><div class="fin-split-pct">'+pct+' % faktureret</div></div></div>'
+    +'<div class="fin-fagrev-ring-label" style="font-size:13px;font-weight:800;color:var(--bly-ink)">'+esc(label)+'</div>'
+    +'<div class="fin-split-legend"><div><span><i style="background:#4338CA"></i>Faktureret</span><b>'+krFmt(inv)+'</b></div><div><span><i style="background:#C7D2FE"></i>Mangler at fakturere</span><b>'+krFmt(rest)+'</b></div></div>'
   +'</div>';
 }
 function renderFinFagRevenueCard(){
@@ -23235,8 +23247,8 @@ function renderFinFagRevenueCard(){
   var nextLbl=nextKey?(UDG_MONTH_NAMES[+nextKey.slice(5,7)-1]+' '+nextKey.slice(0,4)):'Næste måned';
   var curFag=(finRevenue&&curKey&&finRevenue[curKey]&&finRevenue[curKey].byFag)||{};
   var nextFag=(finRevenue&&nextKey&&finRevenue[nextKey]&&finRevenue[nextKey].byFag)||{};
-  el.innerHTML='<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:18px"><div style="font-size:15px;font-weight:800;color:var(--bly-ink)">Omsætning pr. fag</div><button class="bly-btn outline small" data-action="fin-goto-omsaetning">Se tidslinjen</button></div>'
-    +'<div class="fin-fagrev-cols">'+finFagRevRingHtml(curLbl,curFag)+finFagRevRingHtml(nextLbl,nextFag)+'</div>';
+  el.innerHTML='<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:18px"><div style="font-size:15px;font-weight:800;color:var(--bly-ink)">Omsætning pr. måned</div><button class="bly-btn outline small" data-action="fin-goto-omsaetning">Se tidslinjen</button></div>'
+    +'<div class="fin-fagrev-cols">'+finFagRevRingHtml(curLbl,curFag,finRevenue&&finRevenue[curKey]&&finRevenue[curKey].invoiced)+finFagRevRingHtml(nextLbl,nextFag,finRevenue&&nextKey&&finRevenue[nextKey]&&finRevenue[nextKey].invoiced)+'</div>';
   var btn=el.querySelector('[data-action="fin-goto-omsaetning"]');
   if(btn)btn.addEventListener('click',function(){var t=document.querySelector('[data-fintab="tidslinje"]');if(t)t.click();});
 }

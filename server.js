@@ -21797,6 +21797,9 @@ async function fetchFinanceJobsByMonth(monthsBack, monthsForward) {
     const fut = Object.keys(result).filter(k => /^\d{4}-\d{2}$/.test(k) && k >= currentMonthKey).sort();
     if (fut.length) {
       const tl = await fetchFinanceTimeline(fut[0], fut[fut.length - 1]);
+      const invR = await pool.query(`SELECT substr(created_at,1,7) AS mk, COALESCE(SUM(total),0)::float AS s FROM invoices
+        WHERE status NOT IN ('void','draft') AND substr(created_at,1,7) = ANY($1) GROUP BY 1`, [fut]);
+      const invByMk = {}; invR.rows.forEach(r => { invByMk[r.mk] = Math.round(r.s); });
       for (const mk of fut) {
         const t = tl.totals[mk]; if (!t) continue;
         const byFag = {};
@@ -21806,6 +21809,7 @@ async function fetchFinanceJobsByMonth(monthsBack, monthsForward) {
         result[mk].byFag = byFag;
         result[mk].total = Math.round(t.total);
         result[mk].source = 'timeline';
+        result[mk].invoiced = invByMk[mk] || 0; // v2.89.2: fakturaer oprettet i måneden (inkl. moms)
       }
     }
   } catch (e) { console.error('Forecast fra tidslinje fejlede:', e.message); }
