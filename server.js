@@ -22577,7 +22577,7 @@ async function fetchFinanceTimeline(fromMk, toMk) {
     jobs.push({
       key, kind: 'quote', quoteId: q.id, projectId: q.project_id || null,
       name: q.project_name || q.job_name || q.job_number || ('Tilbud #' + q.id), jobNumber: q.job_number || '',
-      fag: (ov && ov.fag) || q.fag || 'Ukendt', sortOrder: ov && ov.sort_order != null ? Number(ov.sort_order) : null, value, invoiced: Number(q.invoiced) || 0, amountEdited: !!(ov && ov.amount !== null && ov.amount !== undefined),
+      fag: (ov && ov.fag) || q.fag || 'Ukendt', sortOrder: ov && ov.sort_order != null ? Number(ov.sort_order) : null, value, invoiced: Number(q.invoiced) || 0, quoteTotal: Number(q.total) || 0, amountEdited: !!(ov && ov.amount !== null && ov.amount !== undefined),
       start: days[0] || null, end: days[days.length - 1] || null, workDays: days.length, mode, months,
       netRatio: Number(q.total) > 0 ? Math.max(0, (Number(q.total) - (Number(q.tax_amount) || 0)) / Number(q.total)) : 0.8
     });

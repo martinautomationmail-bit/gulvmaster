@@ -5959,7 +5959,7 @@ body.tp-dragging,body.tp-dragging *{cursor:grabbing!important}
        i browseren faktisk ER det nyeste deploy, eller om Render/GitHub bare
        ikke er nået at opdatere endnu — i stedet for at skulle gætte om en
        rettelse "stadig ikke virker" eller bare endnu ikke er live. -->
-  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build v2.88.3 · 2026-11-02</span></div>
+  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build v2.88.4 · 2026-11-02</span></div>
 </aside>
 <div class="app-content">
 <!-- RUNDE FB — AI-ASSISTENTEN (Martin: "en ai der er nede i venstre hjørne af
@@ -21823,7 +21823,7 @@ function ftlRender(){
     var first=keys[0],last=keys[keys.length-1];
     var invPct=j.value>0?Math.min(100,Math.round(j.invoiced/j.value*100)):0;
     var fx=ftlF(j);
-    var sub=krFmt(j.value*fx)+(j.kind==='quote'&&j.invoiced>0?' · '+invPct+' % faktureret':'')+(j.kind==='invoice'?' · faktura uden tilbud':'')+(j.kind==='manual'?' · manuel linje':'')+(j.mode==='manual'?' · fordelt af dig':'');
+    var sub=krFmt(j.value*fx)+(j.kind==='quote'&&j.invoiced>0?' · '+invPct+' % faktureret':'')+(j.kind==='invoice'?' · faktura uden tilbud':'')+(j.kind==='manual'?' · manuel linje':'')+(j.amountEdited?' · beløb rettet af dig':'')+(j.mode==='manual'?' · fordelt af dig':'');
     var name=j.projectId?'<a href="#project-detail/'+j.projectId+'" target="_blank" rel="noopener">'+esc(j.name)+'</a>':esc(j.name);
     return '<div class="ftl-row" style="grid-template-columns:'+cols+'" data-ftl-row="'+esc(j.key)+'"><div class="ftl-name"><b>'+name+'</b><span>'+sub+'</span></div>'
       +M.map(function(mk){
@@ -21871,6 +21871,9 @@ async function ftlCtx(j,x,y){
   if(j.kind==='invoice')items.push({text:'Åbn fakturaen',icon:'🧾',onClick:function(){gmOpenBg('#qz-invoices/faktura/'+String(j.key).replace('faktura-',''));}});
   var firstMk=Object.keys(j.months||{}).sort().filter(function(mk){return (ftlData.months||[]).indexOf(mk)>-1;})[0];
   if(firstMk)items.push({text:'Ret beløb / fordeling…',icon:'✏️',onClick:function(){var b=document.querySelector('[data-ftl-row="'+(window.CSS&&CSS.escape?CSS.escape(j.key):j.key)+'"] [data-ftl-job]');ftlEditPop(j,(b&&b.dataset.ftlFrom)||firstMk,b||document.querySelector('[data-ftl-row]'));}});
+  if(j.amountEdited&&j.kind==='quote')items.push({text:'Nulstil til tilbuddets beløb ('+krFmt(j.quoteTotal*ftlF(j))+')',icon:'↺',onClick:async function(){
+    var r=await api('/api/finance/job-override/'+encodeURIComponent(j.key),{method:'PUT',body:JSON.stringify({amount:null})});
+    if(r&&r.ok){toast('Beløbet følger nu tilbuddet igen','✓');ftlLoad();}else toast('Kunne ikke nulstille','❌');}});
   items.push({sep:true});
   if(i>0)items.push({text:'Flyt op',icon:'↑',onClick:function(){ftlMove(j,-1);}});
   if(i>-1&&i<L.length-1)items.push({text:'Flyt ned',icon:'↓',onClick:function(){ftlMove(j,1);}});
