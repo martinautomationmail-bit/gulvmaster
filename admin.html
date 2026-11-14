@@ -5946,7 +5946,7 @@ body.tp-dragging,body.tp-dragging *{cursor:grabbing!important}
        i browseren faktisk ER det nyeste deploy, eller om Render/GitHub bare
        ikke er nået at opdatere endnu — i stedet for at skulle gætte om en
        rettelse "stadig ikke virker" eller bare endnu ikke er live. -->
-  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build v2.86.1 · 2026-11-02</span></div>
+  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build v2.86.2 · 2026-11-02</span></div>
 </aside>
 <div class="app-content">
 <!-- RUNDE FB — AI-ASSISTENTEN (Martin: "en ai der er nede i venstre hjørne af
@@ -12717,6 +12717,28 @@ body.ai-has-reply #ai-fab{animation:ai-nudge 1.4s ease-in-out 3}
 </div>
 
 <script>
+// v2.86.2 (Martin: "når jeg trykker åben i ny fane så skifter den over til den fane ... gør så
+// den bliver på samme fane og åbner en ny fane så skifter jeg selv"). Åbner interne links i en
+// BAGGRUNDSFANE ved at simulere Ctrl/Cmd-klik på et link (Chrome/Edge åbner så fanen uden at
+// skifte). Bruges af alle "Åbn i ny fane"-menuer og af alle interne links med target=_blank.
+(function(){
+  var mac=/Mac|iPhone|iPad/.test(navigator.platform||navigator.userAgent);
+  window.gmOpenBg=function(url){
+    var a=document.createElement('a');a.href=url;a.target='_blank';a.rel='noopener';a.setAttribute('data-gm-bg','1');
+    a.style.display='none';document.body.appendChild(a);
+    a.dispatchEvent(new MouseEvent('click',{bubbles:true,cancelable:true,view:window,ctrlKey:!mac,metaKey:mac,button:0}));
+    setTimeout(function(){a.remove();},0);
+  };
+  function internal(href){if(!href)return false;if(href.charAt(0)==='#')return true;try{var u=new URL(href,location.href);return u.origin===location.origin&&/^\/(admin|noter)?$/.test(u.pathname.replace(/\/$/,''))||u.origin===location.origin&&u.pathname===location.pathname;}catch(e){return false;}}
+  document.addEventListener('click',function(e){
+    if(!e.isTrusted||e.defaultPrevented||e.button!==0||e.ctrlKey||e.metaKey||e.shiftKey||e.altKey)return;
+    var a=e.target.closest&&e.target.closest('a[target="_blank"]');if(!a||a.hasAttribute('data-gm-bg'))return;
+    var href=a.getAttribute('href');if(!internal(href))return;
+    e.preventDefault();e.stopPropagation();window.gmOpenBg(a.href);
+  },true);
+})();
+</script>
+<script>
 (function(){'use strict';
 var API='',token=localStorage.getItem('gm_token'),me=JSON.parse(localStorage.getItem('gm_user')||'null');
 // Roller & adgang (sep. 2026): adgang til admin-panelet kræver enten role==='admin'
@@ -14569,7 +14591,7 @@ function tpBkMenu(id,x,y){
     {text:'Tilføj en medarbejder mere (samme dage)…',icon:'👥',onClick:function(){setTimeout(function(){tpAddPersonMenu(b,x,y);},0);}},
     {text:'Antal dage ('+b.days+')…',icon:'↔',onClick:async function(){var v=await gmPrompt('Hvor mange arbejdsdage?',String(b.days),'Antal dage');if(v==null)return;var n=parseFloat(String(v).replace(',','.'));if(!(n>0)){toast('Ugyldigt antal','⚠');return;}tpUpdate(id,{days:n});}},
     (function(){var n=TP.bk.filter(function(q){return String(q.gantt_task_id)===String(b.gantt_task_id);}).length,u=users.find(function(z){return +z.id===+b.user_id;});return n>1?{text:'Fjern '+(u?u.name:'medarbejderen')+' fra opgaven',icon:'✕',onClick:function(){tpRemove(id);}}:{text:'Tilbage til Gantt',icon:'↩',onClick:function(){tpRemove(id);}};})(),
-    t&&t.project_id?{text:'Åbn sagen',icon:'↗',onClick:function(){window.open('#project-detail/'+t.project_id,'_blank');}}:null
+    t&&t.project_id?{text:'Åbn sagen',icon:'↗',onClick:function(){gmOpenBg('#project-detail/'+t.project_id);}}:null
   ].filter(Boolean));},0);
 }
 function tpTaskMenu(tid,x,y){
@@ -14581,7 +14603,7 @@ function tpTaskMenu(tid,x,y){
   var items=[{label:true,text:'Læg på medarbejder · '+tpDayLbl(ds)+(len>1?' → '+tpDayLbl(tpAddWork(ds,len)):'')+' ('+len+' d)'}];
   list.forEach(function(o){items.push({icon:o.b?'🟠':'🟢',text:o.u.name+(o.b?' — '+o.b+' af '+Math.ceil(len)+' dage optaget':' — ledig')+(o.m?' · '+tpEmpTrade(o.u):''),onClick:function(){tpPlace(tid,o.u.id,ds);}});});
   items.push({sep:true});
-  if(t.project_id)items.push({text:'Åbn sagen',icon:'↗',onClick:function(){window.open('#project-detail/'+t.project_id,'_blank');}});
+  if(t.project_id)items.push({text:'Åbn sagen',icon:'↗',onClick:function(){gmOpenBg('#project-detail/'+t.project_id);}});
   setTimeout(function(){showCtxMenu(x,y,items);},0);
 }
 document.addEventListener('click',async function(e){
@@ -30927,7 +30949,7 @@ function crmCustomerCtxMenu(e,id){
   if(!c)return;
   showCtxMenu(e.clientX,e.clientY,[
     {icon:'👁',text:'Åbn kunden',onClick:function(){openCustomerDetail(c.id);}},
-    {icon:'🔗',text:'Åbn i ny fane',onClick:function(){window.open('#customer-detail/'+c.id,'_blank');}},
+    {icon:'🔗',text:'Åbn i ny fane',onClick:function(){gmOpenBg('#customer-detail/'+c.id);}},
     {sep:true},
     {icon:'✎',text:'Redigér',onClick:function(){openCrmModal(c.id);}},
     {sep:true},
@@ -31934,7 +31956,7 @@ function cdxOpenMailItem(id){
   setTimeout(function(){var it=document.querySelector('#cd-emails-list [data-email-id="'+row.id+'"]');if(it)it.scrollIntoView({behavior:'smooth',block:'center'});},60);
 }
 // v2.72.0 — handler, tilbud, fakturaer og sager fra kundesiden åbner i ny fane.
-function gmOpenTab(hash){var w=window.open(location.pathname+'#'+hash,'_blank');if(w)w.opener=null;}
+function gmOpenTab(hash){gmOpenBg(location.pathname+'#'+hash);}
 function cdxBind(){
   if(cdxBound)return;cdxBound=true;
   document.getElementById('cda-tabs').addEventListener('click',function(e){var b=e.target.closest('[data-cda-tab]');if(b)cdaSetTab(b.dataset.cdaTab);});
@@ -32689,7 +32711,7 @@ function crmpCardCtxMenu(e,type,id){
   if(!c||!pipeline)return;
   var items=[
     {icon:'👁',text:'Åbn',onClick:function(){openCrmpDetail(type,id);}},
-    {icon:'🔗',text:'Åbn i ny fane',onClick:function(){window.open('#crmp-detail/'+type+'/'+id,'_blank');}},
+    {icon:'🔗',text:'Åbn i ny fane',onClick:function(){gmOpenBg('#crmp-detail/'+type+'/'+id);}},
     {sep:true},{label:true,text:'Skift stadie'}
   ];
   crmpSortedStages(pipeline).forEach(function(s){
@@ -37308,7 +37330,7 @@ function pjCtxMenuItems(p){
   // på den rigtige sag.
   var items=[
     {icon:'👁',text:'Åbn sagen',onClick:function(){openProjectDetail(p.id);}},
-    {icon:'🔗',text:'Åbn i ny fane',onClick:function(){window.open('#project-detail/'+p.id,'_blank');}},
+    {icon:'🔗',text:'Åbn i ny fane',onClick:function(){gmOpenBg('#project-detail/'+p.id);}},
     {sep:true},{label:true,text:'Skift stadie'}
   ];
   pjAllStagesSorted().forEach(function(s){
@@ -39983,7 +40005,7 @@ function qzQuoteCtxMenu(e,id){
   if(!x)return;
   var items=[
     {icon:'👁',text:'Åbn tilbuddet',onClick:function(){location.hash='#quotes/tilbud/'+id;}},
-    {icon:'🔗',text:'Åbn i ny fane',onClick:function(){window.open('#quotes/tilbud/'+id,'_blank');}},
+    {icon:'🔗',text:'Åbn i ny fane',onClick:function(){gmOpenBg('#quotes/tilbud/'+id);}},
     {sep:true},
     {icon:'⧉',text:'Kopiér tilbud',onClick:function(){duplicateQzQuote(id);}},
     {sep:true},{label:true,text:'Skift status'}
@@ -42529,7 +42551,7 @@ function qzInvoiceCtxMenu(e,id){
   if(!x)return;
   var items=[
     {icon:'👁',text:'Åbn fakturaen',onClick:function(){location.hash='#qz-invoices/faktura/'+id;}},
-    {icon:'🔗',text:'Åbn i ny fane',onClick:function(){window.open('#qz-invoices/faktura/'+id,'_blank');}}
+    {icon:'🔗',text:'Åbn i ny fane',onClick:function(){gmOpenBg('#qz-invoices/faktura/'+id);}}
   ];
   if(x.status!=='void')items.push({sep:true},{icon:'🚫',text:'Annullér faktura',danger:true,onClick:function(){qzCtxVoidInvoice(id);}});
   showCtxMenu(e.clientX,e.clientY,items);
