@@ -26208,8 +26208,9 @@ function _rtParseBlocks(text) {
     }
     if ((m = numRe.exec(lines[i]))) {
       const items = [];
+      const start = parseInt(String(lines[i]).trim(), 10) || 1; // v2.86.3: behold det skrevne nummer (2., 3., …)
       while (i < lines.length && (m = numRe.exec(lines[i]))) { items.push(m[1]); i++; }
-      blocks.push({ type: 'ol', items });
+      blocks.push({ type: 'ol', items, start });
       continue;
     }
     const plain = [];
@@ -26279,17 +26280,21 @@ function drawRtBlocks(doc, blocks, x, y, width, font, boldFont, fontSize, color)
   blocks.forEach((b, bi) => {
     if (bi > 0) cy += RT_BLOCK_GAP;
     if (b.type === 'p') {
+      // v2.86.3 — meget lange beskrivelser (højere end en hel side) må brydes over flere sider
+      if (doc._gmBreak) cy = doc._gmBreak(cy, _rtLineHeight(doc, b.text, width, font, boldFont, fontSize));
       cy += _rtDrawLine(doc, b.text, x, cy, width, font, boldFont, fontSize, color);
     } else {
       const bw = width - RT_BULLET_W;
       b.items.forEach((item, ii) => {
         if (ii > 0) cy += RT_ITEM_GAP;
+        if (doc._gmBreak) cy = doc._gmBreak(cy, _rtLineHeight(doc, item, bw, font, boldFont, fontSize));
         doc.font(font).fontSize(fontSize).fillColor(color)
-          .text(b.type === 'ul' ? '•' : ((ii + 1) + '.'), x, cy, { width: RT_BULLET_W });
+          .text(b.type === 'ul' ? '•' : (((b.start || 1) + ii) + '.'), x, cy, { width: RT_BULLET_W });
         cy += _rtDrawLine(doc, item, x + RT_BULLET_W, cy, bw, font, boldFont, fontSize, color);
       });
     }
   });
+  doc._gmLastY = cy;
   return cy - y;
 }
 // HTML-udgaven (kunde-portal, se lineDescCellHtml nedenfor) — samme
@@ -26303,7 +26308,7 @@ function rtBlocksToHtml(blocks, escFn) {
   return blocks.map(b => {
     if (b.type === 'p') return inline(b.text).replace(/\n/g, '<br>');
     const tag = b.type === 'ul' ? 'ul' : 'ol';
-    return `<${tag} class="ln-rt-list">` + b.items.map(it => `<li>${inline(it)}</li>`).join('') + `</${tag}>`;
+    return `<${tag} class="ln-rt-list"${b.type === 'ol' && b.start > 1 ? ` start="${b.start}"` : ''}>` + b.items.map(it => `<li>${inline(it)}</li>`).join('') + `</${tag}>`;
   }).join('');
 }
 function richTextToHtml(text, escFn) {
@@ -26366,7 +26371,8 @@ function drawPdfLineDesc(doc, l, x, y, width) {
   let cy = y + doc.heightOfString(headingPlain, { width });
   if (p.rest) {
     cy += 3;
-    cy += drawRtBlocks(doc, _rtParseBlocks(p.rest), x, cy, width, 'DMSans', 'DMSans-Bold', 8.5, '#6B7280');
+    drawRtBlocks(doc, _rtParseBlocks(p.rest), x, cy, width, 'DMSans', 'DMSans-Bold', 8.5, '#6B7280');
+    cy = doc._gmLastY; // kan være på en ny side (se doc._gmBreak)
   }
   if (p.note) {
     const noteInnerWidth = width - 16;
@@ -26374,6 +26380,7 @@ function drawPdfLineDesc(doc, l, x, y, width) {
     const noteH = rtBlocksHeight(doc, noteBlocks, noteInnerWidth, 'DMSans-Italic', 'DMSans-BoldItalic', 8.5);
     const noteBoxH = NOTE_LABEL_H + noteH + 12;
     cy += 8;
+    if (doc._gmBreak) cy = doc._gmBreak(cy, noteBoxH);
     doc.roundedRect(x - 2, cy, width + 4, noteBoxH, 4).fill('#F9FAFB');
     doc.rect(x - 2, cy, 2, noteBoxH).fill('#9CA3AF');
     doc.font('DMSans-Bold').fontSize(6.5).fillColor('#9CA3AF').text('NOTE', x + 6, cy + 5, { characterSpacing: 0.4 });
@@ -26381,6 +26388,7 @@ function drawPdfLineDesc(doc, l, x, y, width) {
     cy += noteBoxH;
   }
   doc.font('DMSans').fontSize(9.5).fillColor('#111318');
+  doc._gmDescEnd = cy;
   return cy - y;
 }
 // RUNDE U (Martins ønske: "Note se tilbuddet når det bliver for stort/langt
@@ -26550,7 +26558,13 @@ function drawDocumentPdf(doc, kind, record, company, attachments) {
     const qtyHeight = doc.heightOfString(qtyText, { width: 52, align: 'right' });
     const discHeight = lineDiscRateLabel ? 22 : 0;
     const rowHeight = Math.max(nameHeight, qtyHeight, discHeight, 14) + 10;
-    y = ensurePdfSpace(doc, y, rowHeight, { ...ctx, redrawTableHeader: true });
+    // v2.86.3 (Martin: faktura til Mads blev 17 sider) — en linje hvis beskrivelse er
+    // HØJERE end en hel side kunne ikke flyttes til næste side; PDFKit lavede så selv
+    // en ny side for hvert punkt. Nu brydes sådan en linje pænt over flere sider.
+    const fullPage = PDF_PAGE_BOTTOM - (PDF_CONTINUATION_TOP + 20 + 32);
+    const splitRow = rowHeight > fullPage;
+    if (splitRow) { if (PDF_PAGE_BOTTOM - y < 120) y = ensurePdfSpace(doc, y, 9999, { ...ctx, redrawTableHeader: true }); }
+    else y = ensurePdfSpace(doc, y, rowHeight, { ...ctx, redrawTableHeader: true });
     doc.font('DMSans').fontSize(9.5).fillColor('#111318');
     doc.text(qtyText, 268, y, { width: 52, align: 'right' });
     if (lineDiscRateLabel) {
@@ -26562,8 +26576,14 @@ function drawDocumentPdf(doc, kind, record, company, attachments) {
     }
     doc.text(Math.round(Number(l.sell_price)).toLocaleString('da-DK') + ' kr', 390, y, { width: 70, align: 'right' });
     doc.text(Math.round(lineTotal).toLocaleString('da-DK') + ' kr', 465, y, { width: 75, align: 'right' });
-    drawPdfLineDesc(doc, l, 48, y, 220);
-    y += rowHeight;
+    if (splitRow) {
+      doc._gmBreak = (cy, h) => (cy + h <= PDF_PAGE_BOTTOM ? cy : ensurePdfSpace(doc, cy, 9999, { ...ctx, redrawTableHeader: true }));
+      try { drawPdfLineDesc(doc, l, 48, y, 220); } finally { doc._gmBreak = null; }
+      y = doc._gmDescEnd + 10;
+    } else {
+      drawPdfLineDesc(doc, l, 48, y, 220);
+      y += rowHeight;
+    }
     doc.moveTo(40, y - 5).lineTo(555, y - 5).strokeColor('#EEF0F3').stroke();
   });
 

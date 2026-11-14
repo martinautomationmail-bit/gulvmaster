@@ -5946,7 +5946,7 @@ body.tp-dragging,body.tp-dragging *{cursor:grabbing!important}
        i browseren faktisk ER det nyeste deploy, eller om Render/GitHub bare
        ikke er nået at opdatere endnu — i stedet for at skulle gætte om en
        rettelse "stadig ikke virker" eller bare endnu ikke er live. -->
-  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build v2.86.2 · 2026-11-02</span></div>
+  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build v2.86.3 · 2026-11-02</span></div>
 </aside>
 <div class="app-content">
 <!-- RUNDE FB — AI-ASSISTENTEN (Martin: "en ai der er nede i venstre hjørne af
@@ -30135,9 +30135,9 @@ function qzRtParseBlocks(text){
       continue;
     }
     if((m=numRe.exec(lines[i]))){
-      var items2=[];
+      var items2=[],st=parseInt(String(lines[i]).trim(),10)||1;
       while(i<lines.length&&(m=numRe.exec(lines[i]))){items2.push(m[1]);i++;}
-      blocks.push({type:'ol',items:items2});
+      blocks.push({type:'ol',items:items2,start:st});
       continue;
     }
     var plain=[];
@@ -30153,7 +30153,7 @@ function qzRichTextHtml(text){
   return qzRtParseBlocks(s).map(function(b){
     if(b.type==='p')return inline(b.text).replace(/\n/g,'<br>');
     var tag=b.type==='ul'?'ul':'ol';
-    return '<'+tag+' class="ln-rt-list">'+b.items.map(function(it){return '<li>'+inline(it)+'</li>';}).join('')+'</'+tag+'>';
+    return '<'+tag+' class="ln-rt-list"'+(b.type==='ol'&&b.start>1?' start="'+b.start+'"':'')+'>'+b.items.map(function(it){return '<li>'+inline(it)+'</li>';}).join('')+'</'+tag+'>';
   }).join('');
 }
 // Overskriften (1. linje af description) er ALTID vist fed (egen CSS-regel,
