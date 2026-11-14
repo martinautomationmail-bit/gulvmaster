@@ -5993,7 +5993,7 @@ body.tp-dragging,body.tp-dragging *{cursor:grabbing!important}
        i browseren faktisk ER det nyeste deploy, eller om Render/GitHub bare
        ikke er nået at opdatere endnu — i stedet for at skulle gætte om en
        rettelse "stadig ikke virker" eller bare endnu ikke er live. -->
-  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build v2.89.4 · 2026-11-02</span></div>
+  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build v2.89.5 · 2026-11-02</span></div>
 </aside>
 <div class="app-content">
 <!-- RUNDE FB — AI-ASSISTENTEN (Martin: "en ai der er nede i venstre hjørne af
@@ -7351,7 +7351,7 @@ body.ai-has-reply #ai-fab{animation:ai-nudge 1.4s ease-in-out 3}
       <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:16px;margin-bottom:16px">
         <div>
           <div style="font-size:19px;font-weight:800;color:var(--bly-ink)">📊 Profit-analyse</div>
-          <div class="fin-muted" style="font-size:11px;margin-top:2px">Fast snapshot pr. måned (tages automatisk d. 15.) — så du kan sammenligne måned for måned</div>
+          <div class="fin-muted" style="font-size:11px;margin-top:2px">Fast snapshot pr. måned (tages automatisk d. 15.). Bundlinje = cash + udestående fakturaer + mangler at fakturere − ubetalte udgifter − ubetalt moms</div>
         </div>
         <button class="bly-btn outline small" id="fin-profit-save-now">💾 Gem snapshot nu</button>
       </div>
@@ -22911,10 +22911,10 @@ async function loadProfitSnapshots(){
         '<span style="text-align:right"><button type="button" class="pf-del" title="Slet dette snapshot" data-pf-del="'+r.month_key+'">🗑</button></span></div>'+
         '<div class="pf-det">'+
           kv('Cash i banken',r.bank_cash!=null?krFmt(r.bank_cash):'–','#15803D')+
-          kv('Fakturaer sendt','+'+krFmt(r.invoices_sent),'#15803D')+
-          kv('Skal sendes','+'+krFmt(r.invoices_pending),'#B45309')+
-          kv('Udgifter','−'+krFmt(r.expenses),'#DC2626')+
-          kv('Moms (forventet)','−'+krFmt(r.expected_moms||0),'#DC2626')+
+          kv(+r.formula===2?'Udestående fakturaer':'Fakturaer sendt','+'+krFmt(r.invoices_sent),'#15803D')+
+          kv(+r.formula===2?'Mangler at fakturere':'Skal sendes','+'+krFmt(r.invoices_pending),'#B45309')+
+          kv(+r.formula===2?'Udgifter ikke betalt':'Udgifter','−'+krFmt(r.expenses),'#DC2626')+
+          kv(+r.formula===2&&+r.moms_paid?'Moms (betalt ✓)':'Moms (forventet)','−'+krFmt(r.expected_moms||0),'#DC2626')+
           '<div class="pf-kv pf-sum"><span>Bundlinje</span><b>'+krFmt(bl)+'</b></div>'+
         '</div></div>';
     }).join('')+'</div><div class="fin-muted" style="font-size:11.5px;margin-top:10px">Klik på en måned for at se hvordan bundlinjen er regnet ud</div>';
@@ -23156,6 +23156,10 @@ async function renderFinMomsCard(){
     }
     finMomsPaidCache=null;
     renderFinMomsCard();
+    // v2.89.5: Profit-analysen modregner kun moms der ikke er betalt — opdatér
+    // indeværende måneds snapshot, hvis der allerede er taget et.
+    try{var cm=new Date().toISOString().slice(0,7);var snaps=await api('/api/finance/profit-snapshots')||[];
+      if(snaps.some(function(x){return x.month_key===cm;})){await api('/api/finance/profit-snapshots/save-now',{method:'POST'});loadProfitSnapshots();}}catch(e){}
   });
   var amtEl=document.getElementById('fin-moms-amount');
   if(!amtEl)return;

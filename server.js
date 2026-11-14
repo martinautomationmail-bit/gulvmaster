@@ -555,6 +555,8 @@ async function initSchema() {
       created_at TEXT DEFAULT ${nowTextSQL()},
       updated_at TEXT DEFAULT ${nowTextSQL()}
     );
+    ALTER TABLE profit_snapshots ADD COLUMN IF NOT EXISTS formula INTEGER DEFAULT 1;
+    ALTER TABLE profit_snapshots ADD COLUMN IF NOT EXISTS moms_paid INTEGER DEFAULT 0;
     -- Bagudgående måneders "rigtige" udgiftstal — Martin uploader en bank-CSV/Excel
     -- PR. MÅNED (adskilt fra den løbende bankafstemnings-session ovenfor, som kun
     -- husker den nyeste fil og bruges til fakturamatching). Her gemmes hver måneds
@@ -5634,6 +5636,16 @@ async function migrateShiftExpensesBackOneMonth() {
     console.log('Udgifter rykket én måned tilbage: ' + (r.rowCount || 0) + ' poster.');
   } catch (e) { try { await client.query('ROLLBACK'); } catch (_) {} console.error('migrateShiftExpensesBackOneMonth fejlede:', e.message); }
   finally { client.release(); }
+}
+async function migrateProfitSnapshotFormula2() {
+  try {
+    const name = 'profit_snapshot_formula2_20261114';
+    if (await pgOne('SELECT 1 FROM app_migrations WHERE name=$1', [name])) return;
+    const mk = new Date().toISOString().slice(0, 7);
+    let redone = 0;
+    if (await pgOne('SELECT 1 FROM profit_snapshots WHERE month_key=$1', [mk])) { await saveMonthlyProfitSnapshot(); redone = 1; }
+    await pool.query('INSERT INTO app_migrations (name, details) VALUES ($1, $2)', [name, JSON.stringify({ redone })]);
+  } catch (e) { console.error('migrateProfitSnapshotFormula2 fejlede:', e.message); }
 }
 async function migrateMartinBToKontor() {
   try {
@@ -23707,47 +23719,55 @@ function nextVatDeadlineServer() {
 // kvartal"-logik (nextVatDeadlineServer ovenfor), så tallet her altid matcher
 // Moms-kortet, uanset hvilken måneds snapshot der gemmes.
 async function computeMonthlyProfitSnapshot() {
+  // v2.89.5 (Martin: "tror ikke profit analysen er korrekt ... Faktura 453.080, mangler
+  // at fakturere denne måned 1.457.923, mangler at betale 797.839, moms") — ny formel,
+  // så intet tælles dobbelt med det der allerede står i banken:
+  //   Bundlinje = cash i banken
+  //             + udestående fakturaer (sendt, ikke betalt — inkl. rest på delvist betalte)
+  //             + mangler at fakturere i måneden (Tidslinjens omsætning − faktureret)
+  //             − udgifter der IKKE er krydset af som betalt
+  //             − moms for det kvartal der skal betales næste gang, KUN hvis det ikke
+  //               er markeret betalt på Moms-kortet.
   const monthKey = new Date().toISOString().slice(0, 7);
-
-  const expRow = await pgOne('SELECT COALESCE(SUM(amount),0)::float AS total FROM finance_expenses WHERE month_key=$1', [monthKey]);
-  const expenses = expRow ? expRow.total : 0;
+  const expRow = await pgOne('SELECT COALESCE(SUM(amount) FILTER (WHERE COALESCE(paid,0)=0),0)::float AS unpaid FROM finance_expenses WHERE month_key=$1', [monthKey]);
+  const expenses = expRow ? expRow.unpaid : 0;
 
   const bankSnap = await pgOne('SELECT * FROM finance_bank_snapshots ORDER BY snap_date DESC LIMIT 1');
   const bankCash = bankSnap ? (Number(bankSnap.hovedkonto) || 0) + (Number(bankSnap.moms) || 0) + (Number(bankSnap.forbrug) || 0) : null;
 
   const invoices = await fetchFinanceInvoices();
-  const invoicesSent = invoices
-    .filter(i => i.createdAt && i.createdAt.slice(0, 7) === monthKey)
-    .reduce((s, i) => s + (i.priceWithTax || 0), 0);
+  const invoicesSent = invoices.reduce((s, i) => {
+    if (i.overrideStatus === 'unpaid') return s + (i.priceWithTax || 0);
+    if (i.overrideStatus === 'partial') return s + (i.remaining != null ? i.remaining : Math.max(0, (i.priceWithTax || 0) - (i.paidAmount || 0)));
+    return s;
+  }, 0);
 
   const revenue = await fetchFinanceJobsByMonth(0, 0);
-  const monthJobs = (revenue[monthKey] && revenue[monthKey].jobs) || [];
-  const invoicesPending = monthJobs
-    .filter(j => j.valueSource !== 'invoice')
-    .reduce((s, j) => s + (j.value || 0), 0);
+  const m = revenue[monthKey] || {};
+  const invoicesPending = Math.max(0, (Number(m.total) || 0) - (Number(m.invoiced) || 0));
 
-  // Forventet moms — nøjagtig samme kvartal og formel som Moms-kortet (se
-  // RUNDE DL-kommentaren ovenfor): det NÆSTE ubetalte kvartals fulde 25%-af-
-  // faktureret-estimat, ikke blot denne måneds eget kvartal til dato.
   const vatInfo = nextVatDeadlineServer();
-  const quarterMonthKeys = [0, 1, 2].map(i => `${vatInfo.year}-${String(vatInfo.startMonth + i + 1).padStart(2, '0')}`);
-  const quarterTotal = invoices
-    .filter(i => i.createdAt && quarterMonthKeys.includes(i.createdAt.slice(0, 7)))
-    .reduce((s, i) => s + (i.priceWithTax || 0), 0);
-  const expectedMoms = quarterTotal * 0.25;
+  const momsPaid = await pgOne('SELECT 1 FROM finance_moms_payments WHERE year=$1 AND quarter=$2', [vatInfo.year, vatInfo.q]).catch(() => null);
+  let expectedMoms = 0;
+  if (!momsPaid) {
+    const quarterMonthKeys = [0, 1, 2].map(i => `${vatInfo.year}-${String(vatInfo.startMonth + i + 1).padStart(2, '0')}`);
+    const quarterTotal = invoices
+      .filter(i => i.createdAt && quarterMonthKeys.includes(i.createdAt.slice(0, 7)))
+      .reduce((s, i) => s + (i.priceWithTax || 0), 0);
+    expectedMoms = quarterTotal * 0.25; // samme formel som Moms-kortet
+  }
 
   const bottomLine = (bankCash || 0) + invoicesSent + invoicesPending - expenses - expectedMoms;
-
-  return { monthKey, expenses, bankCash, invoicesSent, invoicesPending, expectedMoms, bottomLine };
+  return { monthKey, expenses, bankCash, invoicesSent, invoicesPending, expectedMoms, bottomLine, momsPaid: !!momsPaid, formula: 2 };
 }
 async function saveMonthlyProfitSnapshot() {
   const snap = await computeMonthlyProfitSnapshot();
   const today = new Date().toISOString().slice(0, 10);
   await pool.query(`
-    INSERT INTO profit_snapshots (month_key,snap_date,expenses,bank_cash,invoices_sent,invoices_pending,expected_moms,bottom_line,updated_at)
-    VALUES ($1,$2,$3,$4,$5,$6,$7,$8,${nowTextSQL()})
-    ON CONFLICT (month_key) DO UPDATE SET snap_date=$2,expenses=$3,bank_cash=$4,invoices_sent=$5,invoices_pending=$6,expected_moms=$7,bottom_line=$8,updated_at=${nowTextSQL()}
-  `, [snap.monthKey, today, snap.expenses, snap.bankCash, snap.invoicesSent, snap.invoicesPending, snap.expectedMoms, snap.bottomLine]);
+    INSERT INTO profit_snapshots (month_key,snap_date,expenses,bank_cash,invoices_sent,invoices_pending,expected_moms,bottom_line,formula,moms_paid,updated_at)
+    VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,${nowTextSQL()})
+    ON CONFLICT (month_key) DO UPDATE SET snap_date=$2,expenses=$3,bank_cash=$4,invoices_sent=$5,invoices_pending=$6,expected_moms=$7,bottom_line=$8,formula=$9,moms_paid=$10,updated_at=${nowTextSQL()}
+  `, [snap.monthKey, today, snap.expenses, snap.bankCash, snap.invoicesSent, snap.invoicesPending, snap.expectedMoms, snap.bottomLine, snap.formula, snap.momsPaid ? 1 : 0]);
   return snap;
 }
 app.get('/api/finance/profit-snapshots', auth, panelAccess('finance'), asyncRoute(async (req, res) => {
@@ -30632,6 +30652,7 @@ async function start() {
   await migrateReopenPartlyInvoicedQuotes();
   await migrateMartinBToKontor();
   await migrateShiftExpensesBackOneMonth();
+  migrateProfitSnapshotFormula2();
   await backfillBankUploadHistory();
   await migrateNotPerformedStage();
   await migrateSubcontractorCosts();
