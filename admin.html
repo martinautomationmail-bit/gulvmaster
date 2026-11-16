@@ -6014,7 +6014,7 @@ body.tp-dragging,body.tp-dragging *{cursor:grabbing!important}
        i browseren faktisk ER det nyeste deploy, eller om Render/GitHub bare
        ikke er nået at opdatere endnu — i stedet for at skulle gætte om en
        rettelse "stadig ikke virker" eller bare endnu ikke er live. -->
-  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build v2.89.7 · 2026-11-02</span></div>
+  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build v2.89.8 · 2026-11-02</span></div>
 </aside>
 <div class="app-content">
 <!-- RUNDE FB — AI-ASSISTENTEN (Martin: "en ai der er nede i venstre hjørne af
@@ -18495,6 +18495,22 @@ async function handleDrop(e,zone){
       // liggende uændret. Gælder ikke Tidslinjen (sin egen, bevidst
       // "flyt hele perioden"-semantik) og ikke kapacitetsreservationer (de
       // håndteres allerede separat ovenfor via handleCapacityDrop/isCapacityBooking).
+      // v2.89.8 (Martin: "når man vil flytte alle 4 dage over på en anden er det fint
+      // den bare tager alle 4 i stedet for at breake den") — slippes en flerdages
+      // opgave hos en ANDEN medarbejder, flyttes HELE opgaven (alle dage), så den
+      // dag man greb lander på den dag man slipper. Hos SAMME medarbejder flyttes
+      // stadig kun den ene dag. Hold ⌥/Alt nede ved slip for kun at flytte én dag
+      // over til en anden medarbejder.
+      var wholeToOther=!onTimeline&&!isCapacityBooking(b)&&planWorkDates(b).length>1&&+b.user_id!==uid&&!e.altKey;
+      if(wholeToOther){
+        var od=(p.originDate&&planWorkDates(b).indexOf(p.originDate)>-1)?p.originDate:b.start_date;
+        var dlt=daysBetween(date(od),date(ds));
+        var ns=iso(add(date(b.start_date),dlt)),ne=iso(add(date(b.end_date||b.start_date),dlt));
+        var rAll=await api('/api/assignments/'+b.id,{method:'PUT',body:JSON.stringify({user_id:uid,start_date:ns,end_date:ne,days:b.days,start_time:b.start_time})});
+        if(rAll&&rAll.ok){toast('Hele opgaven ('+planWorkDates(b).length+' dage) er flyttet · hold ⌥ nede for kun at flytte én dag','↔');await loadAll();}
+        else if(rAll)toast(rAll.error||'Fejl','❌');
+        return;
+      }
       if(!onTimeline&&!isCapacityBooking(b)&&planWorkDates(b).length>1){
         var originDate=(p.originDate&&planWorkDates(b).indexOf(p.originDate)>-1)?p.originDate:b.start_date;
         var rMove=await api('/api/assignments/'+b.id+'/move-day',{method:'PUT',body:JSON.stringify({origin_date:originDate,user_id:uid,start_date:ds})});
