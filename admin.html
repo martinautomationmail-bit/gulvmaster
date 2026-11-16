@@ -691,6 +691,27 @@ input.bly-search-lg{padding:13px 16px 13px 40px;font-size:14px;background-size:1
 .pf-sum{border-top:1px dashed var(--bly-border)}
 .pf-sum b{color:var(--bly-ink);font-weight:800}
 @media(max-width:700px){.pf-row{grid-template-columns:80px minmax(0,1fr) 100px 0 30px}.pf-row>span:nth-child(4){display:none}.pf-det{grid-template-columns:1fr}}
+.vf-head{font-size:13px;color:var(--bly-sub);margin-bottom:6px}
+.vf-head b{color:var(--bly-ink)}
+.vf-grid{display:grid;grid-template-columns:1fr 1fr;gap:4px 16px}
+.vf-field.wide{grid-column:1/-1}
+.vf-field .form-label{margin-top:10px}
+.vf-field.missing .input{border-color:#DC2626}
+.vf-help{font-size:11.5px;color:var(--bly-sub);margin:-2px 0 6px}
+.vf-heading{grid-column:1/-1;margin-top:14px;padding-top:10px;border-top:1px solid var(--bly-border-soft)}
+.vf-choices{display:flex;flex-wrap:wrap;gap:6px}
+.vf-choice{display:flex;align-items:center;gap:6px;font-size:13px;padding:6px 10px;border:1px solid var(--bly-border);border-radius:8px;cursor:pointer}
+.vf-drop{border:2px dashed var(--bly-border);border-radius:12px;padding:12px;transition:background .15s,border-color .15s}
+.vf-drop.over{background:#EEF2FF;border-color:#6366F1}
+.vf-photos{display:grid;grid-template-columns:repeat(auto-fill,minmax(92px,1fr));gap:8px}
+.vf-photos:empty{display:none}
+.vf-ph{position:relative;aspect-ratio:1;border-radius:8px;overflow:hidden;background:#F1F5F9}
+.vf-ph img{width:100%;height:100%;object-fit:cover;display:block}
+.vf-ph.new{outline:2px solid #6366F1;outline-offset:-2px}
+.vf-ph button{position:absolute;top:4px;right:4px;width:22px;height:22px;border-radius:50%;border:0;background:rgba(0,0,0,.6);color:#fff;cursor:pointer;font-size:11px}
+.vf-drop-hint{font-size:12.5px;color:var(--bly-sub);text-align:center;padding:8px 0 2px}
+.vf-photos:not(:empty)+.vf-drop-hint{padding-top:10px}
+@media(max-width:640px){.vf-grid{grid-template-columns:1fr}}
 .fin-fagrev-cols{display:flex;gap:18px;justify-content:space-between}
 .fin-fagrev-ringcol{flex:1;min-width:0;display:flex;flex-direction:column;align-items:center;text-align:center;gap:10px}
 .fin-fagrev-ring{position:relative;width:100%;max-width:120px;aspect-ratio:1/1;border-radius:50%}
@@ -5993,7 +6014,7 @@ body.tp-dragging,body.tp-dragging *{cursor:grabbing!important}
        i browseren faktisk ER det nyeste deploy, eller om Render/GitHub bare
        ikke er nået at opdatere endnu — i stedet for at skulle gætte om en
        rettelse "stadig ikke virker" eller bare endnu ikke er live. -->
-  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build v2.89.6 · 2026-11-02</span></div>
+  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build v2.89.7 · 2026-11-02</span></div>
 </aside>
 <div class="app-content">
 <!-- RUNDE FB — AI-ASSISTENTEN (Martin: "en ai der er nede i venstre hjørne af
@@ -11586,30 +11607,21 @@ body.ai-has-reply #ai-fab{animation:ai-nudge 1.4s ease-in-out 3}
 
 <!-- BESØGSFORMULAR (fast, udfyldes efter besøget) -->
 <div class="mo" id="visit-form-modal">
-  <div class="modal manual-modal-modern" style="max-width:640px">
+  <div class="modal manual-modal-modern" style="width:min(720px,94vw);max-width:720px;max-height:92vh;overflow:auto">
     <div class="manual-modal-head">
       <span class="manual-modal-icon">📋</span>
       <div><div class="manual-modal-title">Besøgsformular</div><div class="manual-modal-sub">Udfyld efter kundebesøget, så alt er samlet ét sted</div></div>
     </div>
     <div class="modal-body-pad">
-      <div class="form-row">
-        <div class="form-group"><label class="form-label">Kundens navn</label><input id="vf-name" class="input"></div>
-        <div class="form-group"><label class="form-label">Telefon</label><input id="vf-phone" class="input"></div>
+      <div id="vf-head" class="vf-head"></div>
+      <div id="vf-fields"></div>
+      <label class="form-label" style="margin-top:14px">Billeder fra besøget</label>
+      <div id="vf-drop" class="vf-drop">
+        <div id="vf-photos" class="vf-photos"></div>
+        <div class="vf-drop-hint">Træk billeder herind, sæt ind med ⌘V, eller <a href="#" id="vf-pick">vælg filer</a> · max 20</div>
+        <input type="file" id="vf-file" accept="image/*" multiple style="display:none">
       </div>
-      <div class="form-row">
-        <div class="form-group"><label class="form-label">Adresse</label><input id="vf-address" class="input"></div>
-        <div class="form-group"><label class="form-label">E-mail <span class="opt-tag">valgfrit</span></label><input id="vf-email" class="input"></div>
-      </div>
-      <div class="form-row">
-        <div class="form-group"><label class="form-label">Rummets størrelse</label><input id="vf-room-size" class="input" placeholder="Fx 24 m²"></div>
-        <div class="form-group"><label class="form-label">Ønsket gulvtype</label><input id="vf-floor-type" class="input" placeholder="Fx eg plankegulv, olieret"></div>
-      </div>
-      <label class="form-label">Observationer / noter fra besøget</label>
-      <textarea id="vf-notes" class="input" rows="3" placeholder="Fx underlagets stand, fugt, niveauforskelle, adgangsforhold"></textarea>
-      <label class="form-label" style="margin-top:12px">Anbefalet løsning</label>
-      <textarea id="vf-solution" class="input" rows="2" placeholder="Hvad anbefaler I kunden?"></textarea>
-      <label class="form-label" style="margin-top:12px">Estimeret pris <span class="opt-tag">valgfrit</span></label>
-      <input id="vf-price" class="input" placeholder="Fx 18.000 - 22.000 kr.">
+      <div id="vf-err" style="display:none;color:#B91C1C;font-size:12.5px;font-weight:600;margin-top:10px"></div>
     </div>
     <div class="modal-actions">
       <button class="btn" id="close-visit-form">Luk</button>
@@ -17918,6 +17930,7 @@ function openAssign(ctx){
   var primaryName=t?esc(t.customer_name||t.job_name||t.name):'';
   document.getElementById('assign-info').innerHTML=t?('<strong>'+primaryName+'</strong>'+(t.job_number?' <span style="opacity:.7">· Sag #'+esc(t.job_number)+'</span>':'')+caseLink+'<br>'+esc(t.name||'')):'<strong>Vælg en task fra opgavepoolen.</strong>';
   assignLoadQuotes(taskId);
+  if(t&&t.is_visit){document.getElementById('assign-info').insertAdjacentHTML('beforeend','<button type="button" class="btn small" style="margin-top:10px;width:100%;justify-content:center" onclick="closeModal(\'assign-modal\');openVisitFormModal(\''+String(t.id).replace(/'/g,'')+'\')">📋 Udfyld besøgsformular</button>');}
   document.getElementById('assign-address').value=t?(t.job_address||''):'';
   document.getElementById('assign-phone').value=t?(t.customer_phone||''):'';
   document.getElementById('assign-ref').value=t?(t.start_date||'—'):'—';
@@ -18785,42 +18798,123 @@ async function saveVisitBooking(){
   } else if(r)toast(r.error||'Fejl','❌');
 }
 var visitFormTaskId=null;
+// v2.89.7 (Martin: "kan du ikke gøre så jeg kan udfylde skemaet på kundebesøget på
+// computeren her også ... jeg skriver meget hurtigere her og kan hente billederne fra
+// Fotos") — admin-formularen bruger nu PRÆCIS samme felter som medarbejder-appens
+// besøgsrapport (GET /api/visit-report-fields, inkl. Martins egne felter) og kan
+// tage billeder: træk-og-slip, ⌘V eller filvælger. Gemmes i customer_visits som før.
+var vfExisting=null,vfPhotos=[],vfNewFiles=[],vfCustom={};
+function vfFieldHtml(f,rawVal){
+  var val=rawVal==null?'':String(rawVal);
+  if(f.type==='heading')return '<div class="vf-heading"><b>'+esc(f.label)+'</b>'+(f.help?'<div class="vf-help">'+esc(f.help)+'</div>':'')+'</div>';
+  var id='vff-'+String(f.key).replace(/[^a-zA-Z0-9_-]/g,'');
+  var ph=f.placeholder?' placeholder="'+esc(f.placeholder)+'"':'';
+  var input='';
+  if(f.type==='textarea')input='<textarea id="'+id+'" class="input vf-in" rows="'+(f.key==='notes'?5:3)+'"'+ph+'>'+esc(val)+'</textarea>';
+  else if(f.type==='number')input='<div style="display:flex;align-items:center;gap:8px"><input id="'+id+'" class="input vf-in" inputmode="decimal"'+ph+' value="'+esc(val)+'">'+(f.unit?'<span class="fin-muted">'+esc(f.unit)+'</span>':'')+'</div>';
+  else if(f.type==='date')input='<input id="'+id+'" class="input vf-in" type="date" value="'+esc(val)+'">';
+  else if(f.type==='select'){var opts=(f.options||[]).slice();if(val&&opts.indexOf(val)<0)opts.push(val);
+    input='<select id="'+id+'" class="input vf-in"><option value="">'+esc(f.placeholder||'Vælg…')+'</option>'+opts.map(function(o){return '<option'+(o===val?' selected':'')+'>'+esc(o)+'</option>';}).join('')+'</select>';}
+  else if(f.type==='checkboxes'){var picked=val.split(';').map(function(x){return x.trim();}).filter(Boolean),all=(f.options||[]).slice();picked.forEach(function(p){if(all.indexOf(p)<0)all.push(p);});
+    input='<div class="vf-choices">'+all.map(function(o){return '<label class="vf-choice"><input type="checkbox" value="'+esc(o)+'"'+(picked.indexOf(o)>-1?' checked':'')+'>'+esc(o)+'</label>';}).join('')+'</div>';}
+  else if(f.type==='yesno')input='<div class="vf-choices">'+['Ja','Nej'].map(function(o){return '<label class="vf-choice"><input type="radio" name="'+id+'" value="'+o+'"'+(val===o?' checked':'')+'>'+o+'</label>';}).join('')+'</div>';
+  else input='<input id="'+id+'" class="input vf-in"'+ph+' value="'+esc(val)+'">';
+  var wide=(f.type==='textarea'||f.type==='checkboxes'||f.type==='heading');
+  return '<div class="vf-field'+(wide?' wide':'')+'" data-key="'+esc(f.key)+'" data-builtin="'+(f.builtin?1:0)+'" data-type="'+esc(f.type)+'" data-required="'+(f.required?1:0)+'" data-label="'+esc(f.label)+'"><label class="form-label">'+esc(f.label)+(f.required?' <span style="color:#DC2626">*</span>':'')+'</label>'+(f.help?'<div class="vf-help">'+esc(f.help)+'</div>':'')+input+'</div>';
+}
+function vfRead(w){
+  var t=w.dataset.type;
+  if(t==='checkboxes')return [].slice.call(w.querySelectorAll('input[type=checkbox]:checked')).map(function(c){return c.value;}).join('; ');
+  if(t==='yesno'){var r=w.querySelector('input[type=radio]:checked');return r?r.value:'';}
+  var el=w.querySelector('.vf-in');return el?el.value:'';
+}
+function vfRenderPhotos(){
+  var g=document.getElementById('vf-photos');
+  g.innerHTML=vfPhotos.map(function(u,i){return '<div class="vf-ph"><img src="'+esc(u)+'"><button type="button" data-vf-del="e'+i+'">✕</button></div>';}).join('')
+    +vfNewFiles.map(function(o,i){return '<div class="vf-ph new"><img src="'+o.url+'"><button type="button" data-vf-del="n'+i+'">✕</button></div>';}).join('');
+  g.querySelectorAll('[data-vf-del]').forEach(function(b){b.onclick=function(){var k=b.dataset.vfDel,i=+k.slice(1);
+    if(k[0]==='e')vfPhotos.splice(i,1);else{try{URL.revokeObjectURL(vfNewFiles[i].url);}catch(e){}vfNewFiles.splice(i,1);}vfRenderPhotos();};});
+}
+function vfAddFiles(list){
+  var files=[].slice.call(list||[]).filter(function(f){return f.type&&f.type.indexOf('image/')===0;});
+  files.forEach(function(f){if(vfPhotos.length+vfNewFiles.length<20)vfNewFiles.push({file:f,url:URL.createObjectURL(f)});});
+  if(files.length&&vfPhotos.length+vfNewFiles.length>=20)toast('Max 20 billeder pr. besøg','⚠');
+  vfRenderPhotos();
+}
+function vfShrink(file){
+  return new Promise(function(resolve,reject){
+    var img=new Image(),u=URL.createObjectURL(file);
+    img.onload=function(){URL.revokeObjectURL(u);var m=1600,w=img.naturalWidth,h=img.naturalHeight,sc=Math.min(1,m/Math.max(w,h));
+      var c=document.createElement('canvas');c.width=Math.round(w*sc);c.height=Math.round(h*sc);c.getContext('2d').drawImage(img,0,0,c.width,c.height);resolve(c.toDataURL('image/jpeg',0.85));};
+    img.onerror=function(){var r=new FileReader();r.onload=function(){resolve(r.result);};r.onerror=reject;r.readAsDataURL(file);};
+    img.src=u;
+  });
+}
 async function openVisitFormModal(taskId){
   visitFormTaskId=taskId;
-  var t=tasks.find(function(x){return x.id===taskId;});
-  ['vf-name','vf-phone','vf-address','vf-email','vf-room-size','vf-floor-type','vf-notes','vf-solution','vf-price'].forEach(function(id){document.getElementById(id).value='';});
-  if(t){document.getElementById('vf-name').value=t.job_name||'';document.getElementById('vf-phone').value=t.customer_phone||'';document.getElementById('vf-address').value=t.job_address||'';}
-  var existing=await api('/api/customer-visits/'+encodeURIComponent(taskId));
-  if(existing){
-    document.getElementById('vf-name').value=existing.customer_name||(t?t.job_name:'')||'';
-    document.getElementById('vf-phone').value=existing.phone||'';
-    document.getElementById('vf-address').value=existing.address||'';
-    document.getElementById('vf-email').value=existing.email||'';
-    document.getElementById('vf-room-size').value=existing.room_size||'';
-    document.getElementById('vf-floor-type').value=existing.floor_type_wanted||'';
-    document.getElementById('vf-notes').value=existing.notes||'';
-    document.getElementById('vf-solution').value=existing.recommended_solution||'';
-    document.getElementById('vf-price').value=existing.estimated_price||'';
-  }
+  var t=tasks.find(function(x){return String(x.id)===String(taskId);});
+  vfNewFiles.forEach(function(o){try{URL.revokeObjectURL(o.url);}catch(e){}});vfNewFiles=[];vfPhotos=[];
+  document.getElementById('vf-err').style.display='none';
+  document.getElementById('vf-fields').innerHTML='<div class="fin-muted" style="padding:20px 0">Henter formularen…</div>';
+  document.getElementById('vf-head').innerHTML=t?('<b>'+esc(t.customer_name||t.job_name||'')+'</b>'+(t.job_address?' · '+esc(t.job_address):'')+(t.customer_phone?' · '+esc(t.customer_phone):'')):'';
   document.getElementById('visit-form-modal').classList.add('open');
+  var fr=await api('/api/visit-report-fields'),ex=await api('/api/customer-visits/'+encodeURIComponent(taskId));
+  vfExisting=ex&&!ex.error?ex:null;
+  var fields=((fr&&fr.fields)||[]);
+  var vt=(vfExisting&&vfExisting.visit_type)==='kvalitetskontrol'?'kvalitetskontrol':'kundebesog';
+  fields=fields.filter(function(f){return f.active&&(!f.applies_to||f.applies_to==='both'||f.applies_to===vt);});
+  vfCustom=(vfExisting&&vfExisting.custom_fields&&typeof vfExisting.custom_fields==='object')?Object.assign({},vfExisting.custom_fields):{};
+  var defaults={customer_name:t&&(t.customer_name||t.job_name),phone:t&&t.customer_phone,address:t&&t.job_address};
+  document.getElementById('vf-fields').innerHTML='<div class="vf-grid">'+fields.map(function(f){
+    var raw=f.builtin?((vfExisting&&vfExisting[f.key])||defaults[f.key]||''):(vfCustom[f.key]||'');return vfFieldHtml(f,raw);}).join('')+'</div>';
+  vfPhotos=vfExisting&&Array.isArray(vfExisting.photo_urls)?vfExisting.photo_urls.slice():[];
+  vfRenderPhotos();
+  var first=document.querySelector('#vf-fields .vf-in');if(first)first.focus();
 }
+window.openVisitFormModal=function(id){return openVisitFormModal(id);};
 async function saveVisitForm(){
   if(!visitFormTaskId)return;
-  var body={
-    customer_name:document.getElementById('vf-name').value.trim(),
-    phone:document.getElementById('vf-phone').value.trim(),
-    address:document.getElementById('vf-address').value.trim(),
-    email:document.getElementById('vf-email').value.trim(),
-    room_size:document.getElementById('vf-room-size').value.trim(),
-    floor_type_wanted:document.getElementById('vf-floor-type').value.trim(),
-    notes:document.getElementById('vf-notes').value,
-    recommended_solution:document.getElementById('vf-solution').value,
-    estimated_price:document.getElementById('vf-price').value.trim()
-  };
-  var r=await api('/api/customer-visits/'+encodeURIComponent(visitFormTaskId),{method:'PUT',body:JSON.stringify(body)});
-  if(r&&r.ok){toast('Besøgsformular gemt ✓','✓');closeModal('visit-form-modal');await loadAll();}
-  else if(r)toast(r.error||'Fejl','❌');
+  var err=document.getElementById('vf-err'),builtin={},custom=Object.assign({},vfCustom),missing=[];
+  document.querySelectorAll('#vf-fields .vf-field[data-key]').forEach(function(w){
+    if(w.dataset.type==='heading')return;
+    var v=vfRead(w),empty=!String(v).trim();
+    w.classList.toggle('missing',w.dataset.required==='1'&&empty);
+    if(w.dataset.required==='1'&&empty)missing.push(w.dataset.label);
+    if(w.dataset.builtin==='1')builtin[w.dataset.key]=v;else custom[w.dataset.key]=v;
+  });
+  if(missing.length){err.textContent='Udfyld de påkrævede felter: '+missing.join(', ');err.style.display='block';return;}
+  err.style.display='none';
+  var btn=document.getElementById('save-visit-form'),orig=btn.textContent;btn.disabled=true;
+  try{
+    var urls=[];
+    for(var i=0;i<vfNewFiles.length;i++){
+      btn.textContent='Uploader billede '+(i+1)+'/'+vfNewFiles.length+'…';
+      var data=await vfShrink(vfNewFiles[i].file);
+      var up=await api('/api/photos/upload',{method:'POST',body:JSON.stringify({image:data,folder:'visits/'+visitFormTaskId})});
+      if(!up||!up.url){err.textContent=(up&&up.error)||'Kunne ikke uploade billede '+(i+1)+' — prøv igen';err.style.display='block';return;}
+      urls.push(up.url);
+    }
+    btn.textContent='Gemmer…';
+    var body=Object.assign({photo_urls:vfPhotos.concat(urls),custom_fields:custom},builtin);
+    var r=await api('/api/customer-visits/'+encodeURIComponent(visitFormTaskId),{method:'PUT',body:JSON.stringify(body)});
+    if(r&&r.ok){vfNewFiles=[];toast('Besøgsformular gemt ✓','✓');closeModal('visit-form-modal');await loadAll();}
+    else{err.textContent=(r&&r.error)||'Kunne ikke gemme — prøv igen';err.style.display='block';}
+  }finally{btn.disabled=false;btn.textContent=orig;}
 }
+(function(){
+  var drop=document.getElementById('vf-drop'),file=document.getElementById('vf-file');
+  if(!drop)return;
+  document.getElementById('vf-pick').addEventListener('click',function(e){e.preventDefault();file.click();});
+  file.addEventListener('change',function(){vfAddFiles(file.files);file.value='';});
+  ['dragenter','dragover'].forEach(function(ev){drop.addEventListener(ev,function(e){e.preventDefault();drop.classList.add('over');});});
+  ['dragleave','drop'].forEach(function(ev){drop.addEventListener(ev,function(e){e.preventDefault();drop.classList.remove('over');});});
+  drop.addEventListener('drop',function(e){vfAddFiles(e.dataTransfer&&e.dataTransfer.files);});
+  document.addEventListener('paste',function(e){
+    if(!document.getElementById('visit-form-modal').classList.contains('open'))return;
+    var fs=[].slice.call((e.clipboardData&&e.clipboardData.items)||[]).filter(function(it){return it.kind==='file';}).map(function(it){return it.getAsFile();}).filter(Boolean);
+    if(fs.length){e.preventDefault();vfAddFiles(fs);}
+  });
+})();
 async function saveManual(){
   var b={job_name:document.getElementById('manual-customer').value.trim(),name:document.getElementById('manual-name').value.trim(),job_address:document.getElementById('manual-address').value.trim(),customer_phone:document.getElementById('manual-phone').value.trim(),customer_email:document.getElementById('manual-email').value.trim(),job_number:document.getElementById('manual-job-number').value.trim(),start_date:document.getElementById('manual-date').value,days:+document.getElementById('manual-days').value||1,type_guess:document.getElementById('manual-type').value};
   var r=await api('/api/tasks/manual',{method:'POST',body:JSON.stringify(b)});
