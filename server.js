@@ -1316,6 +1316,13 @@ async function initSchema() {
     -- RUNDE FU (Martin): valgfrit internt navn på tilbuddet, så man kan skelne
     -- 5-8 tilbud til samme kunde fra hinanden i listerne. Vises ikke for kunden.
     ALTER TABLE quotes ADD COLUMN IF NOT EXISTS quote_title TEXT;
+    -- v2.90.0 TILVALG (Martin: "som i Arkitekt og Boligrenovering ... tilvalg kunden kan
+    -- tilføje eller vælge i stedet for andre produkter"). JSON-array af
+    -- {id,kind:'addon'|'alt',replaces_line_id,description,note,quantity,unit,sell_price,
+    -- cost_price,product_type,discount_pct,discount_type,chosen}. Står IKKE i
+    -- quote_lines, så ingen eksisterende total-/faktura-/opgavelogik ser dem, før
+    -- kunden har valgt dem og de er lagt ind som rigtige linjer (applyQuoteOptions).
+    ALTER TABLE quotes ADD COLUMN IF NOT EXISTS options JSONB;
     -- RUNDE CC (Martin: "under tilbud ... en knap hvor AI ud fra tilbuddet kan
     -- tilføje en betalingsplan ... så store tilbud får en betalingsplan man kan
     -- faktuere efter") — ÉN betalingsplan pr. tilbud (overskrives ved ny AI-
@@ -25198,6 +25205,78 @@ async function migrateReopenPartlyInvoicedQuotes() {
     if (r.rowCount) console.log('Genåbnet ' + r.rowCount + ' delvist fakturerede tilbud');
   } catch (e) { console.error(name + ' fejlede:', e.message); }
 }
+
+// ══ v2.90.0 TILVALG / ALTERNATIVER ══════════════════════════════════════════
+// lineIdByIndex: index i den sendte lines-array → gemt quote_lines.id, så et
+// alternativ kan pege på en linje der først fik sit id ved denne gemning.
+function sanitizeQuoteOptions(arr, lineIdByIndex) {
+  if (!Array.isArray(arr)) return [];
+  return arr.slice(0, 60).map((o, i) => {
+    const kind = o && o.kind === 'alt' ? 'alt' : 'addon';
+    let rep = Number(o && o.replaces_line_id) || null;
+    if (!rep && kind === 'alt' && o.replaces_index != null && lineIdByIndex) rep = lineIdByIndex[Number(o.replaces_index)] || null;
+    return {
+      id: String((o && o.id) || ('opt' + Date.now().toString(36) + i)).slice(0, 40),
+      kind, replaces_line_id: kind === 'alt' ? rep : null,
+      description: String((o && o.description) || '').trim().slice(0, 2000),
+      note: o && o.note ? String(o.note).trim().slice(0, 4000) : '',
+      quantity: Number(o && o.quantity) || 1, unit: String((o && o.unit) || 'stk').slice(0, 20),
+      sell_price: Number(o && o.sell_price) || 0, cost_price: Number(o && o.cost_price) || 0,
+      product_type: o && o.product_type === 'materialer' ? 'materialer' : 'service',
+      discount_pct: Number(o && o.discount_pct) || 0, discount_type: o && o.discount_type === 'fixed' ? 'fixed' : 'pct',
+      chosen: !!(o && o.chosen)
+    };
+  }).filter(o => o.description && (o.kind === 'addon' || o.replaces_line_id));
+}
+function quoteOptionsOf(q) { try { const v = typeof q.options === 'string' ? JSON.parse(q.options) : q.options; return Array.isArray(v) ? v : []; } catch (_) { return []; } }
+// Hvad koster hvert valg ekstra (inkl. moms) — regnet med den rigtige total-
+// funktion, så linjerabat og rabat på hele tilbuddet tæller med præcis som ellers.
+function quoteOptionDeltas(quote, lines) {
+  const opts = quoteOptionsOf(quote);
+  const disc = { value: Number(quote.discount_pct) || 0, type: quote.discount_type === 'fixed' ? 'fixed' : 'pct' };
+  const tax = Number(quote.tax_rate) || 0;
+  const base = computeTotals(lines, tax, disc).total;
+  const out = {};
+  for (const o of opts) {
+    let ls;
+    if (o.kind === 'alt') ls = lines.map(l => Number(l.id) === Number(o.replaces_line_id) ? Object.assign({}, l, o, { id: l.id }) : l);
+    else ls = lines.concat([o]);
+    out[o.id] = Math.round(computeTotals(ls, tax, disc).total - base);
+  }
+  return out;
+}
+// Lægger kundens valg ind i tilbuddet: tilvalg → ny linje, alternativ → erstatter
+// den linje det står i stedet for. Opdaterer totaler og markerer valgene.
+async function applyQuoteOptions(quoteId, chosenIds) {
+  const quote = await pgOne('SELECT * FROM quotes WHERE id=$1', [quoteId]);
+  if (!quote) return { applied: [] };
+  const opts = quoteOptionsOf(quote);
+  const want = new Set((chosenIds || []).map(String));
+  const lines = (await pool.query('SELECT * FROM quote_lines WHERE quote_id=$1 ORDER BY position ASC, id ASC', [quoteId])).rows;
+  const usedAlt = new Set();
+  const applied = [];
+  let pos = lines.reduce((m, l) => Math.max(m, Number(l.position) || 0), 0) + 1;
+  for (const o of opts) {
+    if (!want.has(String(o.id))) continue;
+    if (o.kind === 'alt') {
+      const base = lines.find(l => Number(l.id) === Number(o.replaces_line_id));
+      if (!base || base.invoiced_in_invoice_id || usedAlt.has(base.id)) continue;
+      usedAlt.add(base.id);
+      await pool.query('UPDATE quote_lines SET description=$1,note=$2,quantity=$3,unit=$4,sell_price=$5,cost_price=$6,product_type=$7,discount_pct=$8,discount_type=$9,product_id=NULL WHERE id=$10',
+        [o.description, o.note || null, o.quantity, o.unit, o.sell_price, o.cost_price, o.product_type, o.discount_pct, o.discount_type, base.id]);
+    } else {
+      await pool.query(`INSERT INTO quote_lines (quote_id,description,unit,quantity,cost_price,sell_price,position,product_type,discount_pct,discount_type,line_type,note)
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,'item',$11)`, [quoteId, o.description, o.unit, o.quantity, o.cost_price, o.sell_price, pos++, o.product_type, o.discount_pct, o.discount_type, o.note || null]);
+    }
+    o.chosen = true; applied.push(o);
+  }
+  if (applied.length) {
+    const saved = (await pool.query('SELECT * FROM quote_lines WHERE quote_id=$1', [quoteId])).rows;
+    const t = computeTotals(saved, Number(quote.tax_rate) || 0, { value: Number(quote.discount_pct) || 0, type: quote.discount_type === 'fixed' ? 'fixed' : 'pct' });
+    await pool.query('UPDATE quotes SET subtotal=$1,tax_amount=$2,total=$3,options=$4 WHERE id=$5', [t.subtotal, t.taxAmount, t.total, JSON.stringify(opts), quoteId]);
+  }
+  return { applied };
+}
 async function saveQuoteLines(quoteId, lines, exec) {
   const db = exec || pool;
   await db.query('DELETE FROM quote_lines WHERE quote_id=$1', [quoteId]);
@@ -25240,6 +25319,11 @@ app.post('/api/quotes', auth, panelAccess('quotes'), asyncRoute(async (req, res)
     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,'draft',$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24) RETURNING id
   `, [quoteNumber, jobNumber, b.job_name || null, b.job_id || null, resolvedCustomerId, b.customer_address || null, b.customer_phone || null, b.customer_email || null, totals.subtotal, taxRate, totals.taxAmount, totals.total, b.notes ? sanitizeRichText(b.notes) : null, b.top_note ? sanitizeRichText(b.top_note) : null, b.internal_note || null, b.valid_until || null, req.user.id, discountPct, discountType, acceptToken, crmLeadId, crmOpportunityId, createdVia, aiChatTranscript]);
   await saveQuoteLines(r.rows[0].id, b.lines);
+  if (Array.isArray(b.options) && b.options.length) {
+    const ids = (await pool.query('SELECT id FROM quote_lines WHERE quote_id=$1 ORDER BY position ASC', [r.rows[0].id])).rows.map(x => x.id);
+    const byIdx = {}; let k = 0; (b.lines || []).forEach((l, i) => { if (l && l.description) byIdx[i] = ids[k++]; });
+    await pool.query('UPDATE quotes SET options=$1 WHERE id=$2', [JSON.stringify(sanitizeQuoteOptions(b.options, byIdx)), r.rows[0].id]);
+  }
   if (b.quote_title) await pool.query('UPDATE quotes SET quote_title=$1 WHERE id=$2', [String(b.quote_title).trim().slice(0, 80) || null, r.rows[0].id]);
   logDocActivity('quote', r.rows[0].id, 'created', req.user.name, null);
   crmSyncOpportunityValueFromQuote({ id: r.rows[0].id, total: totals.total, crm_opportunity_id: crmOpportunityId, quote_number: quoteNumber });
@@ -25351,9 +25435,14 @@ app.put('/api/quotes/:id', auth, panelAccess('quotes'), asyncRoute(async (req, r
     if (hasInvoicedLines) await quoteSyncInvoicedStatus(req.params.id);
   }
   if (b.quote_title !== undefined) await pool.query('UPDATE quotes SET quote_title=$1 WHERE id=$2', [String(b.quote_title || '').trim().slice(0, 80) || null, req.params.id]);
+  if (b.options !== undefined) {
+    const byIdx = {}; if (lineIds) lineIds.forEach((id, i) => { if (id) byIdx[i] = id; });
+    await pool.query('UPDATE quotes SET options=$1 WHERE id=$2', [JSON.stringify(sanitizeQuoteOptions(b.options, byIdx)), req.params.id]);
+  }
   logDocActivity('quote', req.params.id, 'edited', req.user.name, null);
   crmSyncOpportunityValueFromQuote({ id: req.params.id, total: totals.total, crm_opportunity_id: crmOpportunityId, quote_number: current.quote_number });
-  res.json({ ok: true, line_ids: lineIds });
+  const optRow = b.options !== undefined ? await pgOne('SELECT options FROM quotes WHERE id=$1', [req.params.id]) : null;
+  res.json({ ok: true, line_ids: lineIds, options: optRow ? quoteOptionsOf(optRow) : undefined });
 }));
 
 // RUNDE FU — gem kun tilbuddets interne navn (bruges fra listen og editorens top).
@@ -26845,6 +26934,38 @@ function drawDocumentPdf(doc, kind, record, company, attachments) {
     y += 20;
   }
 
+  // v2.90.0 — tilvalg/alternativer i en boks "Kan tilvælges" (kun tilbud, kun ikke-valgte).
+  if (!isInvoice) {
+    const pOpts = quoteOptionsOf(record).filter(o => !o.chosen);
+    if (pOpts.length) {
+      const deltas = quoteOptionDeltas(record, record.lines || []);
+      y += 14;
+      y = ensurePdfSpace(doc, y, 60, ctx);
+      doc.font('DMSans-Bold').fontSize(11).fillColor('#111318').text('Kan tilvælges', 40, y);
+      y += 16;
+      doc.font('DMSans').fontSize(8.5).fillColor('#6B7280').text('Ikke med i prisen ovenfor. Vælg dem til på tilbudssiden, når du accepterer – prisen regnes om med det samme.', 40, y, { width: 515 });
+      y += 16;
+      for (const o of pOpts) {
+        const base = o.kind === 'alt' ? (record.lines || []).find(l => Number(l.id) === Number(o.replaces_line_id)) : null;
+        const title = String(o.description || '').split('\n')[0];
+        const sub = (base ? 'I stedet for: ' + String(base.description).split('\n')[0] : '') + (o.note ? (base ? ' · ' : '') + String(o.note).replace(/\s+/g, ' ').slice(0, 200) : '');
+        const tH = doc.font('DMSans-Bold').fontSize(9.5).heightOfString(title, { width: 380 });
+        const sH = sub ? doc.font('DMSans').fontSize(8.5).heightOfString(sub, { width: 380 }) : 0;
+        const h = tH + sH + 16;
+        y = ensurePdfSpace(doc, y, h + 6, ctx);
+        doc.roundedRect(40, y, 515, h, 6).lineWidth(0.8).stroke('#E5E7EB');
+        doc.roundedRect(52, y + 9, 9, 9, 2).lineWidth(0.8).stroke('#9CA3AF');
+        doc.font('DMSans-Bold').fontSize(9.5).fillColor('#111318').text(title, 70, y + 8, { width: 380 });
+        if (sub) doc.font('DMSans').fontSize(8.5).fillColor('#6B7280').text(sub, 70, y + 8 + tH, { width: 380 });
+        const d = Number(deltas[o.id]) || 0;
+        doc.font('DMSans-Bold').fontSize(9.5).fillColor('#111318').text((d >= 0 ? '+ ' : '− ') + Math.round(Math.abs(d)).toLocaleString('da-DK') + ' kr', 440, y + 8, { width: 105, align: 'right' });
+        y += h + 6;
+      }
+      doc.font('DMSans').fontSize(8).fillColor('#9CA3AF').text('Priser på tilvalg er inkl. moms.', 40, y, { width: 515 });
+      y += 12;
+    }
+  }
+
   if (record.notes) {
     y += 12;
     const noteH = doc.heightOfString(richTextToPlain(record.notes), { width: 495 });
@@ -28005,6 +28126,32 @@ app.get('/tilbud/:token', asyncRoute(async (req, res) => {
       <div class="accept-banner-text"><b>Tilbuddet venter på din godkendelse</b><br>Se det igennem, og tryk her for at acceptere det.</div>
       <div class="accept-banner-btn">✍️ Accepter tilbuddet</div>
     </div>` : '';
+  // v2.90.0 — TILVALG (Martin valgte mockup A: afkrydsningskort under tilbuddet).
+  const qOpts = quoteOptionsOf(quote);
+  const qDeltas = qOpts.length ? quoteOptionDeltas(quote, lines) : {};
+  const optKr = n => Math.round(Number(n) || 0).toLocaleString('da-DK') + ' kr';
+  const optCard = (o, type, name, checked, priceLbl) => `<label class="tv-opt${checked ? ' on' : ''}"><input type="${type}" name="${name}" value="${esc(o.id || '')}" data-delta="${Number(qDeltas[o.id]) || 0}"${checked ? ' checked' : ''}${pending ? '' : ' disabled'}><span class="tv-mark"></span><span class="tv-txt"><b>${esc(String(o.description || '').split('\n')[0])}</b>${String(o.description || '').split('\n').slice(1).join(' ').trim() ? `<span>${esc(String(o.description).split('\n').slice(1).join(' ').trim())}</span>` : ''}${o.note ? `<span>${esc(String(o.note).slice(0, 300))}</span>` : ''}</span><span class="tv-p">${priceLbl}</span></label>`;
+  let tilvalgHtml = '';
+  if (qOpts.length && (pending || qOpts.some(o => o.chosen))) {
+    const altGroups = {};
+    qOpts.filter(o => o.kind === 'alt').forEach(o => { (altGroups[o.replaces_line_id] = altGroups[o.replaces_line_id] || []).push(o); });
+    const addons = qOpts.filter(o => o.kind === 'addon');
+    let inner = '';
+    Object.keys(altGroups).forEach(lid => {
+      const base = lines.find(l => String(l.id) === String(lid));
+      if (!base && pending) return;
+      const nm = 'alt_' + lid;
+      const anyChosen = altGroups[lid].some(o => o.chosen);
+      inner += `<div class="tv-grp">${pending ? esc(base ? String(base.description).split('\n')[0] : 'Valg') + ' — vælg én' : 'Valgt løsning'}</div>`;
+      if (base && pending) inner += optCard({ id: '', description: base.description }, 'radio', nm, !anyChosen, 'med i tilbuddet');
+      altGroups[lid].forEach(o => { const d = Number(qDeltas[o.id]) || 0; inner += optCard(o, 'radio', nm, !!o.chosen, pending ? (d >= 0 ? '+ ' : '− ') + optKr(Math.abs(d)) : (o.chosen ? 'valgt' : '')); });
+    });
+    if (addons.length) {
+      inner += `<div class="tv-grp">Tilvalg</div>`;
+      addons.forEach(o => { inner += optCard(o, 'checkbox', 'addon', !!o.chosen, pending ? '+ ' + optKr(qDeltas[o.id]) : (o.chosen ? 'valgt' : 'ikke valgt')); });
+    }
+    tilvalgHtml = `<div class="card tv-card"><div class="tv-h">${pending ? 'Tilpas dit tilbud' : 'Dine valg'}</div>${pending ? '<p class="tv-lead">Vælg en anden løsning eller sæt kryds ved det, du gerne vil have med. Prisen regnes om med det samme og kommer med, når du accepterer.</p>' : ''}${inner}${pending ? `<div class="tv-tot"><span>Din pris inkl. moms</span><b id="tv-total">${optKr(quote.total)}</b></div>` : ''}</div>`;
+  }
   const stickyAcceptBarHtml = pending ? `
     <div class="sticky-accept-bar" id="sticky-accept-bar">
       <button type="button" onclick="scrollToAccept()">✍️ Accepter tilbuddet</button>
@@ -28066,6 +28213,23 @@ app.get('/tilbud/:token', asyncRoute(async (req, res) => {
   #sigpad{width:100%;height:180px;border:2px dashed #CBD5E1;border-radius:12px;touch-action:none;background:#FAFAFB}
   .sig-hint{text-transform:none;font-weight:400}
   .btn-link{background:none;border:0;color:#6B7280;font-size:11px;text-decoration:underline;cursor:pointer;padding:6px 0;display:block}
+.tv-card .tv-h{font-size:16px;font-weight:800;color:#111318;margin-bottom:4px}
+  .tv-lead{font-size:13px;color:#6B7280;margin:0 0 12px}
+  .tv-grp{font-size:13px;font-weight:700;color:#111318;margin:14px 0 8px}
+  .tv-opt{display:flex;gap:12px;align-items:flex-start;padding:12px 14px;border:1px solid #E5E7EB;border-radius:12px;margin-bottom:8px;cursor:pointer;transition:border-color .12s,background .12s}
+  .tv-opt.on{border:2px solid #4F46E5;background:#F5F3FF;padding:11px 13px}
+  .tv-opt input{position:absolute;opacity:0;pointer-events:none}
+  .tv-mark{width:18px;height:18px;flex:none;margin-top:2px;border:1.5px solid #C7CBD3;border-radius:5px;display:flex;align-items:center;justify-content:center;font-size:12px;color:#fff;background:#fff}
+  .tv-opt input[type=radio]+.tv-mark{border-radius:50%}
+  .tv-opt.on .tv-mark{background:#4F46E5;border-color:#4F46E5}
+  .tv-opt.on input[type=checkbox]+.tv-mark::after{content:'✓'}
+  .tv-opt.on input[type=radio]+.tv-mark{background:#fff;border:5px solid #4F46E5}
+  .tv-txt{display:flex;flex-direction:column;gap:2px;font-size:14px;color:#111318;min-width:0}
+  .tv-txt b{font-weight:700}
+  .tv-txt span{font-size:12.5px;color:#6B7280;white-space:pre-line}
+  .tv-p{margin-left:auto;font-size:14px;font-weight:700;white-space:nowrap;color:#111318;padding-left:10px}
+  .tv-tot{display:flex;justify-content:space-between;align-items:baseline;border-top:1px solid #EEF0F3;margin-top:12px;padding-top:12px;font-size:13px;color:#6B7280}
+  .tv-tot b{font-size:20px;color:#111318}
   .accept-btn{width:100%;margin-top:10px;background:#4F46E5;color:#fff;border:0;border-radius:10px;padding:14px;font-size:15px;font-weight:700;cursor:pointer;box-shadow:0 6px 16px rgba(79,70,229,.35)}
   .accept-btn:disabled{opacity:.6;box-shadow:none}
   .legal-note{font-size:10.5px;color:#9CA3AF;margin-top:10px;line-height:1.5}
@@ -28110,12 +28274,14 @@ ${acceptBannerHtml}
   <table><thead><tr><th>Beskrivelse</th><th class="num">Antal</th><th class="num">Enhedspris</th><th class="num">I alt</th></tr></thead><tbody>${rowsHtml}</tbody></table>
   <div class="totals">
     ${discountAmount > 0 ? `<div class="totals-row"><span>Rabat (${docDiscLabel})</span><span>-${krFmtServer(discountAmount)}</span></div>` : ''}
-    <div class="totals-row"><span>Subtotal</span><span>${krFmtServer(quote.subtotal)}</span></div>
-    <div class="totals-row"><span>Moms (${quote.tax_rate}%)</span><span>${krFmtServer(quote.tax_amount)}</span></div>
-    <div class="totals-row grand"><span>Total</span><span>${krFmtServer(quote.total)}</span></div>
+    <div class="totals-row"><span>Subtotal</span><span id="tq-sub">${krFmtServer(quote.subtotal)}</span></div>
+    <div class="totals-row"><span>Moms (${quote.tax_rate}%)</span><span id="tq-tax">${krFmtServer(quote.tax_amount)}</span></div>
+    <div class="totals-row grand"><span>Total</span><span id="tq-total">${krFmtServer(quote.total)}</span></div>
+    <div class="totals-row" id="tq-optnote" style="display:none;color:#4F46E5;font-weight:700"><span>Inkl. dine valg</span><span></span></div>
   </div>
   ${quote.notes ? `<div class="notecard">${quote.notes}</div>` : ''}
 </div>
+${tilvalgHtml}
 <div class="card">${statusBlock}</div>
 ${(company.cvr || company.bankReg || company.bankAccount || company.iban || company.swift || company.footerNote) ? `<div class="pagefooter">${[company.cvr ? 'CVR ' + company.cvr : '', (company.bankReg || company.bankAccount) ? ('Reg. ' + company.bankReg + '  Konto ' + company.bankAccount) : '', company.iban ? 'IBAN ' + company.iban : '', company.swift ? 'SWIFT/BIC ' + company.swift : ''].filter(Boolean).map(esc).join('  ·  ')}${company.footerNote ? `<div class="note">${esc(company.footerNote)}</div>` : ''}</div>` : ''}
 ${pending ? '<div style="height:64px"></div>' : ''}
@@ -28186,6 +28352,19 @@ function scrollToAccept(){
   var clearBtn=document.getElementById('sig-clear');
   if(clearBtn)clearBtn.onclick=function(){ctx.clearRect(0,0,canvas.width,canvas.height);};
 })();
+// v2.90.0 — tilvalg: genberegn prisen live når kunden vælger.
+var TQ_BASE={sub:${Number(quote.subtotal)||0},tax:${Number(quote.tax_amount)||0},total:${Number(quote.total)||0},rate:${Number(quote.tax_rate)||0}};
+function tqKr(n){return Math.round(n).toLocaleString('da-DK')+' kr';}
+function tvRecalc(){
+  var d=0;
+  document.querySelectorAll('.tv-opt input').forEach(function(i){i.closest('.tv-opt').classList.toggle('on',i.checked);if(i.checked)d+=Number(i.dataset.delta)||0;});
+  var tot=TQ_BASE.total+d,ex=d/(1+TQ_BASE.rate/100);
+  var e=document.getElementById('tv-total');if(e)e.textContent=tqKr(tot);
+  var n=document.getElementById('tq-optnote');
+  if(n){n.style.display=d?'':'none';n.lastElementChild.textContent=tqKr(tot);}
+}
+document.querySelectorAll('.tv-opt input').forEach(function(i){i.addEventListener('change',tvRecalc);});
+function tvChosenIds(){return Array.prototype.filter.call(document.querySelectorAll('.tv-opt input:checked'),function(i){return i.value;}).map(function(i){return i.value;});}
 async function submitAccept(){
   var nameEl=document.getElementById('accept-name');
   var name=nameEl?nameEl.value.trim():'';
@@ -28204,7 +28383,7 @@ async function submitAccept(){
   }
   var btn=document.getElementById('accept-btn');btn.disabled=true;btn.textContent='Sender...';
   try{
-    var r=await fetch('/api/public/quotes/'+TOKEN+'/accept',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({signed_name:name,signature_data:signatureDataUrl})});
+    var r=await fetch('/api/public/quotes/'+TOKEN+'/accept',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({signed_name:name,signature_data:signatureDataUrl,option_ids:tvChosenIds()})});
     var d=await r.json().catch(function(){return{};});
     if(r.ok&&d.ok){window.location.reload();}
     else{alert(d.error||'Der skete en fejl');btn.disabled=false;btn.textContent='✓ Jeg accepterer tilbuddet';}
@@ -28223,6 +28402,17 @@ app.post('/api/public/quotes/:token/accept', asyncRoute(async (req, res) => {
   const name = String(b.signed_name || '').trim();
   const sig = String(b.signature_data || '');
   if (!name || !sig.startsWith('data:image/')) return res.status(400).json({ error: 'Navn og underskrift er påkrævet' });
+  // v2.90.0 — kundens tilvalg/alternativer lægges ind i tilbuddet FØR sagen oprettes,
+  // så sag, opgaver og omsætning bygger på det kunden faktisk valgte.
+  let optApplied = [];
+  if (Array.isArray(b.option_ids) && b.option_ids.length) {
+    optApplied = (await applyQuoteOptions(quote.id, b.option_ids)).applied;
+    if (optApplied.length) {
+      const txt = 'Kunden valgte ved underskrift: ' + optApplied.map(o => (o.kind === 'alt' ? 'i stedet for: ' : 'tilvalg: ') + String(o.description).split('\n')[0]).join(' · ');
+      await pool.query("UPDATE quotes SET internal_note=TRIM(BOTH E'\n' FROM COALESCE(internal_note,'') || E'\n' || $1) WHERE id=$2", [txt, quote.id]);
+      Object.assign(quote, await pgOne('SELECT * FROM quotes WHERE id=$1', [quote.id]));
+    }
+  }
   const ip = (req.headers['x-forwarded-for'] || req.ip || '').toString().split(',')[0].trim();
   await pool.query(`
     UPDATE quotes SET status='accepted', signed_name=$1, signed_at=${nowTextSQL()}, signed_ip=$2, signature_data=$3, updated_at=${nowTextSQL()}

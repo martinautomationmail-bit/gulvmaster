@@ -712,6 +712,33 @@ input.bly-search-lg{padding:13px 16px 13px 40px;font-size:14px;background-size:1
 .vf-drop-hint{font-size:12.5px;color:var(--bly-sub);text-align:center;padding:8px 0 2px}
 .vf-photos:not(:empty)+.vf-drop-hint{padding-top:10px}
 @media(max-width:640px){.vf-grid{grid-template-columns:1fr}}
+.qe-opt-wrap{margin-top:18px;border:1px dashed var(--bly-border);border-radius:14px;padding:14px;background:#FAFAFF}
+.qe-opt-head{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;margin-bottom:10px}
+.qe-opt-head b{display:block;font-size:13px;color:var(--bly-ink)}
+.qe-opt-head span{font-size:11.5px;color:var(--bly-sub)}
+.qe-opt-empty{font-size:12px;color:var(--bly-sub);padding:6px 2px}
+.qe-opt-card{background:#fff;border:1px solid var(--bly-border);border-radius:12px;padding:10px 12px;margin-bottom:8px;display:flex;flex-direction:column;gap:6px}
+.qe-opt-card.chosen{border-color:#16A34A;background:#F0FDF4}
+.qe-opt-top{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.qe-opt-kind{font-size:11px;font-weight:800;padding:3px 9px;border-radius:999px;background:#EEF2FF;color:#4338CA}
+.qe-opt-kind.alt{background:#FEF3C7;color:#92400E}
+.qe-opt-for{font-size:12px;color:var(--bly-sub)}
+.qe-opt-rep{flex:1;min-width:180px;height:auto;padding-top:6px;padding-bottom:6px}
+.qe-opt-chosen{font-size:11px;font-weight:700;color:#15803D}
+.qe-opt-del{margin-left:auto;border:0;background:transparent;color:#DC2626;cursor:pointer;font-size:14px}
+.qe-opt-desc{min-height:44px;resize:vertical}
+.qe-opt-nums{display:grid;grid-template-columns:70px 80px 1fr 1fr 1.2fr;gap:8px;align-items:end}
+.qe-opt-nums label{display:flex;flex-direction:column;font-size:10.5px;font-weight:700;color:var(--bly-sub);gap:3px}
+.qe-opt-delta{font-size:10.5px;font-weight:700;color:var(--bly-sub);display:flex;flex-direction:column;align-items:flex-end}
+.qe-opt-delta b{font-size:14px;color:var(--bly-ink)}
+.qe-pdf-opts{margin:14px 0 6px}
+.qe-pdf-opts-h{font-weight:800;font-size:11px;color:#111318}
+.qe-pdf-opts-sub{font-size:8px;color:#6B7280;margin:2px 0 6px}
+.qe-pdf-opt{display:flex;gap:8px;align-items:flex-start;border:1px solid #E5E7EB;border-radius:6px;padding:6px 8px;margin-bottom:4px;font-size:9px}
+.qe-pdf-opt-box{width:8px;height:8px;border:1px solid #9CA3AF;border-radius:2px;margin-top:2px;flex:none}
+.qe-pdf-opt div{display:flex;flex-direction:column;flex:1}
+.qe-pdf-opt span{color:#6B7280;font-size:8px}
+.qe-pdf-opt em{font-style:normal;font-weight:700;white-space:nowrap}
 .fin-fagrev-cols{display:flex;gap:18px;justify-content:space-between}
 .fin-fagrev-ringcol{flex:1;min-width:0;display:flex;flex-direction:column;align-items:center;text-align:center;gap:10px}
 .fin-fagrev-ring{position:relative;width:100%;max-width:120px;aspect-ratio:1/1;border-radius:50%}
@@ -6014,7 +6041,7 @@ body.tp-dragging,body.tp-dragging *{cursor:grabbing!important}
        i browseren faktisk ER det nyeste deploy, eller om Render/GitHub bare
        ikke er nået at opdatere endnu — i stedet for at skulle gætte om en
        rettelse "stadig ikke virker" eller bare endnu ikke er live. -->
-  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build v2.89.8 · 2026-11-02</span></div>
+  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build v2.90.0 · 2026-11-02</span></div>
 </aside>
 <div class="app-content">
 <!-- RUNDE FB — AI-ASSISTENTEN (Martin: "en ai der er nede i venstre hjørne af
@@ -8245,6 +8272,13 @@ body.ai-has-reply #ai-fab{animation:ai-nudge 1.4s ease-in-out 3}
         <div style="display:flex;gap:6px;margin-top:8px">
           <button class="bly-btn outline small" id="qe-add-blank-line-bottom" type="button">+ Tilføj linje</button>
           <button class="bly-btn outline small" id="qe-add-text-line-bottom" type="button" title="Tilføj en ren tekst-/overskriftslinje uden antal/pris">+ Tekstlinje</button>
+        </div>
+        <!-- v2.90.0 TILVALG — linjer kunden selv kan vælge til eller i stedet for en anden
+             linje på tilbudssiden. Står ikke med i prisen, før kunden vælger dem. -->
+        <div class="qe-opt-wrap" id="qe-opt-wrap">
+          <div class="qe-opt-head"><div><b>Tilvalg til kunden</b><span>Ikke med i prisen — kunden vælger dem selv på tilbudssiden, og prisen regnes om med det samme</span></div>
+            <div style="display:flex;gap:6px"><button class="bly-btn outline small" id="qe-opt-add-addon" type="button">+ Tilvalg</button><button class="bly-btn outline small" id="qe-opt-add-alt" type="button" title="En løsning kunden kan vælge i stedet for en af linjerne ovenfor">+ Alternativ</button></div></div>
+          <div id="qe-opt-list"></div>
         </div>
 
         <!-- RUNDE W (sep. 2026, Martins ønske: "placer Margin dataen under PDF filen
@@ -40914,6 +40948,8 @@ async function openQuoteEditor(id,prefillCustomer){
     qeState.lines=(qd.lines||[]).map(function(l){return {id:l.id,invoiced_in_invoice_id:l.invoiced_in_invoice_id||null,product_id:l.product_id||null,description:l.description,note:l.note||'',unit:l.unit||'stk',quantity:Number(l.quantity)||1,cost_price:Number(l.cost_price)||0,sell_price:Number(l.sell_price)||0,product_type:qzType(l.product_type),discount_pct:Number(l.discount_pct)||0,discount_type:l.discount_type==='fixed'?'fixed':'pct',line_type:l.line_type==='text'?'text':'item',show_sum:!!l.show_sum};});
     // RUNDE AC — se kommentaren ved docAttachStateFor.
     qeState.attachments=qd.attachments||[];
+    qeState.options=qeLoadOptions(qd.options);
+    qeRenderOptions();
     docAttachRenderList('quote');
     document.getElementById('qe-customer-search').value=qd.job_name||'';
     document.getElementById('qe-customer-address').value=qd.customer_address||'';
@@ -40964,6 +41000,7 @@ async function openQuoteEditor(id,prefillCustomer){
     // bare for at komme i gang. Samt forudfyld top-/bundnote fra standardteksten i
     // Indstillinger, hvis Martin har sat en (kan altid rettes/slettes for dette tilbud).
     qeState.lines=[qzMakeBlankLine(null),qzMakeBlankLine(null),qzMakeBlankLine(null)];
+    qeState.options=[];qeRenderOptions();
     document.getElementById('qe-top-note').value=settings.quote_top_note_default||'';
     qeSetNotesValue(settings.quote_bottom_note_default||'');
     // Forudfyldt kunde (fx fra "📝 Lav tilbud" på en opportunity) — samme felter
@@ -41668,6 +41705,89 @@ function qeAdjustPreviewHeight(){
   var avail=window.innerHeight-top-20;
   wrap.style.maxHeight=Math.max(320,avail)+'px';
 }
+
+// ══ v2.90.0 TILVALG I TILBUDSEDITOREN ═══════════════════════════════════════
+function qeLoadOptions(raw){
+  var arr=[];try{arr=typeof raw==='string'?JSON.parse(raw):(raw||[]);}catch(e){}
+  if(!Array.isArray(arr))arr=[];
+  return arr.map(function(o){var ref=o.kind==='alt'?qeState.lines.find(function(l){return l.id&&+l.id===+o.replaces_line_id;}):null;
+    return {id:o.id,kind:o.kind==='alt'?'alt':'addon',_ref:ref||null,description:o.description||'',note:o.note||'',quantity:Number(o.quantity)||1,unit:o.unit||'stk',sell_price:Number(o.sell_price)||0,cost_price:Number(o.cost_price)||0,product_type:o.product_type==='materialer'?'materialer':'service',chosen:!!o.chosen};});
+}
+function qeOptItemLines(){return qeState.lines.filter(function(l){return l.line_type!=='text'&&String(l.description||'').trim();});}
+function qeOptLineLabel(l){var t=String(l.description||'').split('\n')[0].trim();return t.length>60?t.slice(0,58)+'…':t;}
+function qeOptLineTotal(l){var g=(Number(l.quantity)||0)*(Number(l.sell_price)||0);var d=Number(l.discount_pct)||0;return g-(l.discount_type==='fixed'?Math.min(d,g):g*d/100);}
+function qeOptDelta(o){var mine=(Number(o.quantity)||0)*(Number(o.sell_price)||0);return o.kind==='alt'&&o._ref?mine-qeOptLineTotal(o._ref):mine;}
+function qeOptAltSelectHtml(o){
+  return '<select class="qe-input qe-opt-rep" data-f="rep">'+(o._ref?'':'<option value="">Vælg linjen det erstatter…</option>')+qeOptItemLines().map(function(l){var i=qeState.lines.indexOf(l);return '<option value="'+i+'"'+(o._ref===l?' selected':'')+'>'+esc(qeOptLineLabel(l))+'</option>';}).join('')+'</select>';
+}
+function qeRenderOptions(){
+  var list=document.getElementById('qe-opt-list'),wrap=document.getElementById('qe-opt-wrap');
+  if(!list)return;
+  if(wrap)wrap.style.display=qeState.directInvoice?'none':'';
+  var opts=qeState.options||[];
+  if(!opts.length){list.innerHTML='<div class="qe-opt-empty">Fx anden behandling (olie i stedet for lak), nye fodlister eller trappen med. Kunden ser dem nederst på tilbudssiden.</div>';return;}
+  list.innerHTML=opts.map(function(o,i){
+    var d=qeOptDelta(o);
+    return '<div class="qe-opt-card'+(o.chosen?' chosen':'')+'" data-i="'+i+'">'
+      +'<div class="qe-opt-top"><span class="qe-opt-kind '+o.kind+'">'+(o.kind==='alt'?'⇄ Alternativ':'＋ Tilvalg')+'</span>'+(o.kind==='alt'?'<span class="qe-opt-for">i stedet for</span>'+qeOptAltSelectHtml(o):'')
+      +(o.chosen?'<span class="qe-opt-chosen">✓ Valgt af kunden</span>':'')+'<button type="button" class="qe-opt-del" data-del="'+i+'" title="Fjern">✕</button></div>'
+      +'<textarea class="qe-input qe-opt-desc" data-f="description" rows="2" placeholder="Fx Hårdvoksolie, 2 lag">'+esc(o.description)+'</textarea>'
+      +'<input class="qe-input qe-opt-note" data-f="note" placeholder="Kort forklaring til kunden (valgfri)" value="'+esc(o.note||'')+'">'
+      +'<div class="qe-opt-nums"><label>Antal<input class="qe-input" data-f="quantity" type="number" step="0.01" value="'+o.quantity+'"></label>'
+      +'<label>Enhed<input class="qe-input" data-f="unit" value="'+esc(o.unit)+'"></label>'
+      +'<label>Kostpris<input class="qe-input" data-f="cost_price" type="number" step="0.01" value="'+o.cost_price+'"></label>'
+      +'<label>Salgspris<input class="qe-input" data-f="sell_price" type="number" step="0.01" value="'+o.sell_price+'"></label>'
+      +'<div class="qe-opt-delta">'+(o.kind==='alt'?'Forskel':'Pris')+' ekskl. moms<b data-delta>'+(d>=0?'+ ':'− ')+krFmt(Math.abs(d))+'</b></div></div>'
+    +'</div>';
+  }).join('');
+}
+function qeOptChanged(){qeRenderPreview();if(typeof qeAutoSaveDebounced==='function')qeAutoSaveDebounced();}
+(function(){
+  var list=document.getElementById('qe-opt-list');if(!list)return;
+  function add(kind){
+    qeState.options=qeState.options||[];
+    var first=kind==='alt'?qeOptItemLines()[0]:null;
+    if(kind==='alt'&&!first){toast('Tilføj først en linje, som alternativet kan erstatte','⚠️');return;}
+    qeState.options.push({id:'opt'+Date.now().toString(36),kind:kind,_ref:first||null,description:'',note:'',quantity:first?Number(first.quantity)||1:1,unit:first?first.unit||'stk':'stk',sell_price:0,cost_price:0,product_type:first?first.product_type:'service',chosen:false});
+    qeRenderOptions();
+    var ds=list.querySelectorAll('.qe-opt-desc');if(ds.length)ds[ds.length-1].focus();
+  }
+  document.getElementById('qe-opt-add-addon').addEventListener('click',function(){add('addon');});
+  document.getElementById('qe-opt-add-alt').addEventListener('click',function(){add('alt');});
+  list.addEventListener('input',function(e){
+    var card=e.target.closest('.qe-opt-card'),f=e.target.dataset.f;if(!card||!f||f==='rep')return;
+    var o=qeState.options[+card.dataset.i];if(!o)return;
+    o[f]=['quantity','sell_price','cost_price'].indexOf(f)>-1?(Number(e.target.value)||0):e.target.value;
+    var d=qeOptDelta(o),el=card.querySelector('[data-delta]');if(el)el.textContent=(d>=0?'+ ':'− ')+krFmt(Math.abs(d));
+    qeOptChanged();
+  });
+  list.addEventListener('change',function(e){
+    if(e.target.dataset.f!=='rep')return;
+    var card=e.target.closest('.qe-opt-card'),o=qeState.options[+card.dataset.i];
+    o._ref=qeState.lines[+e.target.value]||null;qeRenderOptions();qeOptChanged();
+  });
+  // linjelisten kan have ændret sig siden kortet blev tegnet — byg valgmulighederne frisk
+  list.addEventListener('mousedown',function(e){
+    if(!e.target.classList||!e.target.classList.contains('qe-opt-rep'))return;
+    var card=e.target.closest('.qe-opt-card'),o=qeState.options[+card.dataset.i];if(!o)return;
+    var tmp=document.createElement('div');tmp.innerHTML=qeOptAltSelectHtml(o);e.target.innerHTML=tmp.firstChild.innerHTML;
+  });
+  list.addEventListener('click',async function(e){
+    var b=e.target.closest('[data-del]');if(!b)return;
+    var o=qeState.options[+b.dataset.del];
+    if(o&&(o.description||o.sell_price)&&!(await gmConfirm('Fjern dette '+(o.kind==='alt'?'alternativ':'tilvalg')+'?')))return;
+    qeState.options.splice(+b.dataset.del,1);qeRenderOptions();qeOptChanged();
+  });
+})();
+function qePreviewOptionsHtml(){
+  var opts=(qeState.options||[]).filter(function(o){return !o.chosen&&String(o.description||'').trim();});
+  if(!opts.length||qeState.directInvoice)return '';
+  var r=1+(Number(qeState.taxRate)||0)/100;
+  return '<div class="qe-pdf-opts"><div class="qe-pdf-opts-h">Kan tilvælges</div><div class="qe-pdf-opts-sub">Ikke med i prisen ovenfor. Vælg dem til på tilbudssiden, når du accepterer.</div>'
+    +opts.map(function(o){var d=qeOptDelta(o)*r;var t=String(o.description).split('\n')[0];var sub=(o.kind==='alt'&&o._ref?'I stedet for: '+qeOptLineLabel(o._ref):'')+(o.note?(o.kind==='alt'&&o._ref?' · ':'')+o.note:'');
+      return '<div class="qe-pdf-opt"><span class="qe-pdf-opt-box"></span><div><b>'+esc(t)+'</b>'+(sub?'<span>'+esc(sub)+'</span>':'')+'</div><em>'+(d>=0?'+ ':'− ')+krFmt(Math.abs(d))+'</em></div>';}).join('')
+    +'<div class="qe-pdf-opts-sub" style="margin-top:4px">Priser på tilvalg er inkl. moms.</div></div>';
+}
 function qeRenderPreview(){
   qeAdjustPreviewHeight();
   var t=qeComputeTotals();
@@ -41696,7 +41816,7 @@ function qeRenderPreview(){
     +'<div class="qe-pdf-totals-row"><span>Moms ('+t.taxRate+'%)</span><span>'+krFmt(t.taxAmount)+'</span></div>'
     +'<div class="qe-pdf-totals-row grand"><span>Total</span><span>'+krFmt(t.total)+'</span></div>'
     +'</div>';
-  var notesHtml=notes?'<div class="qe-pdf-notes">'+notes+'</div>':'';
+  var notesHtml=qePreviewOptionsHtml()+(notes?'<div class="qe-pdf-notes">'+notes+'</div>':'');
 
   // Ingen linjer endnu — ét enkelt tomt sideskitse, ingen grund til at måle/paginere.
   var box=document.getElementById('qe-preview');
@@ -42055,6 +42175,11 @@ function qeBuildSaveBody(){
   // Andre felter (kunde/noter/gyldig til/rabat) kan stadig gemmes som hidtil.
   // v2.74.0 — linjerne sendes altid med; serveren rører aldrig fakturerede poster.
   body.lines=qeState.lines;
+  if(!qeState.directInvoice)body.options=(qeState.options||[]).map(function(o){
+    var idx=o._ref?qeState.lines.indexOf(o._ref):-1;
+    return {id:o.id,kind:o.kind,description:o.description,note:o.note,quantity:o.quantity,unit:o.unit,sell_price:o.sell_price,cost_price:o.cost_price,product_type:o.product_type,discount_pct:0,discount_type:'pct',chosen:!!o.chosen,
+      replaces_line_id:o.kind==='alt'&&o._ref&&o._ref.id?o._ref.id:null,replaces_index:o.kind==='alt'&&idx>-1?idx:null};
+  });
   // RUNDE (okt. 2026) — se skema-kommentaren ved quotes.created_via i
   // server.js. Sendes KUN ved selve oprettelsen (POST, qeState.id endnu
   // ikke sat) — PUT /api/quotes/:id læser ikke disse felter, og vi vil
