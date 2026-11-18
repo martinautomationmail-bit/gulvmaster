@@ -5655,6 +5655,21 @@ async function migrateProfitSnapshotFormula2() {
     await pool.query('INSERT INTO app_migrations (name, details) VALUES ($1, $2)', [name, JSON.stringify({ redone })]);
   } catch (e) { console.error('migrateProfitSnapshotFormula2 fejlede:', e.message); }
 }
+async function migrateAddressSync20261118() {
+  try {
+    const name = 'address_sync_20261118';
+    if (await pgOne('SELECT 1 FROM app_migrations WHERE name=$1', [name])) return;
+    // 1) customers.address = den primære adresse på kundekortet ("+"-listen), hvor de er løbet fra hinanden
+    const c = await pool.query(`UPDATE customers c SET address=ch.value FROM contact_channels ch
+      WHERE ch.owner_type='customer' AND ch.owner_id=c.id AND ch.kind='address' AND ch.is_primary=1 AND COALESCE(c.address,'')<>COALESCE(ch.value,'')`);
+    // 2) aktive sagers opgaver får sagens adresse/kontakt
+    const ps = (await pool.query(`SELECT DISTINCT p.id FROM projects p JOIN jt_tasks t ON t.project_id=p.id
+      WHERE COALESCE(p.customer_address,'')<>'' AND COALESCE(t.job_address,'')<>COALESCE(p.customer_address,'')
+      AND p.status NOT IN ('done','faktureret','ikke_udfoert','archived')`)).rows;
+    for (const p of ps) await syncProjectContactToTasks(p.id);
+    await pool.query('INSERT INTO app_migrations (name, details) VALUES ($1, $2)', [name, JSON.stringify({ customers: c.rowCount || 0, projects: ps.map(p => p.id) })]);
+  } catch (e) { console.error('migrateAddressSync20261118 fejlede:', e.message); }
+}
 async function migrateMartinBToKontor() {
   try {
     const name = 'martin_b_kontor_20261114';
@@ -11954,22 +11969,7 @@ app.put('/api/crm/customers/:id', auth, panelAccess('customers'), asyncRoute(asy
       await pool.query('INSERT INTO customer_notes (customer_id,body,user_id) VALUES ($1,$2,$3)', [req.params.id, trimmedNew, req.user.id]);
     }
   }
-  // v2.75.2 — kundens nye adresse/tlf/mail følger med ud på kundens sager
-  // (og deres opgaver) — men kun hvor sagen ikke har sin EGEN, anderledes
-  // værdi (fx en arbejdsadresse der er forskellig fra kundens hjemadresse).
-  try {
-    const map = [['address', 'customer_address'], ['phone', 'customer_phone'], ['email', 'customer_email']];
-    const projs = (await pool.query('SELECT id, customer_address, customer_phone, customer_email FROM projects WHERE customer_id=$1', [req.params.id])).rows;
-    for (const p of projs) {
-      const sets = [], vals = [];
-      for (const [cf, pf] of map) {
-        if (b[cf] === undefined) continue;
-        const pv = String(p[pf] || '').trim(), oldv = String(current[cf] || '').trim();
-        if (String(b[cf] || '').trim() !== pv && (!pv || pv === oldv)) { vals.push(b[cf] || null); sets.push(pf + '=$' + vals.length); }
-      }
-      if (sets.length) { vals.push(p.id); await pool.query(`UPDATE projects SET ${sets.join(', ')}, updated_at=${nowTextSQL()} WHERE id=$${vals.length}`, vals); await syncProjectContactToTasks(p.id); }
-    }
-  } catch (e) { console.error('Kunne ikke opdatere kundens sager:', e.message); }
+  await propagateCustomerContactToProjects(req.params.id, current, b);
   res.json({ ok: true });
 }));
 app.delete('/api/crm/customers/:id', auth, panelAccess('customers'), asyncRoute(async (req, res) => {
@@ -14703,10 +14703,40 @@ async function crmPropagateContactFields(contactId, fields) {
 // søgning, Gmail-synk) fortsat ser den rigtige/primære værdi uændret, uden at
 // skulle omskrives til at forstå flere værdier. value=null bruges når sidste
 // kanal af sin slags slettes (ejeren har ikke længere nogen værdi af den slags).
+// v2.75.2 — kundens nye adresse/tlf/mail følger med ud på kundens sager
+// (og deres opgaver) — men kun hvor sagen ikke har sin EGEN, anderledes
+// værdi (fx en arbejdsadresse der er forskellig fra kundens hjemadresse).
+// v2.90.1 (Martin: "når kundens adresse er ændret skal den ændre på projektet og
+// alle de task der er under kunden — det gør den ikke") — trukket ud i en
+// funktion, så den OGSÅ kører når adressen rettes via "+"-listen på kundekortet
+// (contact_channels), ikke kun via "Redigér kunde"-formularen. Og opgaverne
+// synkes altid fra sagen, også når sagen allerede havde den nye adresse.
+async function propagateCustomerContactToProjects(customerId, oldVals, newVals) {
+  try {
+    const map = [['address', 'customer_address'], ['phone', 'customer_phone'], ['email', 'customer_email']];
+    // Martin vil have at ALLE kundens igangværende sager følger kunden. Afsluttede
+    // sager (færdig/faktureret/arkiveret) røres ikke — de er historik.
+    const projs = (await pool.query("SELECT id, status, customer_address, customer_phone, customer_email FROM projects WHERE customer_id=$1 AND status NOT IN ('done','faktureret','ikke_udfoert','archived')", [customerId])).rows;
+    for (const p of projs) {
+      const sets = [], vals = [];
+      let touched = false;
+      for (const [cf, pf] of map) {
+        if (newVals[cf] === undefined) continue;
+        touched = true;
+        const pv = String(p[pf] || '').trim();
+        if (String(newVals[cf] || '').trim() !== pv) { vals.push(newVals[cf] || null); sets.push(pf + '=$' + vals.length); }
+      }
+      if (sets.length) { vals.push(p.id); await pool.query(`UPDATE projects SET ${sets.join(', ')}, updated_at=${nowTextSQL()} WHERE id=$${vals.length}`, vals); }
+      if (touched) await syncProjectContactToTasks(p.id);
+    }
+  } catch (e) { console.error('Kunne ikke opdatere kundens sager:', e.message); }
+}
 async function crmSyncPrimaryContactChannel(ownerType, ownerId, kind, value) {
   if (!CONTACT_CHANNEL_KINDS.includes(kind)) return; // defensivt — kind kommer altid valideret fra ruterne ovenfor
   if (ownerType === 'customer') {
+    const before = await pgOne(`SELECT ${kind} FROM customers WHERE id=$1`, [ownerId]);
     await pool.query(`UPDATE customers SET ${kind}=$1, updated_at=${nowTextSQL()} WHERE id=$2`, [value, ownerId]);
+    await propagateCustomerContactToProjects(ownerId, before || {}, { [kind]: value });
   } else if (ownerType === 'contact') {
     await crmPropagateContactFields(ownerId, { [kind]: value });
   } else if (ownerType === 'lead') {
@@ -18580,6 +18610,11 @@ app.put('/api/projects/:id', auth, panelAccess('projects'), asyncRoute(async (re
     const newEmail = b.customer_email !== undefined ? b.customer_email : current.customer_email;
     const customerFieldsChanged = newName !== current.name || newAddress !== current.customer_address
       || newPhone !== current.customer_phone || newEmail !== current.customer_email;
+    // v2.90.1 — opgaverne synkes også når sagens felter er uændrede men opgaverne
+    // er løbet fra sagen (fx oprettet med en gammel adresse).
+    if (!customerFieldsChanged && b.customer_address !== undefined) {
+      syncProjectContactToTasks(current.id).catch(e => console.error('syncProjectContactToTasks fejlede:', e.message));
+    }
     if (customerFieldsChanged) {
       pool.query(`
         UPDATE jt_tasks SET job_name=$1, job_address=$2, customer_phone=$3, customer_email=$4
@@ -30850,6 +30885,7 @@ async function start() {
   await migrateReopenPartlyInvoicedQuotes();
   await migrateMartinBToKontor();
   await migrateShiftExpensesBackOneMonth();
+  migrateAddressSync20261118();
   migrateProfitSnapshotFormula2();
   await backfillBankUploadHistory();
   await migrateNotPerformedStage();
