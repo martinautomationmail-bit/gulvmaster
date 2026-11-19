@@ -2837,17 +2837,31 @@ body.plan-alt-dragging .ctl-add{display:none}
 .crmp-card-badges{display:flex;flex-wrap:wrap;gap:4px;margin-top:6px}
 .crmp-card-badge{background:var(--bly-accent-soft);color:var(--bly-accent);font-size:10px;font-weight:700;padding:2px 7px;border-radius:999px}
 .crmp-card-foot{display:flex;align-items:center;justify-content:space-between;margin-top:8px}
-.crmp-fu{display:flex;align-items:center;gap:8px;margin:8px 0 2px;padding:7px 9px;border-radius:10px;border:1px solid #E5E7EB;background:#F9FAFB;cursor:pointer;transition:filter .12s}
+.cu-drop{position:relative;border-radius:14px;min-height:90px;transition:background .12s}
+.cu-drop-hint{display:none;position:absolute;inset:0;align-items:center;justify-content:center;border:2px dashed #6366F1;border-radius:14px;background:rgba(238,242,255,.92);color:#4338CA;font-weight:800;font-size:14px;pointer-events:none}
+.cu-drop.over .cu-drop-hint{display:flex}
+.cd-file-card{position:relative}
+.cd-file-thumb{height:92px;border-radius:8px;background:#F1F5F9 center/cover no-repeat;margin-bottom:6px}
+.cu-del{position:absolute;top:6px;right:6px;width:22px;height:22px;border-radius:50%;border:0;background:rgba(17,19,24,.6);color:#fff;font-size:11px;cursor:pointer;opacity:0;transition:opacity .12s;z-index:2}
+.cd-file-card:hover .cu-del{opacity:1}
+.cu-progress{position:fixed;left:50%;bottom:28px;transform:translateX(-50%);z-index:10000;background:#111318;color:#fff;border-radius:12px;padding:10px 16px 14px;min-width:280px;box-shadow:0 10px 30px rgba(0,0,0,.25);display:flex;flex-direction:column;gap:2px;overflow:hidden}
+.cu-progress b{font-size:13px}
+.cu-progress span{font-size:11.5px;opacity:.75;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:320px}
+.cu-progress i{position:absolute;left:0;bottom:0;height:3px;background:#818CF8;transition:width .2s}
+.crmp-col:not(.crmp-col-collapsed){min-width:0;max-width:280px}
+.crmp-col-body,.crmp-card{min-width:0}
+.crmp-card{overflow:hidden}
+.crmp-fu{display:flex;align-items:center;gap:8px;width:100%;max-width:100%;min-width:0;box-sizing:border-box;overflow:hidden;margin:8px 0 2px;padding:7px 9px;border-radius:10px;border:1px solid #E5E7EB;background:#F9FAFB;cursor:pointer;transition:filter .12s}
 .crmp-fu:hover{filter:brightness(.97)}
 .crmp-fu.soon{border-color:#F5C26B;background:#FFF7E6}
 .crmp-fu.over{border-color:#F3A6A6;background:#FEF2F2}
-.crmp-fu-ic{font-size:13px;line-height:1}
+.crmp-fu-ic{flex:none;font-size:13px;line-height:1}
 .crmp-fu-tx{display:flex;flex-direction:column;min-width:0;flex:1}
 .crmp-fu-tx b{font-size:12px;font-weight:700;color:#111318;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.crmp-fu-tx em{font-style:normal;font-size:11px;color:#6B7280}
+.crmp-fu-tx em{font-style:normal;font-size:11px;color:#6B7280;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .crmp-fu.soon .crmp-fu-tx b{color:#7A4A06}.crmp-fu.soon .crmp-fu-tx em{color:#9A6110}
 .crmp-fu.over .crmp-fu-tx b{color:#8B1C1C}.crmp-fu.over .crmp-fu-tx em{color:#B42323;font-weight:600}
-.crmp-fu-more{font-size:10.5px;font-weight:800;padding:2px 6px;border-radius:999px;background:#fff;border:1px solid #E5E7EB;color:#4B5563}
+.crmp-fu-more{flex:none;font-size:10.5px;font-weight:800;padding:2px 6px;border-radius:999px;background:#fff;border:1px solid #E5E7EB;color:#4B5563}
 .crmp-fu-add{display:block;width:100%;text-align:left;margin:6px 0 0;padding:3px 0;border:0;background:transparent;font:inherit;font-size:11px;color:#9CA3AF;cursor:pointer}
 .crmp-fu-add b{color:#4F46E5;font-weight:700}
 .crmp-fu-add:hover b{text-decoration:underline}
@@ -6067,7 +6081,7 @@ body.tp-dragging,body.tp-dragging *{cursor:grabbing!important}
        i browseren faktisk ER det nyeste deploy, eller om Render/GitHub bare
        ikke er nået at opdatere endnu — i stedet for at skulle gætte om en
        rettelse "stadig ikke virker" eller bare endnu ikke er live. -->
-  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build v2.90.2 · 2026-11-02</span></div>
+  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build v2.90.3 · 2026-11-02</span></div>
 </aside>
 <div class="app-content">
 <!-- RUNDE FB — AI-ASSISTENTEN (Martin: "en ai der er nede i venstre hjørne af
@@ -8750,10 +8764,11 @@ body.ai-has-reply #ai-fab{animation:ai-nudge 1.4s ease-in-out 3}
       <h3 class="cdx-ph" id="cd-files-toggle" style="cursor:pointer;user-select:none">📎 Filer <span class="sub" id="cd-files-count"></span> <span id="cd-files-toggle-icon" style="float:right;font-size:11px;color:var(--bly-sub)">▸ Vis</span></h3>
       <div id="cd-files-wrap" hidden>
         <div style="display:flex;justify-content:flex-end;margin:10px 0">
+          <button class="bly-btn outline small" type="button" data-cu-upload="cd" title="Upload billeder, PDF'er og andre filer — vælg mange på én gang, eller træk dem ind">⬆ Upload filer</button>
           <button class="bly-btn outline small" type="button" data-gm-zip="customer" title="Download alle kundens filer som én ZIP-fil">⬇ Download alle (zip)</button>
           <button class="bly-btn outline small" type="button" id="cd-files-fullsync-btn" title="Henter hele mailhistorikken med denne kunde (ikke kun de seneste)">🔄 Hent hele mail-historikken</button>
         </div>
-        <div id="cd-files-grid" class="cd-files-grid"></div>
+        <div class="cu-drop" data-cu-drop="cd"><div id="cd-files-grid" class="cd-files-grid"></div><div class="cu-drop-hint">Slip filerne her for at uploade</div></div>
       </div>
     </div>
     <div class="cdx-empty" id="cda-files-none" style="display:none">Filer hentes fra mailkorrespondancen med kunden — forbind Gmail for at se dem.</div>
@@ -9133,10 +9148,11 @@ body.ai-has-reply #ai-fab{animation:ai-nudge 1.4s ease-in-out 3}
          værktøjslinje over selve filgitteret, kun synlig på Filer-fanen. -->
     <div style="display:flex;align-items:center;justify-content:flex-end;gap:10px;margin-bottom:12px">
       <button class="bly-btn outline small" type="button" data-gm-zip="crmpx" title="Download alle kundens filer som én ZIP-fil">⬇ Download alle (zip)</button>
+      <button class="bly-btn outline small" type="button" data-cu-upload="crmpx" title="Upload billeder, PDF'er og andre filer — vælg mange på én gang, eller træk dem ind">⬆ Upload filer</button>
       <button class="bly-btn small" type="button" id="crmpx-photoreq-new-btn">📩 Bed kunden om svar/billeder</button>
     </div>
     <div id="crmpx-photoreq-list" style="margin-bottom:16px"></div>
-    <div id="crmpx-files-grid" class="cd-files-grid"></div>
+    <div class="cu-drop" data-cu-drop="crmpx"><div id="crmpx-files-grid" class="cd-files-grid"></div><div class="cu-drop-hint">Slip filerne her for at uploade</div></div>
   </div>
 
   <!-- EMAILS (#crmpx-view-emails) — samme lukket/foldbar-mønster som
@@ -31937,16 +31953,9 @@ async function cdLoadFiles(){
   var files=await api('/api/crm/customers/'+cdCurrent.id+'/files');
   if(!files||files.error){grid.innerHTML='<div class="crmpx-empty">Kunne ikke hente filer — '+esc((files&&files.error)||'ukendt fejl')+'</div>';return;}
   document.getElementById('cd-files-count').textContent=files.length?'('+files.length+')':'';
-  if(!files.length){grid.innerHTML='<div class="crmpx-empty">Ingen filer fundet i mailkorrespondancen endnu</div>';return;}
+  if(!files.length){grid.innerHTML='<div class="crmpx-empty">Ingen filer endnu — upload selv med ⬆ Upload filer, eller træk dem herind</div>';return;}
   crmpxFiles=files;
-  grid.innerHTML=files.map(function(f,i){
-    var icon=f.mimeType&&f.mimeType.indexOf('image/')===0?'🖼️':(f.mimeType==='application/pdf'?'📄':'📎');
-    return '<div class="cd-file-card" data-file-idx="'+i+'" data-msg-id="'+esc(f.gmail_message_id)+'" data-att-id="'+esc(f.attachmentId)+'" data-filename="'+esc(f.filename)+'" data-mimetype="'+esc(f.mimeType)+'">'
-      +'<div class="cd-file-icon">'+icon+'</div>'
-      +'<div class="cd-file-name">'+esc(f.filename)+'</div>'
-      +'<div class="cd-file-meta">'+esc(fmtDaDate(new Date(Number(f.internal_date)).toISOString()))+'</div>'
-      +'</div>';
-  }).join('');
+  grid.innerHTML=files.map(cuFileCardHtml).join('');
 }
 // Genbruger .cd-file-card-klikket, der allerede findes globalt (se crmpxOpenFileLightboxAt-
 // lytteren ved crmpx-files-grid) — den lytter på HELE dokumentet, så den rammer
@@ -33825,6 +33834,79 @@ async function openQuoteEditorSafe(id){
   if(!qzInitialized)await initQuotesModule();
   openQuoteEditor(id);
 }
+// ══ v2.90.3 EGNE UPLOADS PÅ KUNDEN (Filer) ════════════════════════════════
+function cuFileCardHtml(f,i){
+  var isImg=f.mimeType&&f.mimeType.indexOf('image/')===0;
+  var isCustomerUpload=!!f.direct_url&&!f.own_upload;
+  var icon=isCustomerUpload?'🙋':(isImg?'🖼️':(f.mimeType==='application/pdf'?'📄':'📎'));
+  var thumb=f.direct_url&&isImg?'<div class="cd-file-thumb" style="background-image:url(\''+esc(String(f.direct_url).replace('/upload/','/upload/c_fill,w_240,h_160,q_auto/'))+'\')"></div>':'<div class="cd-file-icon">'+icon+'</div>';
+  return '<div class="cd-file-card'+(f.own_upload?' own':'')+'" data-file-idx="'+i+'" data-msg-id="'+esc(f.gmail_message_id||'')+'" data-att-id="'+esc(f.attachmentId||'')+'" data-filename="'+esc(f.filename)+'" data-mimetype="'+esc(f.mimeType)+'" title="'+esc(f.subject||'')+'">'
+    +(f.own_upload?'<button type="button" class="cu-del" data-cu-del="'+f.upload_id+'" title="Slet filen">✕</button>':'')
+    +thumb
+    +'<div class="cd-file-name">'+esc(f.filename)+'</div>'
+    +'<div class="cd-file-meta">'+esc(fmtDaDate(new Date(Number(f.internal_date)).toISOString()))+(f.own_upload?' · uploadet':'')+'</div>'
+  +'</div>';
+}
+function cuCustomerId(which){return which==='cd'?(cdCurrent&&cdCurrent.id):crmpxCurrentCustomerId;}
+function cuReload(which){if(which==='cd'){cdFilesLoaded=false;cdLoadFiles();}else{crmpxFilesLoaded=false;crmpxLoadFiles();}}
+function cuReadDataUri(file){return new Promise(function(res,rej){var r=new FileReader();r.onload=function(){res(r.result);};r.onerror=rej;r.readAsDataURL(file);});}
+async function cuShrinkImage(file){
+  if(!/^image\/(jpeg|png|webp)$/.test(file.type)||file.size<1.5*1024*1024)return cuReadDataUri(file);
+  return new Promise(function(resolve){var img=new Image(),u=URL.createObjectURL(file);
+    img.onload=function(){URL.revokeObjectURL(u);var m=2400,sc=Math.min(1,m/Math.max(img.naturalWidth,img.naturalHeight));var c=document.createElement('canvas');c.width=Math.round(img.naturalWidth*sc);c.height=Math.round(img.naturalHeight*sc);c.getContext('2d').drawImage(img,0,0,c.width,c.height);resolve(c.toDataURL('image/jpeg',0.88));};
+    img.onerror=function(){cuReadDataUri(file).then(resolve);};img.src=u;});
+}
+var cuBusy=false;
+async function cuUploadFiles(which,list){
+  var cid=cuCustomerId(which);
+  if(!cid){toast('Handlen er ikke koblet til en kunde endnu','⚠️');return;}
+  var files=[].slice.call(list||[]);if(!files.length)return;
+  if(cuBusy){toast('Vent til den igangværende upload er færdig','⏳');return;}
+  var tooBig=files.filter(function(f){return f.size>28*1024*1024;});
+  files=files.filter(function(f){return f.size<=28*1024*1024;});
+  if(tooBig.length)toast(tooBig.length+' fil(er) er over 28 MB og springes over','⚠️');
+  if(!files.length)return;
+  cuBusy=true;
+  var bar=document.createElement('div');bar.className='cu-progress';document.body.appendChild(bar);
+  var ok=0,fail=[];
+  try{
+    for(var i=0;i<files.length;i++){
+      var f=files[i];
+      bar.innerHTML='<b>Uploader '+(i+1)+' af '+files.length+'</b><span>'+esc(f.name)+'</span><i style="width:'+Math.round(i/files.length*100)+'%"></i>';
+      try{
+        var data=await cuShrinkImage(f);
+        var r=await api('/api/crm/customers/'+cid+'/uploads',{method:'POST',body:JSON.stringify({data_uri:data,filename:f.name,content_type:f.type,size_bytes:f.size})});
+        if(r&&r.ok)ok++;else fail.push(f.name+((r&&r.error)?' ('+r.error+')':''));
+      }catch(e){fail.push(f.name);}
+    }
+  }finally{cuBusy=false;bar.remove();}
+  if(ok)toast(ok+' fil'+(ok===1?'':'er')+' uploadet ✓','✓');
+  if(fail.length)toast('Kunne ikke uploade: '+fail.join(', '),'❌');
+  cuReload(which);
+}
+(function(){
+  var picker=document.createElement('input');picker.type='file';picker.multiple=true;picker.style.display='none';document.body.appendChild(picker);
+  var pickFor=null;
+  picker.addEventListener('change',function(){var fs=picker.files;cuUploadFiles(pickFor,fs);picker.value='';});
+  document.addEventListener('click',async function(e){
+    var up=e.target.closest('[data-cu-upload]');
+    if(up){e.preventDefault();pickFor=up.dataset.cuUpload;picker.click();return;}
+    var del=e.target.closest('[data-cu-del]');
+    if(del){e.preventDefault();e.stopPropagation();
+      var which=del.closest('[data-cu-drop]')?del.closest('[data-cu-drop]').dataset.cuDrop:'crmpx';
+      if(!(await gmConfirm('Slet filen?')))return;
+      var r=await api('/api/crm/customers/'+cuCustomerId(which)+'/uploads/'+del.dataset.cuDel,{method:'DELETE'});
+      if(r&&r.ok){toast('Filen er slettet','✓');cuReload(which);}
+    }
+  },true);
+  document.querySelectorAll('[data-cu-drop]').forEach(function(z){
+    var n=0;
+    z.addEventListener('dragenter',function(e){if(!e.dataTransfer||[].indexOf.call(e.dataTransfer.types||[],'Files')<0)return;e.preventDefault();n++;z.classList.add('over');});
+    z.addEventListener('dragover',function(e){if(!e.dataTransfer||[].indexOf.call(e.dataTransfer.types||[],'Files')<0)return;e.preventDefault();});
+    z.addEventListener('dragleave',function(){n=Math.max(0,n-1);if(!n)z.classList.remove('over');});
+    z.addEventListener('drop',function(e){if(!e.dataTransfer||!e.dataTransfer.files||!e.dataTransfer.files.length)return;e.preventDefault();n=0;z.classList.remove('over');cuUploadFiles(z.dataset.cuDrop,e.dataTransfer.files);});
+  });
+})();
 async function crmpxLoadFiles(){
   if(!crmpxCurrentCustomerId)return;
   crmpxFilesLoaded=true;
@@ -33835,23 +33917,11 @@ async function crmpxLoadFiles(){
   var files=await api('/api/crm/customers/'+crmpxCurrentCustomerId+'/files');
   if(!files||files.error){grid.innerHTML='<div class="crmpx-empty">Kunne ikke hente filer — '+esc((files&&files.error)||'ukendt fejl')+'</div>';return;}
   document.getElementById('crmpx-files-count').textContent=files.length?'('+files.length+')':'';
-  if(!files.length){grid.innerHTML='<div class="crmpx-empty">Ingen filer endnu — hverken i mailkorrespondancen eller fra et svar-link</div>';return;}
+  if(!files.length){grid.innerHTML='<div class="crmpx-empty">Ingen filer endnu — upload selv med ⬆ Upload filer, eller træk dem herind</div>';return;}
   // Gemmes så lightboxen kan bladre frem/tilbage i PRÆCIS den her liste uden at
   // hente noget igen — se crmpxOpenFileLightboxAt.
   crmpxFiles=files;
-  grid.innerHTML=files.map(function(f,i){
-    // RUNDE BK — filer kunden selv har uploadet via /svar/:token har et
-    // direct_url (Cloudinary) i stedet for en Gmail-vedhæftnings-id. Får sit
-    // eget ikon (🙋) så det er tydeligt i gitteret at det er kundens EGET
-    // upload, ikke noget der er fundet i mailkorrespondancen.
-    var isCustomerUpload=!!f.direct_url;
-    var icon=isCustomerUpload?'🙋':(f.mimeType&&f.mimeType.indexOf('image/')===0?'🖼️':(f.mimeType==='application/pdf'?'📄':'📎'));
-    return '<div class="cd-file-card" data-file-idx="'+i+'" data-msg-id="'+esc(f.gmail_message_id)+'" data-att-id="'+esc(f.attachmentId)+'" data-filename="'+esc(f.filename)+'" data-mimetype="'+esc(f.mimeType)+'" title="'+esc(f.subject||'')+'">'
-      +'<div class="cd-file-icon">'+icon+'</div>'
-      +'<div class="cd-file-name">'+esc(f.filename)+'</div>'
-      +'<div class="cd-file-meta">'+esc(fmtDaDate(new Date(Number(f.internal_date)).toISOString()))+'</div>'
-      +'</div>';
-  }).join('');
+  grid.innerHTML=files.map(cuFileCardHtml).join('');
 }
 document.addEventListener('click',function(e){
   var card=e.target.closest('.cd-file-card');

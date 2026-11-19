@@ -1323,6 +1323,19 @@ async function initSchema() {
     -- quote_lines, så ingen eksisterende total-/faktura-/opgavelogik ser dem, før
     -- kunden har valgt dem og de er lagt ind som rigtige linjer (applyQuoteOptions).
     ALTER TABLE quotes ADD COLUMN IF NOT EXISTS options JSONB;
+    -- v2.90.3 (Martin: "kan du gøre så jeg selv kan uploade filer og billeder og
+    -- pdf'er osv — gerne mange på 1 gang") — egne uploads på kunden (Filer-fanen).
+    CREATE TABLE IF NOT EXISTS customer_uploads (
+      id SERIAL PRIMARY KEY,
+      customer_id INTEGER NOT NULL,
+      url TEXT NOT NULL,
+      filename TEXT,
+      mime_type TEXT,
+      size_bytes INTEGER,
+      uploaded_by INTEGER,
+      created_at TEXT DEFAULT ${nowTextSQL()}
+    );
+    CREATE INDEX IF NOT EXISTS idx_customer_uploads_customer ON customer_uploads(customer_id);
     -- RUNDE CC (Martin: "under tilbud ... en knap hvor AI ud fra tilbuddet kan
     -- tilføje en betalingsplan ... så store tilbud får en betalingsplan man kan
     -- faktuere efter") — ÉN betalingsplan pr. tilbud (overskrives ved ny AI-
@@ -12537,6 +12550,12 @@ async function customerFilesList(customerId) {
     'SELECT id,question,note,photo_urls,created_at,updated_at,answered_at FROM customer_photo_requests WHERE customer_id=$1 AND answered_at IS NOT NULL ORDER BY updated_at DESC NULLS LAST, created_at DESC',
     [req.params.id]
   )).rows;
+  // v2.90.3 — egne uploads (Filer-fanens "⬆ Upload filer")
+  const ups = (await pool.query('SELECT cu.*, u.name AS uploader FROM customer_uploads cu LEFT JOIN users u ON u.id=cu.uploaded_by WHERE cu.customer_id=$1', [customerId])).rows;
+  for (const u of ups) {
+    files.push({ upload_id: u.id, filename: u.filename || 'fil', mimeType: u.mime_type || 'application/octet-stream', direct_url: u.url,
+      subject: 'Uploadet' + (u.uploader ? ' af ' + u.uploader : ''), internal_date: Date.parse(String(u.created_at || '').replace(' ', 'T') + 'Z') || Date.now(), own_upload: true });
+  }
   for (const r of photoReqs) {
     const urls = Array.isArray(r.photo_urls) ? r.photo_urls : [];
     const whenMs = Date.parse((r.updated_at || r.created_at || '') + ' UTC') || Date.now();
@@ -12554,7 +12573,26 @@ async function customerFilesList(customerId) {
   files.sort((a, b) => Number(b.internal_date) - Number(a.internal_date));
   return files;
 }
-app.get('/api/crm/customers/:id/files', auth, panelAccess('customers'), asyncRoute(async (req, res) => {
+app.post('/api/crm/customers/:id/uploads', auth, panelAccessAny(['customers', 'crmp_leads', 'crmp_sales']), asyncRoute(async (req, res) => {
+  const b = req.body || {};
+  if (!b.data_uri) return res.status(400).json({ error: 'Ingen fil modtaget' });
+  if (!cloudinaryConfigured()) return res.status(400).json({ error: 'Fillager er ikke konfigureret på serveren' });
+  const c = await pgOne('SELECT id FROM customers WHERE id=$1', [req.params.id]);
+  if (!c) return res.status(404).json({ error: 'Kunden findes ikke' });
+  try {
+    const url = await uploadPhotoToCloudinary(b.data_uri, 'gulvmaster/customer-files/' + req.params.id);
+    const row = await pgOne('INSERT INTO customer_uploads (customer_id,url,filename,mime_type,size_bytes,uploaded_by) VALUES ($1,$2,$3,$4,$5,$6) RETURNING id', [req.params.id, url, String(b.filename || 'fil').slice(0, 200), String(b.content_type || '').slice(0, 100) || null, Number(b.size_bytes) || null, req.user.id]);
+    res.json({ ok: true, id: row.id, url });
+  } catch (e) {
+    console.error('Kunde-upload fejlede:', e.message);
+    res.status(400).json({ error: 'Kunne ikke uploade filen: ' + e.message });
+  }
+}));
+app.delete('/api/crm/customers/:id/uploads/:uid', auth, panelAccessAny(['customers', 'crmp_leads', 'crmp_sales']), asyncRoute(async (req, res) => {
+  await pool.query('DELETE FROM customer_uploads WHERE id=$1 AND customer_id=$2', [req.params.uid, req.params.id]);
+  res.json({ ok: true });
+}));
+app.get('/api/crm/customers/:id/files', auth, panelAccessAny(['customers', 'crmp_leads', 'crmp_sales']), asyncRoute(async (req, res) => {
   res.json(await customerFilesList(req.params.id));
 }));
 // ── v2.70.0 — "Download alle" som én ZIP-fil (sagens billeder / kundens filer) ──
