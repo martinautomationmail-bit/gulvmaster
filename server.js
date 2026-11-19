@@ -15226,6 +15226,7 @@ app.get('/api/crm/leads', auth, panelAccess('crmp_leads'), asyncRoute(async (req
     WHERE ${conds.join(' AND ')} ORDER BY l.position ASC, l.id DESC
   `, params)).rows;
   const cfValues = await crmGetCustomFieldValuesBulk('lead', rows.map(r => r.id));
+  await crmAttachNextTasks('lead', rows);
   res.json(rows.map(r => ({ ...r, custom_fields: cfValues[r.id] || {} })));
 }));
 app.post('/api/crm/leads', auth, panelAccess('crmp_leads'), asyncRoute(async (req, res) => {
@@ -15554,6 +15555,22 @@ app.put('/api/crm/contacts/:id', auth, panelAccess('customers'), asyncRoute(asyn
   if (b.address !== undefined) await upsertPrimaryContactChannel('contact', req.params.id, 'address', b.address);
   res.json({ ok: true });
 }));
+// v2.90.2 (Martin: "kan du gøre så man kan se om der er en opfølgning på kunden og
+// hvad opfølgningen er") — næste åbne opfølgning (crm_tasks) + antal åbne pr. kort,
+// så Leads/Sales-boardet kan vise den uden at åbne kortet.
+async function crmAttachNextTasks(entityType, rows) {
+  if (!rows.length) return rows;
+  const r = await pool.query(`
+    SELECT DISTINCT ON (t.entity_id) t.entity_id, t.id, t.title, t.due_date, t.due_time, t.priority, t.assigned_to,
+      u.name AS assigned_name, u.color AS assigned_color, u.initials AS assigned_initials,
+      COUNT(*) OVER (PARTITION BY t.entity_id) AS open_count
+    FROM crm_tasks t LEFT JOIN users u ON u.id=t.assigned_to
+    WHERE t.entity_type=$1 AND t.done=0 AND t.entity_id = ANY($2)
+    ORDER BY t.entity_id, (t.due_date IS NULL) ASC, t.due_date ASC, (t.due_time IS NULL) ASC, t.due_time ASC, t.id ASC
+  `, [entityType, rows.map(x => x.id)]);
+  const by = {}; r.rows.forEach(x => { by[x.entity_id] = x; });
+  return rows.map(x => by[x.id] ? Object.assign(x, { next_task: { id: by[x.id].id, title: by[x.id].title, due_date: by[x.id].due_date, due_time: by[x.id].due_time, priority: by[x.id].priority, assigned_to: by[x.id].assigned_to, assigned_name: by[x.id].assigned_name, assigned_color: by[x.id].assigned_color, assigned_initials: by[x.id].assigned_initials }, open_task_count: Number(by[x.id].open_count) || 1 }) : x);
+}
 app.get('/api/crm/opportunities', auth, panelAccess('crmp_sales'), asyncRoute(async (req, res) => {
   const conds = ['1=1']; const params = [];
   if (req.query.pipeline_id) { params.push(req.query.pipeline_id); conds.push('o.pipeline_id=$' + params.length); }
@@ -15578,6 +15595,7 @@ app.get('/api/crm/opportunities', auth, panelAccess('crmp_sales'), asyncRoute(as
     WHERE ${conds.join(' AND ')} ORDER BY o.position ASC, o.id DESC
   `, params)).rows;
   const cfValues = await crmGetCustomFieldValuesBulk('opportunity', rows.map(r => r.id));
+  await crmAttachNextTasks('opportunity', rows);
   res.json(rows.map(r => ({ ...r, custom_fields: cfValues[r.id] || {} })));
 }));
 app.post('/api/crm/opportunities', auth, panelAccess('crmp_sales'), asyncRoute(async (req, res) => {

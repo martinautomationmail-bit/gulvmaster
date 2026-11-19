@@ -2837,6 +2837,32 @@ body.plan-alt-dragging .ctl-add{display:none}
 .crmp-card-badges{display:flex;flex-wrap:wrap;gap:4px;margin-top:6px}
 .crmp-card-badge{background:var(--bly-accent-soft);color:var(--bly-accent);font-size:10px;font-weight:700;padding:2px 7px;border-radius:999px}
 .crmp-card-foot{display:flex;align-items:center;justify-content:space-between;margin-top:8px}
+.crmp-fu{display:flex;align-items:center;gap:8px;margin:8px 0 2px;padding:7px 9px;border-radius:10px;border:1px solid #E5E7EB;background:#F9FAFB;cursor:pointer;transition:filter .12s}
+.crmp-fu:hover{filter:brightness(.97)}
+.crmp-fu.soon{border-color:#F5C26B;background:#FFF7E6}
+.crmp-fu.over{border-color:#F3A6A6;background:#FEF2F2}
+.crmp-fu-ic{font-size:13px;line-height:1}
+.crmp-fu-tx{display:flex;flex-direction:column;min-width:0;flex:1}
+.crmp-fu-tx b{font-size:12px;font-weight:700;color:#111318;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.crmp-fu-tx em{font-style:normal;font-size:11px;color:#6B7280}
+.crmp-fu.soon .crmp-fu-tx b{color:#7A4A06}.crmp-fu.soon .crmp-fu-tx em{color:#9A6110}
+.crmp-fu.over .crmp-fu-tx b{color:#8B1C1C}.crmp-fu.over .crmp-fu-tx em{color:#B42323;font-weight:600}
+.crmp-fu-more{font-size:10.5px;font-weight:800;padding:2px 6px;border-radius:999px;background:#fff;border:1px solid #E5E7EB;color:#4B5563}
+.crmp-fu-add{display:block;width:100%;text-align:left;margin:6px 0 0;padding:3px 0;border:0;background:transparent;font:inherit;font-size:11px;color:#9CA3AF;cursor:pointer}
+.crmp-fu-add b{color:#4F46E5;font-weight:700}
+.crmp-fu-add:hover b{text-decoration:underline}
+.crmp-fu-pop{position:fixed;z-index:9999;width:260px;background:#fff;border:1px solid #E5E7EB;border-radius:14px;box-shadow:0 12px 32px rgba(17,19,24,.16);padding:12px 14px}
+.crmp-fu-pop-h{display:flex;align-items:center;gap:6px;font-size:11.5px;font-weight:700;color:#6B7280}
+.crmp-fu-dot{width:8px;height:8px;border-radius:50%;background:#9CA3AF}
+.crmp-fu-pop.soon .crmp-fu-dot{background:#F59E0B}.crmp-fu-pop.soon .crmp-fu-pop-h{color:#9A6110}
+.crmp-fu-pop.over .crmp-fu-dot{background:#DC2626}.crmp-fu-pop.over .crmp-fu-pop-h{color:#B42323}
+.crmp-fu-prio{margin-left:auto;font-size:10.5px;padding:2px 7px;border-radius:999px;background:#FEE2E2;color:#B91C1C}
+.crmp-fu-pop-t{font-size:14px;font-weight:800;color:#111318;margin:4px 0 2px}
+.crmp-fu-pop-m{font-size:12px;color:#6B7280}
+.crmp-fu-pop-a{display:flex;gap:6px;margin-top:10px}
+.crmp-fu-pop-a button{flex:1;font:inherit;font-size:12px;font-weight:700;padding:7px 8px;border-radius:9px;border:1px solid #E5E7EB;background:#fff;cursor:pointer;color:#111318}
+.crmp-fu-pop-a button.primary{background:#4F46E5;border-color:#4F46E5;color:#fff}
+.crmp-fu-in{width:100%;box-sizing:border-box;font:inherit;font-size:13px;padding:7px 9px;border:1px solid #E5E7EB;border-radius:8px}
 .crmp-ownpill{display:inline-flex;align-items:center;gap:5px;border:1px solid color-mix(in srgb,var(--oc) 35%,transparent);background:color-mix(in srgb,var(--oc) 12%,#fff);color:color-mix(in srgb,var(--oc) 80%,#000);border-radius:999px;padding:1px 8px 1px 2px;font:700 11.5px inherit;font-family:inherit;cursor:pointer;line-height:18px}
 .crmp-ownpill i{width:18px;height:18px;border-radius:50%;background:var(--oc);color:#fff;font-style:normal;font-size:8.5px;display:grid;place-items:center}
 .crmp-ownpill:hover{filter:brightness(.96)}
@@ -6041,7 +6067,7 @@ body.tp-dragging,body.tp-dragging *{cursor:grabbing!important}
        i browseren faktisk ER det nyeste deploy, eller om Render/GitHub bare
        ikke er nået at opdatere endnu — i stedet for at skulle gætte om en
        rettelse "stadig ikke virker" eller bare endnu ikke er live. -->
-  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build v2.90.1 · 2026-11-02</span></div>
+  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build v2.90.2 · 2026-11-02</span></div>
 </aside>
 <div class="app-content">
 <!-- RUNDE FB — AI-ASSISTENTEN (Martin: "en ai der er nede i venstre hjørne af
@@ -33136,9 +33162,19 @@ function crmpRenderBoard(){
   });
   board.querySelectorAll('.crmp-card').forEach(function(card){
     var id=Number(card.dataset.id);
+    var fu=card.querySelector('[data-crmp-fu]');
+    if(fu){
+      var cardRow=(crmpState.cards||[]).find(function(x){return +x.id===id;});
+      fu.addEventListener('mouseenter',function(){clearTimeout(crmpFuHideT);var ex=document.getElementById('crmp-fu-pop');if(ex&&ex.dataset.pinned)return;if(cardRow)crmpFuShowPop(fu,cardRow,false);});
+      fu.addEventListener('mouseleave',function(){var ex=document.getElementById('crmp-fu-pop');if(ex&&ex.dataset.pinned)return;crmpFuHideT=setTimeout(crmpFuClosePop,180);});
+    }
     card.addEventListener('click',function(e){
       var ap=e.target.closest&&e.target.closest('[data-crmp-assign]');
       if(ap){e.preventDefault();e.stopPropagation();crmpAssignMenu(ap,id);return;}
+      var fuEl=e.target.closest&&e.target.closest('[data-crmp-fu]');
+      if(fuEl){e.preventDefault();e.stopPropagation();var cr=(crmpState.cards||[]).find(function(x){return +x.id===id;});if(cr)crmpFuShowPop(fuEl,cr,true);return;}
+      var fa=e.target.closest&&e.target.closest('[data-crmp-fu-add]');
+      if(fa){e.preventDefault();e.stopPropagation();var cr2=(crmpState.cards||[]).find(function(x){return +x.id===id;});if(cr2)crmpFuAddPop(fa,cr2);return;}
       // RUNDE L: kortet er nu et rigtigt <a href>, så almindeligt Ctrl/Cmd-klik
       // eller midterklik skal overlades til browseren (åbner selv i ny fane/vindue)
       // — kun et helt normalt venstreklik opfanges her til SPA-navigation.
@@ -33234,6 +33270,91 @@ async function crmpCtxDelete(type,id,name){
   if(r&&r.ok){toast('Slettet','🗑');crmpLoadBoard();}
   else toast((r&&r.error)||'Kunne ikke slette','❌');
 }
+// ══ v2.90.2 OPFØLGNING PÅ KORTET (Martin valgte B-design + C-hover) ═══════════
+function crmpFollowState(t){
+  if(!t||!t.due_date)return 'later';
+  var today=iso(new Date()),tom=iso(add(new Date(),1));
+  if(t.due_date<today)return 'over';
+  if(t.due_date===today||t.due_date===tom)return 'soon';
+  return 'later';
+}
+function crmpFollowWhen(t){
+  if(!t||!t.due_date)return 'Ingen dato';
+  var today=iso(new Date()),tom=iso(add(new Date(),1)),d=t.due_date,tm=t.due_time?' kl. '+String(t.due_time).slice(0,5):'';
+  if(d<today){var n=daysBetween(date(d),date(today));return (n===1?'1 dag':n+' dage')+' over';}
+  if(d===today)return 'I dag'+tm;
+  if(d===tom)return 'I morgen'+tm;
+  var dt=date(d);return ['søn','man','tir','ons','tor','fre','lør'][dt.getDay()]+' '+dt.getDate()+'. '+['jan','feb','mar','apr','maj','jun','jul','aug','sep','okt','nov','dec'][dt.getMonth()]+tm;
+}
+function crmpFollowChipHtml(c){
+  var t=c.next_task;
+  if(!t)return '<button type="button" class="crmp-fu-add" data-crmp-fu-add="'+c.id+'">📅 Ingen opfølgning · <b>+ Tilføj</b></button>';
+  var st=crmpFollowState(t),who=t.assigned_name?String(t.assigned_name).split(' ')[0]:'';
+  return '<div class="crmp-fu '+st+'" data-crmp-fu="'+c.id+'">'
+    +'<span class="crmp-fu-ic">'+(st==='over'?'⚠️':'📅')+'</span>'
+    +'<span class="crmp-fu-tx"><b>'+esc(t.title)+'</b><em>'+esc(crmpFollowWhen(t))+(who?' · '+esc(who):'')+'</em></span>'
+    +((c.open_task_count||1)>1?'<span class="crmp-fu-more">+'+((c.open_task_count||1)-1)+'</span>':'')
+  +'</div>';
+}
+var crmpFuHideT=null;
+function crmpFuClosePop(){var p=document.getElementById('crmp-fu-pop');if(p)p.remove();}
+function crmpFuCard(id){var rows=(crmpState.rows||crmpState.items||[]);var arr=Array.isArray(rows)?rows:[];var c=arr.find(function(x){return +x.id===+id;});return c||null;}
+function crmpFuPlace(pop,anchor){
+  var r=anchor.getBoundingClientRect();
+  pop.style.left=Math.max(8,Math.min(r.left,window.innerWidth-pop.offsetWidth-8))+'px';
+  var top=r.bottom+6;if(top+pop.offsetHeight>window.innerHeight-8)top=r.top-pop.offsetHeight-6;
+  pop.style.top=Math.max(8,top)+'px';
+}
+function crmpFuShowPop(anchor,c,pinned){
+  crmpFuClosePop();
+  var t=c.next_task;if(!t)return;
+  var pop=document.createElement('div');pop.id='crmp-fu-pop';pop.className='crmp-fu-pop '+crmpFollowState(t);
+  var who=t.assigned_name||'Ingen ansvarlig';
+  pop.innerHTML='<div class="crmp-fu-pop-h"><span class="crmp-fu-dot"></span>'+esc(crmpFollowWhen(t))+(t.priority?'<span class="crmp-fu-prio">Høj prioritet</span>':'')+'</div>'
+    +'<div class="crmp-fu-pop-t">'+esc(t.title)+'</div>'
+    +'<div class="crmp-fu-pop-m">'+(t.due_date?esc(t.due_date.split('-').reverse().join('.'))+(t.due_time?' kl. '+esc(String(t.due_time).slice(0,5)):'')+' · ':'')+esc(who)+'</div>'
+    +((c.open_task_count||1)>1?'<div class="crmp-fu-pop-m">+'+((c.open_task_count||1)-1)+' opfølgning'+((c.open_task_count||1)>2?'er':'')+' mere på kortet</div>':'')
+    +'<div class="crmp-fu-pop-a"><button type="button" class="primary" data-fu-act="done">✓ Færdig</button><button type="button" data-fu-act="snooze">Udskyd ▾</button><button type="button" data-fu-act="open">Åbn</button></div>';
+  document.body.appendChild(pop);crmpFuPlace(pop,anchor);
+  pop.addEventListener('mouseenter',function(){clearTimeout(crmpFuHideT);});
+  pop.addEventListener('mouseleave',function(){if(!pop.dataset.pinned)crmpFuHideT=setTimeout(crmpFuClosePop,180);});
+  if(pinned)pop.dataset.pinned='1';
+  pop.addEventListener('click',async function(e){
+    var b=e.target.closest('[data-fu-act]');if(!b)return;
+    e.preventDefault();e.stopPropagation();
+    var a=b.dataset.fuAct,p=crmpCurrentPipeline();
+    if(a==='open'){crmpFuClosePop();openCrmpDetail(p.type,c.id);return;}
+    if(a==='done'){b.disabled=true;var r=await api('/api/crm/tasks/'+t.id,{method:'PUT',body:JSON.stringify({done:true})});crmpFuClosePop();if(r&&r.ok){toast('Opfølgning markeret færdig ✓','✓');crmpLoadBoard();}return;}
+    if(a==='snooze'){
+      var rect=b.getBoundingClientRect();
+      var base=t.due_date&&t.due_date>=iso(new Date())?date(t.due_date):new Date();
+      function mv(d){return async function(){var nd=iso(d);var r=await api('/api/crm/tasks/'+t.id,{method:'PUT',body:JSON.stringify({due_date:nd})});crmpFuClosePop();if(r&&r.ok){toast('Udskudt til '+nd.split('-').reverse().join('.'),'⏰');crmpLoadBoard();}};}
+      var nm=new Date();nm.setDate(nm.getDate()+((8-nm.getDay())%7||7));
+      setTimeout(function(){showCtxMenu(rect.left,rect.bottom+4,[{label:true,text:'Udskyd til'},{text:'I morgen',icon:'→',onClick:mv(add(new Date(),1))},{text:'Om 3 dage',icon:'→',onClick:mv(add(new Date(),3))},{text:'Næste mandag',icon:'→',onClick:mv(nm)},{text:'Om en uge',icon:'→',onClick:mv(add(base,7))}]);},0);
+    }
+  });
+}
+function crmpFuAddPop(anchor,c){
+  crmpFuClosePop();
+  var pop=document.createElement('div');pop.id='crmp-fu-pop';pop.className='crmp-fu-pop later';pop.dataset.pinned='1';
+  var tom=iso(add(new Date(),1));
+  pop.innerHTML='<div class="crmp-fu-pop-t" style="margin-bottom:8px">Ny opfølgning</div>'
+    +'<input type="text" class="crmp-fu-in" data-k="title" placeholder="Fx Ring om tilbuddet">'
+    +'<div style="display:flex;gap:6px;margin-top:6px"><input type="date" class="crmp-fu-in" data-k="date" value="'+tom+'"><input type="time" class="crmp-fu-in" data-k="time" style="max-width:96px"></div>'
+    +'<div class="crmp-fu-pop-a"><button type="button" class="primary" data-fu-act="save">Tilføj</button><button type="button" data-fu-act="cancel">Annullér</button></div>';
+  document.body.appendChild(pop);crmpFuPlace(pop,anchor);
+  var ti=pop.querySelector('[data-k=title]');setTimeout(function(){ti.focus();},20);
+  async function save(){
+    var title=ti.value.trim();if(!title){ti.focus();return;}
+    var p=crmpCurrentPipeline();
+    var r=await api('/api/crm/tasks',{method:'POST',body:JSON.stringify({entity_type:p.type,entity_id:c.id,title:title,due_date:pop.querySelector('[data-k=date]').value||null,due_time:pop.querySelector('[data-k=time]').value||null,assigned_to:c.owner_id||(me&&me.id)||null})});
+    crmpFuClosePop();if(r&&r.id){toast('Opfølgning tilføjet','✓');crmpLoadBoard();}
+  }
+  pop.addEventListener('keydown',function(e){if(e.key==='Enter')save();if(e.key==='Escape')crmpFuClosePop();});
+  pop.addEventListener('click',function(e){var b=e.target.closest('[data-fu-act]');if(!b)return;e.preventDefault();if(b.dataset.fuAct==='save')save();else crmpFuClosePop();});
+}
+document.addEventListener('mousedown',function(e){var p=document.getElementById('crmp-fu-pop');if(p&&!p.contains(e.target)&&!e.target.closest('[data-crmp-fu],[data-crmp-fu-add],#ctx-menu'))crmpFuClosePop();});
+document.addEventListener('keydown',function(e){if(e.key==='Escape')crmpFuClosePop();});
 function crmpCardHtml(c,pipeline,defs){
   // Kort-felter (sep. 2026, Martins ønske): INGEN automatik længere — kun felter Martin
   // selv har krydset "Vis på kort" af for i CRM-indstillinger vises, og der er ikke
@@ -33291,6 +33412,7 @@ function crmpCardHtml(c,pipeline,defs){
     +'<div class="crmp-card-row" style="margin:0 0 6px">'+ownerLine+'</div>'
     +'<div class="crmp-card-name">'+esc(pipeline.type==='opportunity'?(c.contact_name||c.name):c.name)+'</div>'
     +(contactLine?'<div class="crmp-card-row">'+esc(contactLine)+'</div>':'')
+    +crmpFollowChipHtml(c)
     +(noteText?'<div class="crmp-card-note">'+esc(noteText)+'</div>':'')
     +(allBadges?'<div class="crmp-card-badges">'+allBadges+'</div>':'')
     +'<div class="crmp-card-foot">'
