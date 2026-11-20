@@ -6093,7 +6093,7 @@ body.tp-dragging,body.tp-dragging *{cursor:grabbing!important}
        i browseren faktisk ER det nyeste deploy, eller om Render/GitHub bare
        ikke er nået at opdatere endnu — i stedet for at skulle gætte om en
        rettelse "stadig ikke virker" eller bare endnu ikke er live. -->
-  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build v2.90.6 · 2026-11-02</span></div>
+  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build v2.90.7 · 2026-11-02</span></div>
 </aside>
 <div class="app-content">
 <!-- RUNDE FB — AI-ASSISTENTEN (Martin: "en ai der er nede i venstre hjørne af
@@ -39997,7 +39997,10 @@ function renderPdTime(){
   // af dem hvis jeg skal se deres timer") — klik på medarbejder-kortene filtrerer listen.
   if(pdtSelProject!==pjCurrent.id){pdtSel=[];pdtSelProject=pjCurrent.id;}
   var entries=pdtSel.length?allEntries.filter(function(t){return pdtSel.indexOf(String(t.user_id))>-1;}):allEntries;
-  function U(uid){return users.find(function(x){return +x.id===+uid;})||{};}
+  // v2.90.7 — navnet kommer nu med fra serveren, så det aldrig står "Ukendt" hvis
+  // medarbejderlisten ikke er hentet endnu (fx ved direkte link/genindlæsning).
+  var uFromEntry={};allEntries.forEach(function(t){if(t.user_name&&!uFromEntry[t.user_id])uFromEntry[t.user_id]={id:t.user_id,name:t.user_name,color:t.user_color,initials:t.user_initials};});
+  function U(uid){return users.find(function(x){return +x.id===+uid;})||uFromEntry[uid]||{};}
   function av(u){var n=u.name||'?';return '<span class="pdt-av" style="background:'+esc(u.color||cdxAvColor(n))+'">'+esc(u.initials||cdxInitials(n))+'</span>';}
   // Sum pr. medarbejder + samlet
   var byUser={},total=0,selTotal=0;

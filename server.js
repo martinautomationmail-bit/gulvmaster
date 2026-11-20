@@ -17944,7 +17944,7 @@ app.get('/api/projects/:id', auth, asyncRoute(async (req, res) => {
       FROM gantt_tasks g WHERE g.project_id=$1 ORDER BY position::int ASC, id ASC
     `, [req.params.id]).then(r => r.rows.map(t => ({ ...t, depends_on: safeJsonParse(t.depends_on, []) || [] }))),
     pool.query('SELECT * FROM project_photos WHERE project_id=$1 ORDER BY created_at DESC', [req.params.id]).then(r => r.rows),
-    pool.query('SELECT * FROM time_entries WHERE project_id=$1 ORDER BY entry_date DESC, id DESC', [req.params.id]).then(r => r.rows),
+    pool.query('SELECT te.*, u.name AS user_name, u.color AS user_color, u.initials AS user_initials FROM time_entries te LEFT JOIN users u ON u.id=te.user_id WHERE te.project_id=$1 ORDER BY te.entry_date DESC, te.id DESC', [req.params.id]).then(r => r.rows),
     pool.query('SELECT * FROM project_materials WHERE project_id=$1 ORDER BY created_at DESC', [req.params.id]).then(r => r.rows),
     pool.query('SELECT * FROM qa_submissions WHERE project_id=$1 ORDER BY submitted_at DESC', [req.params.id]).then(r => r.rows),
     pool.query('SELECT * FROM contact_form_submissions WHERE project_id=$1 ORDER BY submitted_at DESC', [req.params.id]).then(r => r.rows),
