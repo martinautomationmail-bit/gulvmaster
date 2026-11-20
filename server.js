@@ -28064,8 +28064,37 @@ app.get('/api/outbound-emails/problems', auth, panelAccess('quotes'), asyncRoute
 }));
 
 app.get('/api/quotes/:id/sends', auth, panelAccess('quotes'), asyncRoute(async (req, res) => {
-  const rows = await pool.query('SELECT id,version_number,sent_at,sent_by,recipient,delivery_status,delivery_status_at,delivery_detail FROM quote_sends WHERE quote_id=$1 ORDER BY version_number DESC', [req.params.id]);
+  const rows = await pool.query('SELECT id,version_number,sent_at,sent_by,recipient,delivery_status,delivery_status_at,delivery_detail,(pdf_snapshot IS NOT NULL) AS has_pdf,(snapshot_data IS NOT NULL) AS has_data FROM quote_sends WHERE quote_id=$1 ORDER BY version_number DESC', [req.params.id]);
   res.json(rows.rows);
+}));
+// v2.90.8 (Martin: "kan du gøre så man kan genskabe versionerne hvis kunden fx
+// ønsker at gå med den gamle version") — lægger en tidligere version (linjer,
+// tilvalg, rabat, moms, noter, titel) tilbage som tilbuddets aktuelle indhold.
+// Den NUVÆRENDE udgave gemmes først som en "backup"-version på listen, så en
+// gendannelse altid kan fortrydes ved at gendanne backup'en. Kundeoplysninger
+// røres ikke. Afvises hvis tilbuddet har fakturerede linjer.
+app.post('/api/quotes/:id/sends/:sendId/restore', auth, panelAccess('quotes'), asyncRoute(async (req, res) => {
+  const row = await pgOne('SELECT version_number, snapshot_data FROM quote_sends WHERE id=$1 AND quote_id=$2', [req.params.sendId, req.params.id]);
+  if (!row || !row.snapshot_data) return res.status(404).json({ error: 'Versionen har ingen gemte data at gendanne' });
+  const snap = typeof row.snapshot_data === 'string' ? JSON.parse(row.snapshot_data) : row.snapshot_data;
+  if (!snap || !Array.isArray(snap.lines)) return res.status(400).json({ error: 'Versionen mangler linjer og kan ikke gendannes' });
+  if (await pgOne('SELECT 1 FROM quote_lines WHERE quote_id=$1 AND invoiced_in_invoice_id IS NOT NULL LIMIT 1', [req.params.id]))
+    return res.status(400).json({ error: 'Tilbuddet har allerede fakturerede linjer — en gammel version kan ikke lægges ind over dem' });
+  const cur = await loadQuoteFull(req.params.id);
+  if (!cur) return res.status(404).json({ error: 'Tilbuddet blev ikke fundet' });
+  const mx = await pgOne('SELECT COALESCE(MAX(version_number),0) AS mx FROM quote_sends WHERE quote_id=$1', [req.params.id]);
+  const backupNo = Number(mx.mx) + 1;
+  await pool.query("INSERT INTO quote_sends (quote_id,version_number,sent_by,recipient,pdf_snapshot,snapshot_data,delivery_status) VALUES ($1,$2,$3,$4,NULL,$5,'backup')",
+    [req.params.id, backupNo, req.user.name, 'Backup før gendannelse af version ' + row.version_number, JSON.stringify(cur)]);
+  const lines = snap.lines.slice().sort((a, b) => (Number(a.position) || 0) - (Number(b.position) || 0));
+  await saveQuoteLines(req.params.id, lines);
+  const taxRate = snap.tax_rate != null ? Number(snap.tax_rate) : Number(cur.tax_rate) || 0;
+  const disc = { value: Number(snap.discount_pct) || 0, type: snap.discount_type === 'fixed' ? 'fixed' : 'pct' };
+  const t = computeTotals(lines, taxRate, disc);
+  await pool.query(`UPDATE quotes SET subtotal=$1,tax_rate=$2,tax_amount=$3,total=$4,discount_pct=$5,discount_type=$6,notes=$7,top_note=$8,quote_title=$9,options=$10,updated_at=${nowTextSQL()} WHERE id=$11`,
+    [t.subtotal, taxRate, t.taxAmount, t.total, disc.value, disc.type, snap.notes != null ? snap.notes : cur.notes, snap.top_note != null ? snap.top_note : cur.top_note, snap.quote_title != null ? snap.quote_title : cur.quote_title, snap.options != null ? JSON.stringify(quoteOptionsOf(snap)) : null, req.params.id]);
+  logDocActivity('quote', req.params.id, 'edited', req.user.name, 'Gendannede version ' + row.version_number + ' (nuværende gemt som version ' + backupNo + ')');
+  res.json({ ok: true, restored: row.version_number, backup_version: backupNo, total: t.total });
 }));
 
 app.get('/api/quotes/:id/sends/:sendId/pdf', auth, panelAccess('quotes'), asyncRoute(async (req, res) => {

@@ -2863,6 +2863,8 @@ body.plan-alt-dragging .ctl-add{display:none}
 .pdt-uc.dim{opacity:.45}
 .pdt-tot.sel{cursor:pointer}
 .pdt-tot small{display:block;font-size:11px;opacity:.7;font-weight:600}
+.qe-ver-bk{font-size:10.5px;font-weight:700;padding:1px 7px;border-radius:999px;background:#F3F4F6;color:#6B7280;margin-left:4px}
+.qe-ver-restore{font-size:11.5px!important;padding:4px 9px!important}
 .crmp-fu{display:flex;align-items:center;gap:8px;width:100%;max-width:100%;min-width:0;box-sizing:border-box;overflow:hidden;margin:8px 0 2px;padding:7px 9px;border-radius:10px;border:1px solid #E5E7EB;background:#F9FAFB;cursor:pointer;transition:filter .12s}
 .crmp-fu:hover{filter:brightness(.97)}
 .crmp-fu.soon{border-color:#F5C26B;background:#FFF7E6}
@@ -6093,7 +6095,7 @@ body.tp-dragging,body.tp-dragging *{cursor:grabbing!important}
        i browseren faktisk ER det nyeste deploy, eller om Render/GitHub bare
        ikke er nået at opdatere endnu — i stedet for at skulle gætte om en
        rettelse "stadig ikke virker" eller bare endnu ikke er live. -->
-  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build v2.90.7 · 2026-11-02</span></div>
+  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build v2.90.8 · 2026-11-02</span></div>
 </aside>
 <div class="app-content">
 <!-- RUNDE FB — AI-ASSISTENTEN (Martin: "en ai der er nede i venstre hjørne af
@@ -8383,7 +8385,7 @@ body.ai-has-reply #ai-fab{animation:ai-nudge 1.4s ease-in-out 3}
           <div id="qe-attach-list" style="display:flex;flex-wrap:wrap;gap:8px;margin-top:8px"></div>
         </div>
         <div class="form-group" id="qe-versions-wrap" style="margin-top:14px;display:none">
-          <label class="form-label">📄 Sendte versioner <span class="opt-tag" style="text-transform:none;font-weight:400">den arkiverede PDF som faktisk blev sendt — ændres aldrig</span></label>
+          <label class="form-label">📄 Sendte versioner <span class="opt-tag" style="text-transform:none;font-weight:400">den arkiverede PDF som faktisk blev sendt — ændres aldrig · ↺ Genskab lægger en version tilbage</span></label>
           <div id="qe-versions-list" class="doc-activity-list"></div>
         </div>
         <div class="form-group" id="qe-activity-wrap" style="margin-top:14px;display:none">
@@ -40886,11 +40888,24 @@ async function loadQeVersions(id){
   if(!Array.isArray(rows)||!rows.length){wrap.style.display='none';return;}
   wrap.style.display='';
   document.getElementById('qe-versions-list').innerHTML=rows.map(function(s){
-    return '<div class="doc-activity-row"><div><div class="doc-activity-what">📄 Version '+s.version_number+'</div><div class="doc-activity-meta">Sendt af '+esc(s.sent_by||'–')+' til '+esc(s.recipient||'–')+' · '+qeDeliveryBadgeHtml(s.delivery_status,s.delivery_detail)+'</div></div>'
-      +'<div style="display:flex;align-items:center;gap:8px"><span class="doc-activity-when">'+fmtActivityWhen(s.sent_at)+'</span><button type="button" class="qz-icon-btn" data-send-id="'+s.id+'" title="Åbn den sendte PDF">📄</button></div></div>';
+    var backup=s.delivery_status==='backup';
+    return '<div class="doc-activity-row"><div><div class="doc-activity-what">'+(backup?'🗂':'📄')+' Version '+s.version_number+(backup?' <span class="qe-ver-bk">backup</span>':'')+'</div><div class="doc-activity-meta">'+(backup?esc(s.recipient||'Backup')+' · '+esc(s.sent_by||''):'Sendt af '+esc(s.sent_by||'–')+' til '+esc(s.recipient||'–')+' · '+qeDeliveryBadgeHtml(s.delivery_status,s.delivery_detail))+'</div></div>'
+      +'<div style="display:flex;align-items:center;gap:8px"><span class="doc-activity-when">'+fmtActivityWhen(s.sent_at)+'</span>'
+      +(s.has_data?'<button type="button" class="bly-btn outline small qe-ver-restore" data-restore-id="'+s.id+'" data-ver="'+s.version_number+'" title="Læg denne version tilbage som tilbuddets indhold — den nuværende gemmes som backup">↺ Genskab</button>':'')
+      +(s.has_pdf!==false?'<button type="button" class="qz-icon-btn" data-send-id="'+s.id+'" title="Åbn den sendte PDF">📄</button>':'')+'</div></div>';
   }).join('');
   Array.prototype.forEach.call(document.querySelectorAll('#qe-versions-list [data-send-id]'),function(btn){
     btn.onclick=function(){qzOpenPdf('/api/quotes/'+id+'/sends/'+btn.dataset.sendId+'/pdf');};
+  });
+  Array.prototype.forEach.call(document.querySelectorAll('#qe-versions-list [data-restore-id]'),function(btn){
+    btn.onclick=async function(){
+      if(!(await gmConfirm('Genskab version '+btn.dataset.ver+'?\n\nLinjer, tilvalg, rabat og noter bliver som i version '+btn.dataset.ver+'. Kundeoplysningerne røres ikke.\n\nDen nuværende udgave gemmes som en backup-version på listen, så du kan fortryde.')))return;
+      btn.disabled=true;
+      clearTimeout(qeAutoSaveDebounceTimer);try{await qeAutoSave(false);}catch(e){} // ugemte rettelser med i backup'en
+      var r=await api('/api/quotes/'+id+'/sends/'+btn.dataset.restoreId+'/restore',{method:'POST'});
+      if(r&&r.ok){toast('Version '+r.restored+' er genskabt · den tidligere udgave ligger som version '+r.backup_version,'↺');openQuoteEditor(id);}
+      else{btn.disabled=false;toast((r&&r.error)||'Kunne ikke genskabe versionen','❌');}
+    };
   });
 }
 
