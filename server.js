@@ -24725,11 +24725,17 @@ app.post('/api/quotes/:id/payment-plan/invoice-phase', auth, panelAccess('quotes
   );
   if (!quote) return res.status(404).json({ error: 'Tilbuddet blev ikke fundet' });
   const phases = (quote.payment_plan && Array.isArray(quote.payment_plan.phases)) ? quote.payment_plan.phases.slice() : [];
-  const idx = Number(req.body && req.body.index);
-  const phase = phases[idx];
-  if (!phase) return res.status(404).json({ error: 'Fasen blev ikke fundet — betalingsplanen kan være ændret, genindlæs og prøv igen' });
-  if (phase.invoiced_in_invoice_id) return res.status(400).json({ error: 'Denne fase er allerede faktureret (' + (phase.invoiced_invoice_number || '') + ')' });
-  if (!(Number(phase.amount) > 0)) return res.status(400).json({ error: 'Fasen har intet beløb at fakturere' });
+  // v2.90.5 (Martin: "jeg vil gerne kunne fakturere flere faser på en gang") —
+  // body.indices (flere) eller body.index (én) → ÉN faktura med én linje pr. fase.
+  const rawIdx = Array.isArray(req.body && req.body.indices) ? req.body.indices : [req.body && req.body.index];
+  const idxs = [...new Set(rawIdx.map(Number).filter(n => Number.isInteger(n) && n >= 0))].sort((a, b) => a - b);
+  if (!idxs.length) return res.status(400).json({ error: 'Vælg mindst én fase' });
+  for (const i of idxs) {
+    const ph = phases[i];
+    if (!ph) return res.status(404).json({ error: 'En af faserne blev ikke fundet — betalingsplanen kan være ændret, genindlæs og prøv igen' });
+    if (ph.invoiced_in_invoice_id) return res.status(400).json({ error: '"' + (ph.label || 'Fase ' + (i + 1)) + '" er allerede faktureret (' + (ph.invoiced_invoice_number || '') + ')' });
+    if (!(Number(ph.amount) > 0)) return res.status(400).json({ error: '"' + (ph.label || 'Fase ' + (i + 1)) + '" har intet beløb at fakturere' });
+  }
   const company = await getCompanyInfo();
   const invoiceNumber = await nextDocNumber('invoice', 'FAK');
   const dueDate = new Date(); dueDate.setDate(dueDate.getDate() + 4);
@@ -24738,27 +24744,33 @@ app.post('/api/quotes/:id/payment-plan/invoice-phase', auth, panelAccess('quotes
   // (se computeTotals: total = subtotal + taxAmount) — regnes her tilbage
   // til en ekskl.-moms salgspris, så fakturalinjen + moms lander nøjagtigt
   // på phase.amount, ligesom en almindelig tilbudslinje gør.
-  const sellPriceExTax = taxRate > 0 ? Math.round((phase.amount / (1 + taxRate / 100)) * 100) / 100 : phase.amount;
-  const subtotal = sellPriceExTax;
-  const taxAmount = Math.round((phase.amount - subtotal) * 100) / 100;
+  const exTax = amt => taxRate > 0 ? Math.round((amt / (1 + taxRate / 100)) * 100) / 100 : amt;
+  const totalAmount = Math.round(idxs.reduce((sum, i) => sum + Number(phases[i].amount), 0) * 100) / 100;
+  const subtotal = Math.round(idxs.reduce((sum, i) => sum + exTax(Number(phases[i].amount)), 0) * 100) / 100;
+  const taxAmount = Math.round((totalAmount - subtotal) * 100) / 100;
   const invoiceJobNumber = quote.job_number || await nextDocNumber('project', 'GM');
-  const description = phase.label + (phase.milestone ? ' — ' + String(phase.milestone).replace(/\n+/g, ' / ') : '');
   const r = await pool.query(`
     INSERT INTO invoices (invoice_number,job_number,quote_id,job_name,job_id,customer_address,customer_phone,customer_email,status,subtotal,tax_rate,tax_amount,total,notes,top_note,due_date,customer_id)
     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,'unpaid',$9,$10,$11,$12,$13,$14,$15,$16) RETURNING id
-  `, [invoiceNumber, invoiceJobNumber, quote.id, quote.job_name, quote.job_id, quote.customer_address, quote.customer_phone, quote.customer_email, subtotal, taxRate, taxAmount, phase.amount, company.invoiceBottomNoteDefault || null, company.invoiceTopNoteDefault || null, dueDate.toISOString().slice(0, 10), quote.customer_id || null]);
+  `, [invoiceNumber, invoiceJobNumber, quote.id, quote.job_name, quote.job_id, quote.customer_address, quote.customer_phone, quote.customer_email, subtotal, taxRate, taxAmount, totalAmount, company.invoiceBottomNoteDefault || null, company.invoiceTopNoteDefault || null, dueDate.toISOString().slice(0, 10), quote.customer_id || null]);
   const invoiceId = r.rows[0].id;
-  await pool.query(`
-    INSERT INTO invoice_lines (invoice_id,description,unit,quantity,cost_price,sell_price,position,product_type,line_type,show_sum)
-    VALUES ($1,$2,'stk',1,0,$3,0,'service','item',true)
-  `, [invoiceId, description.slice(0, 400), sellPriceExTax]);
-  phases[idx] = Object.assign({}, phase, { invoiced_in_invoice_id: invoiceId, invoiced_invoice_number: invoiceNumber });
+  let pos = 0;
+  for (const i of idxs) {
+    const phase = phases[i];
+    const description = phase.label + (phase.milestone ? ' — ' + String(phase.milestone).replace(/\n+/g, ' / ') : '');
+    await pool.query(`
+      INSERT INTO invoice_lines (invoice_id,description,unit,quantity,cost_price,sell_price,position,product_type,line_type,show_sum)
+      VALUES ($1,$2,'stk',1,0,$3,$4,'service','item',true)
+    `, [invoiceId, description.slice(0, 400), exTax(Number(phase.amount)), pos++]);
+    phases[i] = Object.assign({}, phase, { invoiced_in_invoice_id: invoiceId, invoiced_invoice_number: invoiceNumber });
+  }
+  const labels = idxs.map(i => phases[i].label).join(', ');
   // v2.74.0 — en a conto-rate lukker IKKE tilbuddet; posterne kan stadig rettes
   // og faktureres (raten trækkes fra, se convert-to-invoice).
   await pool.query(`UPDATE quotes SET payment_plan=$1, status=CASE WHEN status IN ('draft','sent') THEN 'accepted' ELSE status END, converted_invoice_id=$2, updated_at=${nowTextSQL()} WHERE id=$3`, [JSON.stringify({ phases }), invoiceId, quote.id]);
   await pool.query(`UPDATE projects SET invoice_id=$1, updated_at=${nowTextSQL()} WHERE quote_id=$2`, [invoiceId, quote.id]);
-  logDocActivity('quote', quote.id, 'converted', req.user.name, invoiceNumber + ' (betalingsplan-fase: ' + phase.label + ')');
-  logDocActivity('invoice', invoiceId, 'created', req.user.name, 'fra betalingsplan-fase på tilbud ' + quote.quote_number);
+  logDocActivity('quote', quote.id, 'converted', req.user.name, invoiceNumber + ' (betalingsplan-fase' + (idxs.length > 1 ? 'r' : '') + ': ' + labels + ')');
+  logDocActivity('invoice', invoiceId, 'created', req.user.name, 'fra betalingsplan-fase' + (idxs.length > 1 ? 'r' : '') + ' på tilbud ' + quote.quote_number);
   res.json({ ok: true, invoice_id: invoiceId, invoice_number: invoiceNumber, phases, total: Number(quote.total) || 0 });
 }));
 
