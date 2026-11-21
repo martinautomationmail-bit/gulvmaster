@@ -5851,6 +5851,11 @@ body.tp-dragging,body.tp-dragging *{cursor:grabbing!important}
 .tp-vm::after{display:none}
 .tp-ov{color:#DC2626;font-weight:700;margin-left:6px;font-size:11px}
 .tp-wover{position:absolute;bottom:2px;height:4px;border-radius:3px;background:#EF4444;z-index:2;cursor:help}
+.tp-off{position:absolute;top:0;bottom:0;z-index:0;cursor:pointer;background:repeating-linear-gradient(135deg,#FEF3C7 0 7px,#FFFBEB 7px 14px);border-left:2px solid #F59E0B;border-right:2px solid #F59E0B;box-sizing:border-box}
+.tp-off span{position:absolute;top:7px;left:5px;font-size:11px;font-weight:700;color:#92400E;white-space:nowrap;pointer-events:none}
+.tp-off.sick{background:repeating-linear-gradient(135deg,#FEE2E2 0 7px,#FEF2F2 7px 14px);border-color:#EF4444}.tp-off.sick span{color:#991B1B}
+.tp-off.other{background:repeating-linear-gradient(135deg,#E5E7EB 0 7px,#F3F4F6 7px 14px);border-color:#9CA3AF}.tp-off.other span{color:#374151}
+.tp-off:hover{filter:brightness(.97)}
 .tp-wover::before{content:'';position:absolute;left:0;right:0;top:-6px;bottom:-4px}
 .tp-wover:hover{height:6px;bottom:1px}
 .tp-lg .tp-wl{width:18px;height:4px;border-radius:2px;background:#EF4444}
@@ -6095,7 +6100,7 @@ body.tp-dragging,body.tp-dragging *{cursor:grabbing!important}
        i browseren faktisk ER det nyeste deploy, eller om Render/GitHub bare
        ikke er nået at opdatere endnu — i stedet for at skulle gætte om en
        rettelse "stadig ikke virker" eller bare endnu ikke er live. -->
-  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build v2.90.8 · 2026-11-02</span></div>
+  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build v2.90.9 · 2026-11-02</span></div>
 </aside>
 <div class="app-content">
 <!-- RUNDE FB — AI-ASSISTENTEN (Martin: "en ai der er nede i venstre hjørne af
@@ -14560,8 +14565,13 @@ function tpRender(){
     (visits[u.id]||[]).forEach(function(v){if(tpQ&&String((v.job_name||'')+' '+(v.task_name||'')+' kundebesøg').toLowerCase().indexOf(tpQ)<0)return;var a=idx[String(v.start_date).slice(0,10)],tm=bookingTimeOn(v,String(v.start_date).slice(0,10));vm+='<div class="tp-g tp-vm" data-tp-task="v:'+esc(v.task_id)+'" style="left:'+(a*col+2)+'px;width:'+Math.max(18,col-4)+'px">'+(col>=38&&tm?'📅'+esc(tm):'📅')+'</div>';});
     if(tpQ&&!items.length&&!vm)return;
     tpQShown++;
+    // v2.90.9 — ferie/sygdom/fravær vises som et skraveret felt bag opgaverne (klik = rediger)
+    var offH='',offRun=null;
+    function offFlush(){if(!offRun)return;var o=offRun.off,n=offRun.b-offRun.a,cls=o.type==='sick'?' sick':(o.type==='vacation'?'':' other');
+      offH+='<div class="tp-off'+cls+'" data-action="edit-timeoff-day" data-user-id="'+u.id+'" data-off-id="'+o.id+'" style="left:'+(offRun.a*col)+'px;width:'+(n*col)+'px" title="'+esc(timeOffLabel(o)+' · '+String(o.start_date).slice(0,10)+' → '+String(o.end_date).slice(0,10)+(o.note?' · '+o.note:'')+' — klik for at redigere')+'"><span>'+(n*col>=44?esc(timeOffLabel(o)):esc(timeOffLabel(o).split(' ')[0]))+'</span></div>';offRun=null;}
+    days.forEach(function(ds,i){var o=timeOffFor(u.id,ds);if(offRun&&(!o||o.id!==offRun.off.id))offFlush();if(o){if(!offRun)offRun={off:o,a:i,b:i+1};else offRun.b=i+1;}});offFlush();
     // v2.85.1 — egen luft til kundebesøg (øverst) og prikker (nederst), så de aldrig rører opgaverne
-    var TOPP=vm?32:12,n=lanes(items),h=TOPP+n*36+20,cap=(+u.weekly_capacity||5)/5,cells='';
+    var TOPP=(vm||offH)?32:12,n=lanes(items),h=TOPP+n*36+20,cap=(+u.weekly_capacity||5)/5,cells='';
     days.forEach(function(ds,i){
       var off=timeOffFor(u.id,ds),r=(real[u.id][ds]||0)+(off?1:0),tot=r+(tpl[u.id][ds]||0);
       // v2.86.1 — prikkerne er fjernet (Martin). Overbooking vises kun som rød ugelinje.
@@ -14579,7 +14589,7 @@ function tpRender(){
       }
     }
     var c=u.color||'#2563EB';
-    eh+='<div class="tp-row tp-emp" data-tp-uid="'+u.id+'" style="height:'+h+'px"><div class="tp-lbl"><span class="tp-av" style="background:'+c+'1f;color:'+c+'">'+esc(u.initials||u.name.slice(0,2))+'</span><div class="tp-name"><b>'+esc(u.name)+'</b><small>'+esc(u.trade||(u.worker_type==='vendor'?'Vendor':'Medarbejder'))+'</small></div></div><div class="tp-track tp-drop" style="width:'+W+'px;'+grid+'">'+cells+today
+    eh+='<div class="tp-row tp-emp" data-tp-uid="'+u.id+'" style="height:'+h+'px"><div class="tp-lbl"><span class="tp-av" style="background:'+c+'1f;color:'+c+'">'+esc(u.initials||u.name.slice(0,2))+'</span><div class="tp-name"><b>'+esc(u.name)+'</b><small>'+esc(u.trade||(u.worker_type==='vendor'?'Vendor':'Medarbejder'))+'</small></div></div><div class="tp-track tp-drop" style="width:'+W+'px;'+grid+'">'+offH+cells+today
       +vm+items.map(function(it){if(it.visit){var v=it.visit,tm=bookingTimeOn(v,String(v.start_date).slice(0,10));return '<div class="tp-visit" style="left:'+(it.a*col+1)+'px;width:'+Math.max(col-3,Math.min(72,(it.b-it.a)*col-3))+'px;top:'+(8+it.lane*36)+'px" title="'+esc('Kundebesøg'+(tm?' kl. '+tm:'')+': '+(v.job_name||v.task_name||'')+(v.job_address?' · '+v.job_address:''))+'">📅 '+esc(tm||'Besøg')+'</div>';}return bar('tp-b',it.a,it.b,(it.crew>1?'👥'+it.crew+' · ':'')+(it.t?(it.t.project_name||'')+' · '+(it.t.name||''):'(slettet opgave)'),'data-tp-bk="'+it.bk.id+'"',it.t?tpFagColor(it.t):'#9CA3AF','',TOPP+it.lane*36);}).join('')+'</div></div>';
   });
   var rng=date(first),rng2=date(last);
@@ -14681,7 +14691,16 @@ function tpAddWork(ds,n){var d=tpNextWork(date(ds)),k=Math.max(0,Math.ceil(n)-1)
   });
   document.addEventListener('contextmenu',function(e){
     var page=document.getElementById('page-testplan');if(!page||!page.contains(e.target))return;
-    var el=e.target.closest('.tp-g,.tp-b');if(!el)return;
+    var el=e.target.closest('.tp-g,.tp-b');
+    if(!el){ // v2.90.9 — højreklik på en medarbejders tomme felt → registrér ferie/fravær
+      var row=e.target.closest('.tp-emp'),trk=e.target.closest('.tp-drop');if(!row||!trk)return;
+      e.preventDefault();var uid=+row.dataset.tpUid,ds=tpDateAt(trk,e.clientX),off=timeOffFor(uid,ds),uu=users.find(function(z){return +z.id===uid;});
+      var it=[{label:true,text:(uu?uu.name.split(' ')[0]+' · ':'')+tpDayLbl(ds)}];
+      if(off)it.push({icon:'✏️',text:'Rediger '+timeOffLabel(off).replace(/^\S+\s/,'').toLowerCase()+'…',onClick:function(){openTimeOffModalByOffId(uid,off.id);}});
+      else{it.push({icon:'🏖',text:'Tilføj ferie fra '+tpDayLbl(ds)+'…',onClick:function(){openTimeOffModal(uid,ds);document.getElementById('timeoff-type').value='vacation';}});
+        it.push({icon:'🤒',text:'Tilføj sygdom…',onClick:function(){openTimeOffModal(uid,ds);document.getElementById('timeoff-type').value='sick';}});}
+      showCtxMenu(e.clientX,e.clientY,it);return;
+    }
     e.preventDefault();
     if(el.dataset.tpBk)tpBkMenu(+el.dataset.tpBk,e.clientX,e.clientY);else tpTaskMenu(el.dataset.tpTask,e.clientX,e.clientY);
   });
@@ -20482,16 +20501,17 @@ async function saveTimeOffModal(){
   var r=timeOffModalCtx.offId
     ? await api('/api/time-off/'+timeOffModalCtx.offId,{method:'PUT',body:JSON.stringify(body)})
     : await api('/api/time-off',{method:'POST',body:JSON.stringify(body)});
-  if(r&&(r.ok||r.id)){closeModal('timeoff-modal');toast('Ferie/fravær gemt','🏖');await loadAll();}
+  if(r&&(r.ok||r.id)){closeModal('timeoff-modal');toast('Ferie/fravær gemt','🏖');await loadAll();tpRefreshIfOpen();}
   else if(r)toast(r.error||'Fejl','❌');
 }
 async function deleteTimeOffModal(){
   if(!timeOffModalCtx||!timeOffModalCtx.offId)return;
   if(!await gmConfirm('Fjern denne ferie-/sygdomsperiode?'))return;
   var r=await api('/api/time-off/'+timeOffModalCtx.offId,{method:'DELETE'});
-  if(r&&r.ok){closeModal('timeoff-modal');toast('Fjernet','🗑');await loadAll();}
+  if(r&&r.ok){closeModal('timeoff-modal');toast('Fjernet','🗑');await loadAll();tpRefreshIfOpen();}
   else if(r)toast(r.error||'Fejl','❌');
 }
+function tpRefreshIfOpen(){var p=document.getElementById('page-testplan');if(p&&p.classList.contains('active')&&TP.loaded)tpRender();}
 async function loadTimeOffRequests(){
   var list=await api('/api/time-off?status=pending');
   timeOffRequests=list||[];
