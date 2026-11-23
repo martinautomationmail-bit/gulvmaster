@@ -5863,6 +5863,10 @@ body.tp-dragging,body.tp-dragging *{cursor:grabbing!important}
 .pdd-add{font-size:12.5px;font-weight:600;color:#534AB7;background:none;border:none;cursor:pointer;padding:5px 6px}
 .pdd-banner{flex-basis:100%;display:flex;align-items:center;gap:10px;flex-wrap:wrap;background:#F5F4FF;border:1px solid #CECBF6;color:#3C3489;border-radius:10px;padding:8px 12px;font-size:13px;margin-top:4px}
 .pdd-banner .sp{flex:1}.pdd-banner button{font-size:12.5px}
+#pd-gantt-strip .pd-ins{position:absolute;left:0;right:0;bottom:-1px;height:11px;border:0;background:none;padding:0;cursor:pointer;opacity:0;transition:opacity .12s;z-index:3}
+#pd-gantt-strip .pd-ins:before{content:"";position:absolute;left:8px;right:8px;top:5px;height:2px;background:#7F77DD;border-radius:2px}
+#pd-gantt-strip .pd-ins span{position:absolute;left:50%;top:-3px;transform:translateX(-50%);width:17px;height:17px;border-radius:50%;background:#534AB7;color:#fff;font-size:14px;line-height:16px;font-weight:700;text-align:center}
+#pd-gantt-strip .pd-ins:hover,#pd-gantt-strip .pd-ins:focus-visible{opacity:1}
 .pdd-use{background:#3C3489!important;color:#fff!important;border-color:#3C3489!important}
 #pd-gantt-strip.pd-drafting .gantt-bar.pd-dchg{background:#EEEDFE!important;outline:1.5px dashed #534AB7;outline-offset:-1.5px}
 #pd-gantt-strip.pd-drafting .gantt-bar.pd-dchg .pdx-gb-label{color:#3C3489!important}
@@ -6111,7 +6115,7 @@ body.tp-dragging,body.tp-dragging *{cursor:grabbing!important}
        i browseren faktisk ER det nyeste deploy, eller om Render/GitHub bare
        ikke er nået at opdatere endnu — i stedet for at skulle gætte om en
        rettelse "stadig ikke virker" eller bare endnu ikke er live. -->
-  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build v2.91.1 · 2026-11-02</span></div>
+  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build v2.91.2 · 2026-11-02</span></div>
 </aside>
 <div class="app-content">
 <!-- RUNDE FB — AI-ASSISTENTEN (Martin: "en ai der er nede i venstre hjørne af
@@ -38829,6 +38833,40 @@ document.addEventListener('click',function(e){
   var b=e.target.closest('[data-pdd]');if(!b||!b.closest('#pd-draft-bar'))return;var v=b.getAttribute('data-pdd');
   if(v==='real')pdDraftActivate(null);else if(v==='new')pdDraftNew();else if(v==='rename')pdDraftRename();else if(v==='del')pdDraftDelete();else if(v==='use')pdDraftUse();else pdDraftActivate(v);
 });
+// v2.91.2 — indsæt opgaver midt i planen: "+"-linje mellem rækkerne (A) og højreklik-menu (B).
+// Går gennem de normale task-ruter, så det også virker inde i et udkast (pdDraftIntercept).
+function pdNextWorkday(ds,dir){var d=date(String(ds).slice(0,10));do{d=add(d,dir);}while(d.getDay()===0||d.getDay()===6);return iso(d);}
+async function pdInsertTask(refId,where,dup){
+  if(!pjCurrent)return;var tasks=(pjCurrent.tasks||[]).slice(),idx=tasks.findIndex(function(t){return String(t.id)===String(refId);});if(idx<0)return;
+  var ref=tasks[idx],today=iso(new Date()),st,en,name='Ny opgave';
+  if(dup){st=(ref.start_date||today).slice(0,10);en=(ref.end_date||st).slice(0,10);name=(ref.name||'Opgave')+' (kopi)';}
+  else if(where==='before'){en=ref.start_date?pdNextWorkday(ref.start_date,-1):today;st=en;}
+  else{st=(ref.end_date||ref.start_date)?pdNextWorkday(ref.end_date||ref.start_date,1):today;en=st;}
+  var r=await api('/api/projects/'+pjCurrent.id+'/tasks',{method:'POST',body:JSON.stringify({name:name,start_date:st,end_date:en})});
+  if(!r||!r.id){toast((r&&r.error)||'Kunne ikke oprette opgaven','❌');return;}
+  if(dup&&ref.description)await api('/api/projects/'+pjCurrent.id+'/tasks/'+encodeURIComponent(r.id),{method:'PUT',body:JSON.stringify({description:ref.description})});
+  var order=tasks.map(function(t){return String(t.id);});order.splice(where==='before'?idx:idx+1,0,String(r.id));
+  await api('/api/projects/'+pjCurrent.id+'/tasks/reorder',{method:'PUT',body:JSON.stringify({order:order})});
+  await reloadPdCurrent();
+  var inp=document.querySelector('#pd-gantt-strip .gantt-list-row[data-task-id="'+String(r.id).replace(/"/g,'')+'"] .gantt-inline-name');
+  if(inp){inp.scrollIntoView({block:'nearest'});inp.focus();if(!dup)inp.select();}
+}
+document.addEventListener('click',function(e){var b=e.target.closest('#pd-gantt-strip [data-pd-ins]');if(!b)return;e.preventDefault();e.stopPropagation();pdInsertTask(b.getAttribute('data-pd-ins'),'after');},true);
+document.addEventListener('contextmenu',function(e){
+  var strip=e.target.closest('#pd-gantt-strip');if(!strip)return;
+  var row=e.target.closest('.gantt-list-row[data-task-id]'),bar=e.target.closest('[data-pd-task-id]');
+  var id=row?row.getAttribute('data-task-id'):(bar?bar.getAttribute('data-pd-task-id'):null);if(!id)return;
+  if(e.target.closest('input,select,textarea'))return;
+  e.preventDefault();var t=(pjCurrent.tasks||[]).find(function(x){return String(x.id)===String(id);});
+  var lr=strip.querySelector('.gantt-list-row[data-task-id="'+String(id).replace(/"/g,'')+'"]');
+  showCtxMenu(e.clientX,e.clientY,[{label:true,text:t?t.name:'Opgave'},
+    {icon:'↑',text:'Indsæt opgave før',onClick:function(){pdInsertTask(id,'before');}},
+    {icon:'↓',text:'Indsæt opgave efter',onClick:function(){pdInsertTask(id,'after');}},
+    {icon:'⧉',text:'Dupliker',onClick:function(){pdInsertTask(id,'after',true);}},
+    {sep:true},
+    {icon:'🔎',text:'Åbn opgave',onClick:function(){var x=lr&&lr.querySelector('[data-action="glr-open"]');if(x)x.click();}},
+    {icon:'🗑',text:'Slet',onClick:function(){var x=lr&&lr.querySelector('[data-action="glr-delete"]');if(x)x.click();}}]);
+});
 function renderPdGanttStrip(){pdGanttStripInner();pdDraftRenderBar();pdDraftDecorate();}
 function pdGanttStripInner(){
   pdSyncDeadlineInput();
@@ -38894,7 +38932,9 @@ function pdGanttStripInner(){
       +'<div class="gantt-list-row-actions">'
       +'<button type="button" class="qz-icon-btn" data-action="glr-open" title="Åbn — note, tjekpunkter, kapacitet">🔎</button>'
       +'<button type="button" class="qz-icon-btn" data-action="glr-delete" title="Slet">🗑</button>'
-      +'</div></div></div>';
+      +'</div></div>'
+      // v2.91.2 — "+"-linje i rækkens underkant: indsæt en ny opgave lige efter denne
+      +'<button type="button" class="pd-ins" data-pd-ins="'+esc(String(t.id))+'" title="Indsæt ny opgave her"><span>+</span></button></div>';
     var s=t.start_date?date(t.start_date):range.start,e=t.end_date?date(t.end_date):s;
     var offset=Math.round((s-range.start)/86400000),span=Math.max(1,Math.round((e-s)/86400000)+1);
     timelineRows+='<div class="gantt-row">'+
