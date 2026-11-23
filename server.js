@@ -25189,14 +25189,14 @@ function quotePlanForCustomer(q) {
 }
 function qpPctTxt(v) { return (Math.round(v * 10) / 10).toLocaleString('da-DK') + ' %'; }
 function quotePlanHtml(q) {
+  // v2.92.2 — design C: diskret "Se betalingsplan"-link under totalen, som folder en lille tabel ud
   const plan = quotePlanForCustomer(q);
   if (!plan) return '';
-  const sum = plan.reduce((a, p) => a + p.pct, 0) || 1;
   const esc2 = v => String(v == null ? '' : v).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
-  const bar = plan.map(p => `<div style="width:${(p.pct / sum * 100).toFixed(2)}%;background:${p.color}"></div>`).join('');
-  const steps = plan.map(p => `<div class="pp-step"><div class="pp-num" style="background:${p.color};color:${p.n > 3 ? '#1E1B4B' : '#fff'}">${p.n}</div><div class="pp-lbl">${esc2(p.label)}</div><div class="pp-amt">${krFmtServer(p.amount)}</div><div class="pp-sub">${qpPctTxt(p.pct)}${p.when ? ' · ' + esc2(p.when) : ''}</div></div>`).join('');
+  const pctSum = plan.reduce((a, p) => a + p.pct, 0), amtSum = plan.reduce((a, p) => a + p.amount, 0);
+  const rows = plan.map(p => `<tr><td><b>${p.n}. ${esc2(p.label)}</b>${p.when ? `<span class="pp-when"> – ${esc2(p.when)}</span>` : ''}</td><td class="pp-pct">${qpPctTxt(p.pct)}</td><td class="pp-amt">${krFmtServer(p.amount)}</td></tr>`).join('');
   const hasOpts = quoteOptionsOf(q).some(o => !o.chosen);
-  return `<div class="card pp-card"><div class="pp-h">Betalingsplan</div><div class="pp-bar">${bar}</div><div class="pp-steps">${steps}</div>${hasOpts ? '<div class="pp-note">Vælger du tilvalg, fordeles den nye pris efter de samme procenter.</div>' : ''}</div>`;
+  return `<details class="pp-det"><summary>Se betalingsplan <span>(${plan.length} rater)</span></summary><table class="pp-tbl"><tbody>${rows}<tr class="pp-sum"><td>I alt</td><td class="pp-pct">${qpPctTxt(pctSum)}</td><td class="pp-amt">${krFmtServer(amtSum)}</td></tr></tbody></table>${hasOpts ? '<div class="pp-note">Vælger du tilvalg, fordeles den nye pris efter de samme procenter.</div>' : ''}</details>`;
 }
 async function loadQuoteFull(id) {
   const quote = await pgOne('SELECT * FROM quotes WHERE id=$1', [id]);
@@ -27176,37 +27176,33 @@ function drawDocumentPdf(doc, kind, record, company, attachments) {
     y += 20;
   }
 
-  // v2.91.7 — betalingsplan som farvebjælke + nummererede trin (kun tilbud, når den er slået til)
+  // v2.92.2 — betalingsplan som diskret tabel under totalen (design C, Martin valgte om fra A)
   const pdfPlan = !isInvoice ? quotePlanForCustomer(record) : null;
   if (pdfPlan) {
-    const cols = Math.min(4, pdfPlan.length), colW = 515 / cols, rows = Math.ceil(pdfPlan.length / cols);
     y += 16;
-    y = ensurePdfSpace(doc, y, 40 + rows * 62, ctx);
-    doc.font('DMSans-Bold').fontSize(11).fillColor('#111318').text('Betalingsplan', 40, y);
-    y += 18;
-    const sum = pdfPlan.reduce((a, p) => a + p.pct, 0) || 1;
-    let bx = 40;
-    doc.save();
-    doc.roundedRect(40, y, 515, 7, 3.5).clip();
-    pdfPlan.forEach(p => { const w = 515 * p.pct / sum; doc.rect(bx, y, w + 0.5, 7).fill(p.color); bx += w; });
-    doc.restore();
-    y += 18;
-    for (let r = 0; r < rows; r++) {
-      const rowItems = pdfPlan.slice(r * cols, r * cols + cols);
-      let rowH = 0;
-      rowItems.forEach((p, ci) => {
-        const x = 40 + ci * colW, w = colW - 12;
-        doc.circle(x + 9, y + 9, 9).fill(p.color);
-        doc.font('DMSans-Bold').fontSize(8.5).fillColor(p.n > 3 ? '#1E1B4B' : '#FFFFFF').text(String(p.n), x, y + 4.5, { width: 18, align: 'center' });
-        doc.font('DMSans-Bold').fontSize(9.5).fillColor('#111318').text(p.label, x, y + 23, { width: w, height: 26, ellipsis: true });
-        let yy = doc.y + 1;
-        doc.font('DMSans-Bold').fontSize(11.5).fillColor(accent).text(Math.round(p.amount).toLocaleString('da-DK') + ' kr', x, yy, { width: w });
-        yy = doc.y + 1;
-        doc.font('DMSans').fontSize(8).fillColor('#6B7280').text(qpPctTxt(p.pct) + (p.when ? ' · ' + p.when : ''), x, yy, { width: w, height: 30, ellipsis: true });
-        rowH = Math.max(rowH, doc.y - y);
-      });
-      y += rowH + 12;
+    y = ensurePdfSpace(doc, y, 40 + pdfPlan.length * 18, ctx);
+    doc.font('DMSans-Bold').fontSize(10.5).fillColor('#111318').text('Betalingsplan', 40, y);
+    y += 16;
+    doc.moveTo(40, y).lineTo(555, y).strokeColor('#E5E7EB').lineWidth(0.8).stroke();
+    y += 5;
+    let pctSum = 0, amtSum = 0;
+    for (const p of pdfPlan) {
+      const whenTxt = p.when ? '  – ' + p.when : '';
+      const h = Math.max(12, doc.font('DMSans').fontSize(9).heightOfString(p.n + '. ' + p.label + whenTxt, { width: 360 }));
+      y = ensurePdfSpace(doc, y, h + 8, ctx);
+      doc.font('DMSans-Bold').fontSize(9).fillColor('#111318').text(p.n + '. ' + p.label, 40, y, { width: 360, continued: !!whenTxt });
+      if (whenTxt) doc.font('DMSans').fillColor('#6B7280').text(whenTxt);
+      doc.font('DMSans').fontSize(9).fillColor('#6B7280').text(qpPctTxt(p.pct), 400, y, { width: 55, align: 'right' });
+      doc.font('DMSans-Bold').fontSize(9).fillColor('#111318').text(Math.round(p.amount).toLocaleString('da-DK') + ' kr', 460, y, { width: 95, align: 'right' });
+      y += h + 4;
+      doc.moveTo(40, y).lineTo(555, y).strokeColor('#F3F4F6').lineWidth(0.6).stroke();
+      y += 4;
+      pctSum += p.pct; amtSum += p.amount;
     }
+    doc.font('DMSans-Bold').fontSize(9).fillColor('#111318').text('I alt', 40, y, { width: 360 });
+    doc.font('DMSans').fontSize(9).fillColor('#6B7280').text(qpPctTxt(pctSum), 400, y, { width: 55, align: 'right' });
+    doc.font('DMSans-Bold').fontSize(9).fillColor('#111318').text(Math.round(amtSum).toLocaleString('da-DK') + ' kr', 460, y, { width: 95, align: 'right' });
+    y += 16;
   }
 
   // v2.90.0 — tilvalg/alternativer i en boks "Kan tilvælges" (kun tilbud, kun ikke-valgte).
@@ -28560,14 +28556,19 @@ app.get('/tilbud/:token', asyncRoute(async (req, res) => {
   .sticky-accept-bar button{width:100%;max-width:640px;background:#4F46E5;color:#fff;border:0;border-radius:10px;padding:13px;font-size:14.5px;font-weight:700;cursor:pointer;box-shadow:0 6px 16px rgba(79,70,229,.35)}
   /* RUNDE AD — de to underskrifts-faneblade ("✍️ Tegn" / "⌨️ Skriv"). */
   .sig-mode-tabs{display:flex;gap:6px;margin-top:14px}
-  .pp-card .pp-h{font-size:16px;font-weight:800;color:#111318;margin-bottom:12px}
-  .pp-bar{display:flex;height:9px;border-radius:5px;overflow:hidden;margin-bottom:16px;background:#EEF2FF}
-  .pp-steps{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:14px}
-  .pp-num{width:26px;height:26px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:800;margin-bottom:7px}
-  .pp-lbl{font-size:13.5px;font-weight:700;color:#111318}
-  .pp-amt{font-size:17px;font-weight:800;color:#4338CA;margin:2px 0}
-  .pp-sub{font-size:12px;color:#6B7280;line-height:1.4}
-  .pp-note{margin-top:12px;font-size:12px;color:#6B7280}
+  .pp-det{margin-top:14px;border-top:1px solid #F0F0F2;padding-top:10px}
+  .pp-det summary{cursor:pointer;font-size:13.5px;font-weight:700;color:#4F46E5;list-style:none;display:inline-flex;align-items:center;gap:6px}
+  .pp-det summary::-webkit-details-marker{display:none}
+  .pp-det summary:before{content:'▸';font-size:11px;transition:transform .15s}
+  .pp-det[open] summary:before{transform:rotate(90deg)}
+  .pp-det summary span{font-weight:500;color:#9CA3AF}
+  .pp-tbl{width:100%;border-collapse:collapse;margin-top:8px;font-size:13px}
+  .pp-tbl td{padding:7px 0;border-bottom:1px solid #F3F4F6;vertical-align:top}
+  .pp-tbl .pp-when{color:#6B7280}
+  .pp-tbl .pp-pct{text-align:right;color:#6B7280;width:70px;white-space:nowrap}
+  .pp-tbl .pp-amt{text-align:right;font-weight:700;width:110px;white-space:nowrap}
+  .pp-tbl .pp-sum td{border-bottom:0;font-weight:700}
+  .pp-note{margin-top:8px;font-size:12px;color:#6B7280}
   .sig-mode-tab{flex:1;border:1px solid #E5E7EB;background:#fff;border-radius:8px;padding:9px 6px;font-size:12.5px;font-weight:700;color:#6B7280;cursor:pointer}
   .sig-mode-tab.active{border-color:#4F46E5;background:#EEF2FF;color:#3730A3}
   .sig-type-preview{margin-top:6px;background:#fff;border:1px solid #E5E7EB;border-radius:10px;padding:14px 16px;min-height:56px;display:flex;align-items:center;font-family:'Caveat',cursive;font-size:34px;color:#111318;font-weight:700;word-break:break-word}
@@ -28591,9 +28592,9 @@ ${acceptBannerHtml}
     <div class="totals-row grand"><span>Total</span><span id="tq-total">${krFmtServer(quote.total)}</span></div>
     <div class="totals-row" id="tq-optnote" style="display:none;color:#4F46E5;font-weight:700"><span>Inkl. dine valg</span><span></span></div>
   </div>
+  ${quotePlanHtml(quote)}
   ${quote.notes ? `<div class="notecard">${quote.notes}</div>` : ''}
 </div>
-${quotePlanHtml(quote)}
 ${tilvalgHtml}
 <div class="card">${statusBlock}</div>
 ${(company.cvr || company.bankReg || company.bankAccount || company.iban || company.swift || company.footerNote) ? `<div class="pagefooter">${[company.cvr ? 'CVR ' + company.cvr : '', (company.bankReg || company.bankAccount) ? ('Reg. ' + company.bankReg + '  Konto ' + company.bankAccount) : '', company.iban ? 'IBAN ' + company.iban : '', company.swift ? 'SWIFT/BIC ' + company.swift : ''].filter(Boolean).map(esc).join('  ·  ')}${company.footerNote ? `<div class="note">${esc(company.footerNote)}</div>` : ''}</div>` : ''}
