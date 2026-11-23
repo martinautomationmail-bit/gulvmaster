@@ -5251,6 +5251,14 @@ async function shiftTaskBookings(taskId, deltaDays, exec) {
     );
     shifted++;
   }
+  // v2.91.4 — Testplanens kladde-bookinger følger nu også med, når opgaven flytter
+  // (før blev de liggende på de gamle datoer, så Testplan ikke passede med sagen).
+  const tps = (await (exec || pool).query('SELECT id,start_date FROM testplan_bookings WHERE gantt_task_id=$1', [taskId])).rows;
+  for (const row of tps) {
+    if (!validDate(row.start_date)) continue;
+    await (exec || pool).query(`UPDATE testplan_bookings SET start_date=$1, updated_at=${nowTextSQL()} WHERE id=$2`, [addCalendarDays(row.start_date, deltaDays), row.id]);
+    shifted++;
+  }
   return shifted;
 }
 
@@ -17958,8 +17966,11 @@ app.get('/api/projects/:id', auth, asyncRoute(async (req, res) => {
         -- RUNDE L (Martins ønske #1 "flere data oplysninger") — hvem opgaven er
         -- booket på og hvornår, vist i den udvidede opgave-popup (pdtd-bookings).
         -- En opgave kan sagtens have flere bookinger (flere medarbejdere/perioder).
-        (SELECT json_agg(json_build_object('user_name', u.name, 'start_date', b.start_date, 'end_date', b.end_date) ORDER BY b.start_date)
+        (SELECT json_agg(json_build_object('id', b.id, 'user_id', b.user_id, 'user_name', u.name, 'start_date', b.start_date, 'end_date', b.end_date) ORDER BY b.start_date)
          FROM planning_bookings b LEFT JOIN users u ON u.id = b.user_id WHERE b.task_id = g.id) AS bookings,
+        -- v2.91.4 — Testplanens kladde-bookinger på opgaven (til "passer planen?"-tjekket i sagen)
+        (SELECT json_agg(json_build_object('id', tb.id, 'user_id', tb.user_id, 'user_name', u2.name, 'start_date', tb.start_date, 'days', tb.days) ORDER BY tb.start_date)
+         FROM testplan_bookings tb LEFT JOIN users u2 ON u2.id = tb.user_id WHERE tb.gantt_task_id = g.id) AS testplan,
         -- RUNDE BR — opgavens egne kuraterede referencebilleder (task_photos),
         -- samme mønster som bookings herover, så pdtd-photos-fanen kan vises
         -- direkte uden endnu et API-kald hver gang opgaven åbnes.
@@ -19372,6 +19383,7 @@ app.delete('/api/projects/:id/tasks/:taskId', auth, panelAccess('projects'), asy
       await pool.query('UPDATE gantt_tasks SET depends_on=$1 WHERE id=$2', [JSON.stringify(cleaned), row.id]);
     }
   }
+  await pool.query('DELETE FROM testplan_bookings WHERE gantt_task_id=$1', [req.params.taskId]);
   res.json({ ok: true });
 }));
 
