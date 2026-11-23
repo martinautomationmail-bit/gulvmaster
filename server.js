@@ -5668,6 +5668,22 @@ async function migrateProfitSnapshotFormula2() {
     await pool.query('INSERT INTO app_migrations (name, details) VALUES ($1, $2)', [name, JSON.stringify({ redone })]);
   } catch (e) { console.error('migrateProfitSnapshotFormula2 fejlede:', e.message); }
 }
+// v2.91.0 — fakturaer oprettet direkte med rabat i kr fik kr-beløbet gemt som % (fx FAK-2026-0078:
+// 1.900 kr → "Rabat (1.900%)" på PDF'en). Beløbene var rigtige — kun discount_pct omregnes til %.
+async function migrateInvoiceFixedDiscount20261123() {
+  try {
+    const name = 'invoice_fixed_discount_20261123';
+    if (await pgOne('SELECT 1 FROM app_migrations WHERE name=$1', [name])) return;
+    const r = await pool.query(`WITH x AS (
+        SELECT i.id, i.discount_pct d, i.subtotal s,
+          (SELECT COALESCE(SUM(quantity*sell_price*(1-COALESCE(discount_pct,0)/100.0)),0) FROM invoice_lines WHERE invoice_id=i.id) raw
+        FROM invoices i WHERE i.discount_pct>0)
+      UPDATE invoices i SET discount_pct=(x.raw-x.s)/x.raw*100 FROM x
+      WHERE i.id=x.id AND x.raw>0 AND ABS(x.raw-x.d-x.s)<0.5 AND ABS(x.raw*(1-x.d/100.0)-x.s)>0.5
+      RETURNING i.invoice_number`);
+    await pool.query('INSERT INTO app_migrations (name, details) VALUES ($1, $2)', [name, JSON.stringify({ fixed: r.rows.map(x => x.invoice_number) })]);
+  } catch (e) { console.error('migrateInvoiceFixedDiscount20261123 fejlede:', e.message); }
+}
 async function migrateAddressSync20261118() {
   try {
     const name = 'address_sync_20261118';
@@ -25753,6 +25769,12 @@ app.post('/api/invoices/direct-create', auth, panelAccess('quotes'), asyncRoute(
   const discountPct = Number(b.discount_pct) || 0;
   const discountType = b.discount_type === 'fixed' ? 'fixed' : 'pct';
   const totals = computeTotals(b.lines || [], taxRate, { value: discountPct, type: discountType });
+  // v2.91.0 — invoices.discount_pct er ALTID procent (ingen discount_type-kolonne; PDF,
+  // kreditnota og rapporter læser den som %). Rabat i kr omregnes derfor til %, ligesom
+  // når et tilbud konverteres til faktura. Før blev "1.900 kr" gemt som 1900 %.
+  const storedDiscountPct = discountType === 'fixed'
+    ? (totals.rawSubtotal > 0 ? (totals.discountAmount / totals.rawSubtotal) * 100 : 0)
+    : discountPct;
   const invoiceNumber = await nextDocNumber('invoice', 'FAK');
   // Sagsnummer (se skema-kommentaren ved quotes.job_number) — en direkte
   // faktura har intet tilbud/projekt bagved, så den er selve sagens
@@ -25785,7 +25807,7 @@ app.post('/api/invoices/direct-create', auth, panelAccess('quotes'), asyncRoute(
   `, [invoiceNumber, jobNumber, b.job_name || null, b.job_id || null, resolvedCustomerId, b.customer_address || null, b.customer_phone || null, b.customer_email || null, totals.subtotal, taxRate, totals.taxAmount, totals.total,
     b.notes !== undefined ? (b.notes ? sanitizeRichText(b.notes) : null) : (company.invoiceBottomNoteDefault || null),
     b.top_note !== undefined ? (b.top_note ? sanitizeRichText(b.top_note) : null) : (company.invoiceTopNoteDefault || null),
-    dueDate.toISOString().slice(0, 10), discountPct, initialStatus]);
+    dueDate.toISOString().slice(0, 10), storedDiscountPct, initialStatus]);
   const invoiceId = r.rows[0].id;
   let pos = 0;
   // BEMÆRK: invoice_lines har (til forskel fra quote_lines) INGEN discount_type-kolonne —
@@ -28189,7 +28211,7 @@ app.get('/tilbud/:token', asyncRoute(async (req, res) => {
   const rawSubtotal = lines.reduce((s, l) => s + (Number(l.quantity) * Number(l.sell_price) - lineDiscountAmount(l, Number(l.quantity) * Number(l.sell_price))), 0);
   const docDiscType = quote.discount_type === 'fixed' ? 'fixed' : 'pct';
   const discountAmount = docDiscType === 'fixed' ? Math.max(0, Math.min(Number(quote.discount_pct) || 0, rawSubtotal)) : (Number(quote.discount_pct) ? rawSubtotal * Number(quote.discount_pct) / 100 : 0);
-  const docDiscLabel = docDiscType === 'fixed' ? `${Math.round(Number(quote.discount_pct) || 0).toLocaleString('da-DK')} kr` : `${Number(quote.discount_pct) || 0}%`;
+  const docDiscLabel = docDiscType === 'fixed' ? `${Math.round(Number(quote.discount_pct) || 0).toLocaleString('da-DK')} kr` : `${(Math.round((Number(quote.discount_pct) || 0) * 100) / 100).toLocaleString('da-DK')}%`;
   const rowsHtml = lines.map(l => {
     if (l.line_type === 'text') {
       return `<tr><td colspan="4" class="ln-textrow">${esc(l.description)}</td></tr>`;
@@ -30983,6 +31005,7 @@ async function start() {
   await migrateMartinBToKontor();
   await migrateShiftExpensesBackOneMonth();
   migrateAddressSync20261118();
+  migrateInvoiceFixedDiscount20261123();
   migrateProfitSnapshotFormula2();
   await backfillBankUploadHistory();
   await migrateNotPerformedStage();
