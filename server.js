@@ -24704,9 +24704,11 @@ app.post('/api/ai/clean-note', auth, asyncRoute(async (req, res) => {
 function normalizePaymentPlanPhases(rawPhases, total) {
   const phases = (Array.isArray(rawPhases) ? rawPhases : []).map(p => {
     const label = String((p && p.label) || '').trim().slice(0, 200);
-    const milestone = String((p && p.milestone) || '').trim().slice(0, 300);
+    const milestone = String((p && p.milestone) || '').trim().slice(0, 2000);
     const pct = Math.max(0, Math.min(100, Number(p && p.pct) || 0));
     const out = { label, milestone, pct };
+    // v2.91.6 — tilbudslinjer valgt under fasen (beløbet regnes ud fra dem i editoren)
+    if (p && Array.isArray(p.line_ids) && p.line_ids.length) out.line_ids = p.line_ids.slice(0, 200).map(x => String(x).slice(0, 40));
     // RUNDE DT (Martin: "kan man ikke få koblet betalingsplanen ind i
     // faktura delen?") — se den store kommentar ved
     // POST .../payment-plan/invoice-phase nedenfor. En fase der ER
@@ -27459,7 +27461,7 @@ function drawPaymentPlanPdf(doc, quote, company) {
     y = ppEnsureSpace(doc, y, rowH, quote.quote_number, accent);
     doc.font('DMSans-Bold').fontSize(10.5).fillColor('#111318').text(labelText, 40, y, { width: 240 });
     const labelEndY = doc.y;
-    doc.font('DMSans').fontSize(10.5).fillColor('#111318').text((Number(p.pct) || 0) + '%', 300, y, { width: 60, align: 'right' });
+    doc.font('DMSans').fontSize(10.5).fillColor('#111318').text((Math.round((Number(p.pct) || 0) * 10) / 10).toLocaleString('da-DK') + '%', 300, y, { width: 60, align: 'right' });
     doc.font('DMSans-Bold').fontSize(10.5).fillColor(accent).text(pdfKr(p.amount), 390, y, { width: 125, align: 'right' });
     y = Math.max(labelEndY, doc.y) + 2; // RUNDE CN — MAX af begge kolonner, se kommentaren ovenfor.
     if (milestoneText) {

@@ -5879,6 +5879,11 @@ body.tp-dragging,body.tp-dragging *{cursor:grabbing!important}
 #pd-gantt-strip .pd-ph-bar.dragging{opacity:.7;cursor:grabbing}
 #pd-gantt-strip .gantt-list-row.in-ph{padding-left:30px!important}
 .pdx-glmeta i.sy-off{color:#A32D2D}.pdx-glmeta i.sy-test{color:#854F0B}
+.qp-unit{position:absolute;right:8px;top:9px;font-size:11px;color:#A1A1AA;pointer-events:none}
+.qp-lines{display:flex;flex-wrap:wrap;gap:4px;margin-top:5px}
+.qp-chip{display:inline-flex;align-items:center;gap:4px;font-size:11px;background:#EEF2FF;color:#3730A3;border-radius:999px;padding:2px 4px 2px 9px;max-width:100%}
+.qp-chip button{border:0;background:none;color:#6366F1;cursor:pointer;font-size:13px;line-height:1;padding:0 3px}
+.qp-lines-sum{flex-basis:100%;font-size:11px;font-weight:700;color:#3730A3}
 .pd-kpi{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:8px;margin:2px 0 10px}
 .pd-kpi>div{background:#F7F7F8;border-radius:10px;padding:7px 11px;font-size:11px;color:#71717A}
 .pd-kpi>div b{display:block;font-size:17px;font-weight:700;color:#18181B;line-height:1.3}
@@ -6137,7 +6142,7 @@ body.tp-dragging,body.tp-dragging *{cursor:grabbing!important}
        i browseren faktisk ER det nyeste deploy, eller om Render/GitHub bare
        ikke er nået at opdatere endnu — i stedet for at skulle gætte om en
        rettelse "stadig ikke virker" eller bare endnu ikke er live. -->
-  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build v2.91.5 · 2026-11-02</span></div>
+  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build v2.91.6 · 2026-11-02</span></div>
 </aside>
 <div class="app-content">
 <!-- RUNDE FB — AI-ASSISTENTEN (Martin: "en ai der er nede i venstre hjørne af
@@ -43299,12 +43304,12 @@ function qpAddRow(phase){
     '<div style="flex:2">'+
       '<input class="qe-input qp-label" placeholder="Fase, fx Depositum ved underskrift">'+
       '<textarea class="qe-input qp-milestone" placeholder="Milepæl, fx Ved underskrift af tilbuddet — tryk Enter for linjeskift" rows="2" style="margin-top:4px;font-size:12px;font-family:inherit;line-height:1.4;resize:vertical;width:100%"></textarea>'+
-      (invoiced?'':'<select class="qe-input qp-insert-line" style="margin-top:4px;font-size:11px;width:100%"><option value="">+ Indsæt linje fra tilbuddet…</option></select>')+
+      (invoiced?'':'<select class="qe-input qp-insert-line" style="margin-top:4px;font-size:11px;width:100%"><option value="">+ Vælg poster fra tilbuddet (beløbet regnes ud)…</option></select><div class="qp-lines"></div>')+
       (invoiced?'<div style="margin-top:4px;font-size:11px;font-weight:700;color:#15803D">✓ Faktureret ('+esc(phase.invoiced_invoice_number||'')+')</div>':
         '<button type="button" class="bly-btn outline small qp-invoice-phase-btn" style="margin-top:4px;font-size:11px;padding:3px 8px" title="Opret en faktura direkte for denne fases beløb">📄 Fakturér denne fase</button>')+
     '</div>'+
-    '<div style="flex:0 0 70px"><input class="qe-input qp-pct" type="number" min="0" max="100" step="0.5" style="text-align:right"></div>'+
-    '<div style="flex:0 0 100px;text-align:right;padding-top:9px;font-weight:700;font-size:13px" class="qp-amount">0 kr</div>'+
+    '<div style="flex:0 0 74px;position:relative"><input class="qe-input qp-pct" type="number" min="0" max="100" step="any" style="text-align:right;padding-right:20px"><span class="qp-unit">%</span></div>'+
+    '<div style="flex:0 0 118px;position:relative"><input class="qe-input qp-amount" inputmode="decimal" title="Skriv et beløb — procenten regnes ud" style="text-align:right;font-weight:700;padding-right:24px"'+(invoiced?' disabled':'')+'><span class="qp-unit">kr</span></div>'+
     (invoiced?'':'<button type="button" class="qz-icon-btn qp-remove" title="Fjern fase">✕</button>');
   row.querySelector('.qp-label').value=phase.label||'';
   row.querySelector('.qp-milestone').value=phase.milestone||'';
@@ -43314,7 +43319,12 @@ function qpAddRow(phase){
     row.querySelector('.qp-milestone').disabled=true;
     row.querySelector('.qp-pct').disabled=true;
   }
-  row.querySelector('.qp-pct').addEventListener('input',qpRecalcSummary);
+  row.querySelector('.qp-pct').addEventListener('input',function(){delete row.dataset.pctExact;qpRecalcSummary();});
+  if(phase.pct!=null&&Math.round(phase.pct*100)!==phase.pct*100){row.dataset.pctExact=String(phase.pct);row.querySelector('.qp-pct').value=String(Math.round(phase.pct*100)/100);}
+  // v2.91.6 — skriv et beløb i kr → procenten regnes ud (Martin: "skrive et samlede beløb og den så regner % satsen ud")
+  row.querySelector('.qp-amount').addEventListener('input',function(){var v=qpParseKr(this.value);qpSetPct(row,(qpState.total>0&&v!=null)?v/qpState.total*100:null);qpRecalcSummary(row);});
+  row.querySelector('.qp-amount').addEventListener('blur',function(){qpRecalcSummary();});
+  row.dataset.lines=JSON.stringify(phase.line_ids||[]);
   var removeBtn=row.querySelector('.qp-remove');
   if(removeBtn)removeBtn.addEventListener('click',function(){row.remove();qpRecalcSummary();});
   var invoiceBtn=row.querySelector('.qp-invoice-phase-btn');
@@ -43333,12 +43343,16 @@ function qpAddRow(phase){
     insertSel.addEventListener('change',function(){
       if(insertSel.value==='')return;
       var line=(qeState.lines||[])[Number(insertSel.value)];
-      if(line&&line.description){
-        var ta=row.querySelector('.qp-milestone');
-        ta.value=ta.value?(ta.value.replace(/\s+$/,'')+'\n'+line.description):line.description;
+      if(line){
+        // v2.91.6 — posten lægges på fasen, og fasens beløb = summen af dens poster (inkl. moms/rabat)
+        var key=qpLineKey(line,Number(insertSel.value)),ids=JSON.parse(row.dataset.lines||'[]');
+        if(ids.indexOf(key)<0){ids.push(key);row.dataset.lines=JSON.stringify(ids);
+          if(line.description){var ta=row.querySelector('.qp-milestone');var first=String(line.description).split('\n')[0];ta.value=ta.value?(ta.value.replace(/\s+$/,'')+'\n'+first):first;}
+          qpApplyLines(row);}
       }
       insertSel.value='';
     });
+    qpRenderLineChips(row);
   }
   document.getElementById('qp-rows').appendChild(row);
   return row;
@@ -43354,10 +43368,10 @@ function qpAddRow(phase){
 async function qpInvoicePhases(selRows){
   if(!qpState.quoteId||!selRows||!selRows.length)return;
   var rows=Array.prototype.slice.call(document.querySelectorAll('#qp-rows .qp-row'));
-  var kept=rows.filter(function(r){return r.querySelector('.qp-label').value.trim()||Number(r.querySelector('.qp-pct').value);});
+  var kept=rows.filter(function(r){return r.querySelector('.qp-label').value.trim()||qpRowPct(r);});
   var idxs=selRows.map(function(r){return kept.indexOf(r);}).filter(function(i){return i>-1;});
   if(!idxs.length){toast('Fasen mangler navn eller procent','⚠️');return;}
-  var total=selRows.reduce(function(sum,r){return sum+Math.round(qpState.total*(Number(r.querySelector('.qp-pct').value)||0))/100;},0);
+  var total=selRows.reduce(function(sum,r){return sum+Math.round(qpState.total*(qpRowPct(r)))/100;},0);
   var names=selRows.map(function(r,i){return r.querySelector('.qp-label').value.trim()||'Fase';});
   var msg=selRows.length===1?'Opret en faktura på '+krFmt(total)+' for fasen "'+names[0]+'"?':'Opret ÉN faktura på '+krFmt(total)+' for '+selRows.length+' faser?\n\n• '+names.join('\n• ');
   if(!(await gmConfirm(msg+'\n\nTilbuddets øvrige, (endnu) ufakturerede linjer/faser berøres ikke.')))return;
@@ -43387,13 +43401,32 @@ async function qpInvoicePhases(selRows){
 // Genberegner hver fases kr-beløb (ud fra qpState.total) og den samlede %-sum
 // — farves rød hvis summen ikke rammer 100%, så Martin ser det med det
 // samme i stedet for først ved Gem.
+// ── v2.91.6 hjælpere: kr-felt + poster fra tilbuddet ──
+function qpRowPct(row){var x=row.dataset.pctExact;return x!=null&&x!==''?Number(x):(Number(row.querySelector('.qp-pct').value)||0);}
+function qpSetPct(row,v){var i=row.querySelector('.qp-pct');if(v==null){delete row.dataset.pctExact;i.value='';return;}row.dataset.pctExact=String(Math.round(v*1e6)/1e6);i.value=String(Math.round(v*100)/100);}
+function qpParseKr(v){v=String(v||'').replace(/\s|kr/gi,'');if(!v)return null;if(v.indexOf(',')>=0)v=v.replace(/\./g,'').replace(',','.');else if(/\.\d{3}(\.|$)/.test(v))v=v.replace(/\./g,'');var n=Number(v);return isFinite(n)?n:null;}
+function qpFmtKr(n){return (Math.round(n*100)/100).toLocaleString('da-DK',{minimumFractionDigits:0,maximumFractionDigits:2});}
+function qpLineKey(l,i){return l&&l.id!=null?String(l.id):'i'+i;}
+function qpLineByKey(k){var L=qeState.lines||[];for(var i=0;i<L.length;i++){if(qpLineKey(L[i],i)===String(k))return L[i];}return null;}
+// Linjens andel af tilbuddets TOTAL (inkl. moms og evt. samlet rabat) = linjens netto × (total ÷ sum af alle linjers netto)
+function qpLineShare(l){var all=(qeState.lines||[]).reduce(function(a,x){return a+(x.line_type==='section'?0:qeOptLineTotal(x));},0);return all>0?qeOptLineTotal(l)*qpState.total/all:0;}
+function qpApplyLines(row){var ids=JSON.parse(row.dataset.lines||'[]'),sum=0;ids.forEach(function(k){var l=qpLineByKey(k);if(l)sum+=qpLineShare(l);});
+  if(ids.length&&qpState.total>0)qpSetPct(row,sum/qpState.total*100);
+  qpRenderLineChips(row);qpRecalcSummary();}
+function qpRenderLineChips(row){var box=row.querySelector('.qp-lines');if(!box)return;var ids=JSON.parse(row.dataset.lines||'[]');
+  if(!ids.length){box.innerHTML='';return;}var sum=0;
+  box.innerHTML=ids.map(function(k){var l=qpLineByKey(k);var a=l?qpLineShare(l):0;sum+=a;var d=l?String(l.description||'Linje').split('\n')[0]:'(slettet linje)';
+    return '<span class="qp-chip" title="'+esc(d)+'">'+esc(d.length>34?d.slice(0,34)+'…':d)+' · '+krFmt(Math.round(a))+'<button type="button" data-qp-unline="'+esc(k)+'" title="Fjern posten">×</button></span>';}).join('')
+    +'<div class="qp-lines-sum">'+ids.length+' post'+(ids.length===1?'':'er')+' = '+krFmt(Math.round(sum))+' inkl. moms</div>';}
+document.addEventListener('click',function(e){var b=e.target.closest('#qp-rows [data-qp-unline]');if(!b)return;var row=b.closest('.qp-row'),k=b.getAttribute('data-qp-unline');
+  row.dataset.lines=JSON.stringify(JSON.parse(row.dataset.lines||'[]').filter(function(x){return x!==k;}));qpApplyLines(row);});
 function qpRecalcSummary(){
   var rows=Array.prototype.slice.call(document.querySelectorAll('#qp-rows .qp-row'));
   var sumPct=0;
   rows.forEach(function(row){
-    var pct=Number(row.querySelector('.qp-pct').value)||0;
+    var pct=qpRowPct(row);
     sumPct+=pct;
-    row.querySelector('.qp-amount').textContent=krFmt(Math.round(qpState.total*pct)/100);
+    var ai=row.querySelector('.qp-amount');if(ai&&document.activeElement!==ai)ai.value=qpFmtKr(Math.round(qpState.total*pct)/100);
   });
   var summaryEl=document.getElementById('qp-summary');
   var roundedSum=Math.round(sumPct*100)/100;
@@ -43402,7 +43435,7 @@ function qpRecalcSummary(){
   var picked=rows.filter(function(r){var c=r.querySelector('.qp-pick');return c&&c.checked;});
   var bulk=document.getElementById('qp-bulk');
   if(bulk){bulk.hidden=!picked.length;
-    var sumSel=picked.reduce(function(a,r){return a+Math.round(qpState.total*(Number(r.querySelector('.qp-pct').value)||0))/100;},0);
+    var sumSel=picked.reduce(function(a,r){return a+Math.round(qpState.total*(qpRowPct(r)))/100;},0);
     document.getElementById('qp-bulk-txt').textContent=picked.length+' fase'+(picked.length===1?'':'r')+' valgt · '+krFmt(sumSel);
     document.getElementById('qp-bulk-btn').textContent=picked.length>1?'📄 Fakturér '+picked.length+' faser på én faktura':'📄 Fakturér valgte fase';}
 }
@@ -43415,8 +43448,9 @@ function qpCollectPhases(){
     var p={
       label: row.querySelector('.qp-label').value.trim(),
       milestone: row.querySelector('.qp-milestone').value.trim(),
-      pct: Number(row.querySelector('.qp-pct').value)||0
+      pct: qpRowPct(row)
     };
+    var lids=JSON.parse(row.dataset.lines||'[]');if(lids.length)p.line_ids=lids;
     // RUNDE DT — se qpAddRow-kommentaren: skal følge med retur til serveren
     // ved hvert Gem, ellers "glemmer" normalizePaymentPlanPhases at denne
     // fase er faktureret.
