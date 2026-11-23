@@ -5881,6 +5881,13 @@ body.tp-dragging,body.tp-dragging *{cursor:grabbing!important}
 .pdx-glmeta i.sy-off{color:#A32D2D}.pdx-glmeta i.sy-test{color:#854F0B}
 .qp-show-lbl{display:flex;align-items:center;gap:7px;font-size:12.5px;font-weight:600;color:#3730A3;background:#EEF2FF;border-radius:8px;padding:7px 10px;margin:6px 0 10px;cursor:pointer}
 #qp-rows .qp-row>div{min-width:0}
+#qp-rows .qp-side{display:flex;flex-direction:column;align-items:center;gap:3px;flex:0 0 30px;min-width:30px}
+#qp-rows .qp-mv{border:0;background:#F4F4F5;color:#71717A;border-radius:6px;width:26px;height:20px;font-size:9px;cursor:pointer;line-height:1}
+#qp-rows .qp-mv:hover{background:#E0E7FF;color:#3730A3}
+#qp-rows .qp-grip{cursor:grab;color:#A1A1AA;font-size:15px;line-height:1;user-select:none}
+#qp-rows .qp-row:first-child .qp-mv[data-qp-mv="-1"],#qp-rows .qp-row:last-child .qp-mv[data-qp-mv="1"]{visibility:hidden}
+#qp-rows .qp-row.qp-dragging{opacity:.45}
+#qp-rows .qp-row.qp-moved{background:#EEF2FF;transition:background .4s}
 .qp-pick-lines{margin-top:4px;width:100%;text-align:left;font-size:11.5px;font-weight:600;color:#3730A3;background:#F5F7FF;border:1px dashed #A5B4FC;border-radius:8px;padding:6px 9px;cursor:pointer}
 .qp-pick-lines:hover{background:#EEF2FF}
 .qp-lp{margin-top:6px;border:1px solid #E4E4E7;border-radius:10px;background:#fff;box-shadow:0 10px 30px rgba(15,23,42,.12);overflow:hidden}
@@ -6154,7 +6161,7 @@ body.tp-dragging,body.tp-dragging *{cursor:grabbing!important}
        i browseren faktisk ER det nyeste deploy, eller om Render/GitHub bare
        ikke er nået at opdatere endnu — i stedet for at skulle gætte om en
        rettelse "stadig ikke virker" eller bare endnu ikke er live. -->
-  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build v2.92.0 · 2026-11-02</span></div>
+  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build v2.92.1 · 2026-11-02</span></div>
 </aside>
 <div class="app-content">
 <!-- RUNDE FB — AI-ASSISTENTEN (Martin: "en ai der er nede i venstre hjørne af
@@ -43324,7 +43331,8 @@ function qpAddRow(phase){
     '</div>'+
     '<div style="flex:0 0 74px;position:relative"><input class="qe-input qp-pct" type="number" min="0" max="100" step="any" style="text-align:right;padding-right:20px"><span class="qp-unit">%</span></div>'+
     '<div style="flex:0 0 118px;position:relative"><input class="qe-input qp-amount" inputmode="decimal" title="Skriv et beløb — procenten regnes ud" style="text-align:right;font-weight:700;padding-right:24px"'+(invoiced?' disabled':'')+'><span class="qp-unit">kr</span></div>'+
-    (invoiced?'':'<button type="button" class="qz-icon-btn qp-remove" title="Fjern fase">✕</button>');
+    '<div class="qp-side">'+(invoiced?'':'<button type="button" class="qz-icon-btn qp-remove" title="Fjern fase">✕</button>')
+      +'<button type="button" class="qp-mv" data-qp-mv="-1" title="Flyt fasen op">▲</button><span class="qp-grip" draggable="true" title="Træk for at flytte fasen">⠿</span><button type="button" class="qp-mv" data-qp-mv="1" title="Flyt fasen ned">▼</button></div>';
   row.querySelector('.qp-label').value=phase.label||'';
   row.querySelector('.qp-milestone').value=phase.milestone||'';
   row.querySelector('.qp-pct').value=phase.pct!=null?phase.pct:'';
@@ -43397,6 +43405,16 @@ async function qpInvoicePhases(selRows){
 // — farves rød hvis summen ikke rammer 100%, så Martin ser det med det
 // samme i stedet for først ved Gem.
 // ── v2.91.6 hjælpere: kr-felt + poster fra tilbuddet ──
+// v2.92.1 — flyt faser op/ned (pile eller træk i ⠿)
+var qpDragRow=null;
+document.addEventListener('click',function(e){var b=e.target.closest('#qp-rows [data-qp-mv]');if(!b)return;var row=b.closest('.qp-row'),d=Number(b.getAttribute('data-qp-mv'));
+  if(d<0&&row.previousElementSibling)row.parentNode.insertBefore(row,row.previousElementSibling);
+  else if(d>0&&row.nextElementSibling)row.parentNode.insertBefore(row.nextElementSibling,row);
+  row.classList.add('qp-moved');setTimeout(function(){row.classList.remove('qp-moved');},500);qpRecalcSummary();});
+document.addEventListener('dragstart',function(e){var g=e.target.closest&&e.target.closest('#qp-rows .qp-grip');if(!g)return;qpDragRow=g.closest('.qp-row');qpDragRow.classList.add('qp-dragging');try{e.dataTransfer.effectAllowed='move';e.dataTransfer.setData('text/plain','qp');e.dataTransfer.setDragImage(qpDragRow,20,20);}catch(_){}});
+document.addEventListener('dragover',function(e){if(!qpDragRow)return;var r=e.target.closest&&e.target.closest('#qp-rows .qp-row');if(!r||r===qpDragRow)return;e.preventDefault();var bb=r.getBoundingClientRect();
+  if(e.clientY<bb.top+bb.height/2)r.parentNode.insertBefore(qpDragRow,r);else r.parentNode.insertBefore(qpDragRow,r.nextSibling);});
+document.addEventListener('dragend',function(){if(!qpDragRow)return;qpDragRow.classList.remove('qp-dragging');qpDragRow=null;qpRecalcSummary();});
 function qpIsHead(l){return l&&(l.line_type==='section'||/^\s*\*\*[\s\S]*\*\*\s*$/.test(String(l.description||'')));}
 function qpOpenLinePicker(row,btn){
   var old=document.getElementById('qp-lp');if(old){old.remove();if(old.dataset.row===row.dataset.rid)return;}
