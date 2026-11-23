@@ -26970,6 +26970,67 @@ function ensurePdfSpace(doc, y, needed, ctx) {
   if (ctx.redrawTableHeader) ny = drawPdfLineTableHeader(doc, ny);
   return ny;
 }
+// v2.92.3 — betalingsplanen på sin EGEN side i tilbuds-PDF'en (design A: samlet pris, farvebjælke,
+// et kort pr. rate med de poster raten dækker, betalingsoplysninger nederst).
+function drawQuotePlanPage(doc, record, company, accent, plan, ctx) {
+  doc.addPage();
+  const meta = [];
+  if (record.job_name) meta.push(String(record.job_name));
+  meta.push(`Tilbud dateret ${String(record.created_at || '').slice(0, 10)}`);
+  let y = drawDocHeader(doc, 'BETALINGSPLAN', record.quote_number, meta, accent, company);
+  const total = Number(record.total) || 0;
+  // samlet pris
+  doc.roundedRect(40, y, 515, 52, 10).fill('#F5F7FF');
+  doc.font('DMSans').fontSize(9.5).fillColor('#6B7280').text('Samlet pris inkl. moms', 56, y + 12);
+  doc.font('DMSans').fontSize(9).fillColor('#9CA3AF').text(`Fordelt på ${plan.length} rate${plan.length === 1 ? '' : 'r'}`, 56, y + 28);
+  doc.font('DMSans-Bold').fontSize(20).fillColor('#111318').text(Math.round(total).toLocaleString('da-DK') + ' kr', 300, y + 15, { width: 240, align: 'right' });
+  y += 70;
+  // farvebjælke
+  const sum = plan.reduce((a, p) => a + p.pct, 0) || 1;
+  let bx = 40;
+  doc.save(); doc.roundedRect(40, y, 515, 8, 4).clip();
+  doc.rect(40, y, 515, 8).fill('#EEF2FF');
+  plan.forEach(p => { const w = 515 * Math.min(p.pct, 100) / Math.max(sum, 100); doc.rect(bx, y, w + 0.5, 8).fill(p.color); bx += w; });
+  doc.restore();
+  y += 24;
+  // kort pr. rate
+  const lineById = {};
+  (record.lines || []).forEach(l => { lineById[String(l.id)] = l; });
+  const phases = (record.payment_plan && Array.isArray(record.payment_plan.phases)) ? record.payment_plan.phases : [];
+  plan.forEach((p, i) => {
+    const raw = phases[i] || {};
+    const posts = (raw.line_ids || []).map(id => lineById[String(id)]).filter(Boolean)
+      .map(l => String(l.description || '').split('\n')[0].replace(/\*\*/g, '').trim()).filter(Boolean);
+    const postsTxt = posts.length ? posts.join('  ·  ') : '';
+    const titleH = doc.font('DMSans-Bold').fontSize(11.5).heightOfString(p.label, { width: 300 });
+    const whenH = p.when ? doc.font('DMSans').fontSize(9.5).heightOfString(p.when, { width: 300 }) : 0;
+    const postsH = postsTxt ? doc.font('DMSans').fontSize(8.5).heightOfString(postsTxt, { width: 300 }) : 0;
+    const h = Math.max(62, 16 + titleH + (whenH ? whenH + 3 : 0) + (postsH ? postsH + 7 : 0) + 14);
+    y = ensurePdfSpace(doc, y, h + 10, ctx);
+    doc.roundedRect(40, y, 515, h, 10).lineWidth(0.9).stroke('#E5E7EB');
+    doc.save(); doc.roundedRect(40, y, 4, h, 2).fill(p.color); doc.restore();
+    doc.circle(70, y + 24, 12).fill(p.color);
+    doc.font('DMSans-Bold').fontSize(10.5).fillColor(p.n > 3 ? '#1E1B4B' : '#FFFFFF').text(String(p.n), 58, y + 18.5, { width: 24, align: 'center' });
+    let ty = y + 14;
+    doc.font('DMSans-Bold').fontSize(11.5).fillColor('#111318').text(p.label, 96, ty, { width: 300 });
+    ty += titleH + 2;
+    if (p.when) { doc.font('DMSans').fontSize(9.5).fillColor('#4B5563').text(p.when, 96, ty, { width: 300 }); ty += whenH + 6; }
+    if (postsTxt) { doc.font('DMSans').fontSize(8.5).fillColor('#9CA3AF').text(postsTxt, 96, ty, { width: 300 }); }
+    doc.font('DMSans-Bold').fontSize(15).fillColor(accent).text(Math.round(p.amount).toLocaleString('da-DK') + ' kr', 400, y + 14, { width: 140, align: 'right' });
+    doc.font('DMSans').fontSize(9).fillColor('#6B7280').text(qpPctTxt(p.pct) + ' af den samlede pris', 380, y + 34, { width: 160, align: 'right' });
+    y += h + 10;
+  });
+  // betalingsoplysninger
+  const bank = [company.bankReg ? 'Reg. ' + company.bankReg : '', company.bankAccount ? 'Konto ' + company.bankAccount : '', company.iban ? 'IBAN ' + company.iban : ''].filter(Boolean).join('  ·  ');
+  y += 6;
+  y = ensurePdfSpace(doc, y, 70, ctx);
+  doc.moveTo(40, y).lineTo(555, y).strokeColor('#EEF0F3').lineWidth(1).stroke();
+  y += 12;
+  doc.font('DMSans-Bold').fontSize(10).fillColor('#111318').text('Betalingsbetingelser', 40, y);
+  y += 15;
+  doc.font('DMSans').fontSize(9).fillColor('#4B5563').text('Hver rate faktureres, når milepælen er nået. Beløbene er inkl. moms og følger tilbuddets samlede pris.' + (bank ? '\nBetaling til: ' + bank : ''), 40, y, { width: 515, lineGap: 2 });
+  return doc.y + 10;
+}
 function drawDocumentPdf(doc, kind, record, company, attachments) {
   const isInvoice = kind === 'invoice';
   const accent = '#4F46E5';
@@ -27176,34 +27237,8 @@ function drawDocumentPdf(doc, kind, record, company, attachments) {
     y += 20;
   }
 
-  // v2.92.2 — betalingsplan som diskret tabel under totalen (design C, Martin valgte om fra A)
+  // v2.92.3 — betalingsplanen tegnes nu på sin egen side til sidst (se drawQuotePlanPage)
   const pdfPlan = !isInvoice ? quotePlanForCustomer(record) : null;
-  if (pdfPlan) {
-    y += 16;
-    y = ensurePdfSpace(doc, y, 40 + pdfPlan.length * 18, ctx);
-    doc.font('DMSans-Bold').fontSize(10.5).fillColor('#111318').text('Betalingsplan', 40, y);
-    y += 16;
-    doc.moveTo(40, y).lineTo(555, y).strokeColor('#E5E7EB').lineWidth(0.8).stroke();
-    y += 5;
-    let pctSum = 0, amtSum = 0;
-    for (const p of pdfPlan) {
-      const whenTxt = p.when ? '  – ' + p.when : '';
-      const h = Math.max(12, doc.font('DMSans').fontSize(9).heightOfString(p.n + '. ' + p.label + whenTxt, { width: 360 }));
-      y = ensurePdfSpace(doc, y, h + 8, ctx);
-      doc.font('DMSans-Bold').fontSize(9).fillColor('#111318').text(p.n + '. ' + p.label, 40, y, { width: 360, continued: !!whenTxt });
-      if (whenTxt) doc.font('DMSans').fillColor('#6B7280').text(whenTxt);
-      doc.font('DMSans').fontSize(9).fillColor('#6B7280').text(qpPctTxt(p.pct), 400, y, { width: 55, align: 'right' });
-      doc.font('DMSans-Bold').fontSize(9).fillColor('#111318').text(Math.round(p.amount).toLocaleString('da-DK') + ' kr', 460, y, { width: 95, align: 'right' });
-      y += h + 4;
-      doc.moveTo(40, y).lineTo(555, y).strokeColor('#F3F4F6').lineWidth(0.6).stroke();
-      y += 4;
-      pctSum += p.pct; amtSum += p.amount;
-    }
-    doc.font('DMSans-Bold').fontSize(9).fillColor('#111318').text('I alt', 40, y, { width: 360 });
-    doc.font('DMSans').fontSize(9).fillColor('#6B7280').text(qpPctTxt(pctSum), 400, y, { width: 55, align: 'right' });
-    doc.font('DMSans-Bold').fontSize(9).fillColor('#111318').text(Math.round(amtSum).toLocaleString('da-DK') + ' kr', 460, y, { width: 95, align: 'right' });
-    y += 16;
-  }
 
   // v2.90.0 — tilvalg/alternativer i en boks "Kan tilvælges" (kun tilbud, kun ikke-valgte).
   if (!isInvoice) {
@@ -27266,6 +27301,8 @@ function drawDocumentPdf(doc, kind, record, company, attachments) {
   // AA, genbrugt via drawPdfAttachmentsAppendix (se dér). 'attachments' er
   // allerede hentede billed-bytes ({buffer,caption}, se fetchAttachmentImages)
   // — kaldestederne henter dem FØR denne synkrone tegnefunktion kaldes.
+  if (pdfPlan) y = drawQuotePlanPage(doc, record, company, accent, pdfPlan, ctx);
+
   y = drawPdfAttachmentsAppendix(doc, y, ctx, attachments);
 
   drawDocFooter(doc, company);
