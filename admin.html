@@ -5856,6 +5856,17 @@ body.tp-dragging,body.tp-dragging *{cursor:grabbing!important}
 .tp-off.sick{background:repeating-linear-gradient(135deg,#FEE2E2 0 7px,#FEF2F2 7px 14px);border-color:#EF4444}.tp-off.sick span{color:#991B1B}
 .tp-off.other{background:repeating-linear-gradient(135deg,#E5E7EB 0 7px,#F3F4F6 7px 14px);border-color:#9CA3AF}.tp-off.other span{color:#374151}
 .tp-off:hover{filter:brightness(.97)}
+#pd-draft-bar{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin:4px 0 10px}
+.pdd-chip{font-size:12.5px;font-weight:600;padding:5px 11px;border-radius:999px;border:1px solid #E4E4E7;background:#fff;color:#52525B;cursor:pointer}
+.pdd-chip:hover{border-color:#A1A1AA}.pdd-chip.on{background:#18181B;color:#fff;border-color:#18181B}
+.pdd-chip.draft.on{background:#EEEDFE;color:#3C3489;border-color:#534AB7}
+.pdd-add{font-size:12.5px;font-weight:600;color:#534AB7;background:none;border:none;cursor:pointer;padding:5px 6px}
+.pdd-banner{flex-basis:100%;display:flex;align-items:center;gap:10px;flex-wrap:wrap;background:#F5F4FF;border:1px solid #CECBF6;color:#3C3489;border-radius:10px;padding:8px 12px;font-size:13px;margin-top:4px}
+.pdd-banner .sp{flex:1}.pdd-banner button{font-size:12.5px}
+.pdd-use{background:#3C3489!important;color:#fff!important;border-color:#3C3489!important}
+#pd-gantt-strip.pd-drafting .gantt-bar.pd-dchg{background:#EEEDFE!important;outline:1.5px dashed #534AB7;outline-offset:-1.5px}
+#pd-gantt-strip.pd-drafting .gantt-bar.pd-dchg .pdx-gb-label{color:#3C3489!important}
+#pd-gantt-strip.pd-drafting .gantt-list-row.pd-dchg .gantt-inline-name{color:#3C3489;font-style:italic}
 .tp-wover::before{content:'';position:absolute;left:0;right:0;top:-6px;bottom:-4px}
 .tp-wover:hover{height:6px;bottom:1px}
 .tp-lg .tp-wl{width:18px;height:4px;border-radius:2px;background:#EF4444}
@@ -6100,7 +6111,7 @@ body.tp-dragging,body.tp-dragging *{cursor:grabbing!important}
        i browseren faktisk ER det nyeste deploy, eller om Render/GitHub bare
        ikke er nået at opdatere endnu — i stedet for at skulle gætte om en
        rettelse "stadig ikke virker" eller bare endnu ikke er live. -->
-  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build v2.91.0 · 2026-11-02</span></div>
+  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build v2.91.1 · 2026-11-02</span></div>
 </aside>
 <div class="app-content">
 <!-- RUNDE FB — AI-ASSISTENTEN (Martin: "en ai der er nede i venstre hjørne af
@@ -10047,6 +10058,8 @@ body.ai-has-reply #ai-fab{animation:ai-nudge 1.4s ease-in-out 3}
              renderPdGanttStrip()). Selve flytningen sker ved at trække en af
              de markerede bjælker — denne linje er bare status + en hurtig
              "Ryd markering"-knap. -->
+        <!-- v2.91.1 — udkast af tidsplanen (se pdDraft*). -->
+        <div id="pd-draft-bar"></div>
         <div id="pd-gantt-selection-bar" class="hidden">
           🔲 <b><span id="pd-gantt-selection-count">0</span> opgaver markeret</b> — træk en af dem for at flytte dem alle sammen
           <button type="button" class="qz-icon-btn" id="pd-gantt-selection-clear" title="Ryd markering">✕ Ryd</button>
@@ -14282,6 +14295,7 @@ function logout(){localStorage.removeItem('gm_token');localStorage.removeItem('g
 async function logoutWithConfirm(){if(await gmConfirm('Er du sikker på at du vil logge ud?','Log ud'))logout();}
 async function api(path,opts){
   opts=opts||{};
+  if(pdDraft&&!opts._raw){var _dx=pdDraftIntercept(path,opts);if(_dx!==undefined)return _dx;}
   var h=Object.assign({'Authorization':'Bearer '+token},opts.headers||{});
   var isFormData=typeof FormData!=='undefined'&&opts.body instanceof FormData;
   if(opts.body&&!h['Content-Type']&&!isFormData)h['Content-Type']='application/json';
@@ -37093,8 +37107,9 @@ async function openProjectDetail(id){
     crmBtn.onclick=function(){openCrmpDetail(d.crm_entity.type,d.crm_entity.id);};
   } else crmBtn.style.display='none';
   renderPdSide();
+  pdDraft=null;pdDraftReal=null;pdDraftPid=d.id;pdDrafts=[];
   switchPdTab('dashboard');
-  renderPdGanttStrip();renderPdPipeline();renderPdPhotos();renderPdOtherPhotos();renderPdTime();renderPdMaterials();renderPdQaAssign();renderPdQa();renderPdQaDiary();renderPdContact();
+  renderPdGanttStrip();pdDraftLoad();renderPdPipeline();renderPdPhotos();renderPdOtherPhotos();renderPdTime();renderPdMaterials();renderPdQaAssign();renderPdQa();renderPdQaDiary();renderPdContact();
   // Genindlæs den delte opgavepool (tasks-variablen) her, så "Tilføj til
   // Kapacitetsbordet" og tjekpunkter på en netop oprettet/redigeret sags-opgave
   // altid har den friske spejl-række fra jt_tasks at slå op i.
@@ -38671,7 +38686,151 @@ document.addEventListener('click',function(e){
     {text:'Sæt '+fmtDaDate(day)+' som kundens deadline',icon:'🎯',onClick:function(){pdSetDeadline(day);}}
   ]);},0);
 });
-function renderPdGanttStrip(){
+// ══ v2.91.1 — UDKAST AF TIDSPLANEN (Martin: "lave et test opgave hvor man så kan lege rundt med
+// tidslinjen og tilføje opgaver og hvis man så syntes om den kan man trykke gem og den overtager").
+// Mens et udkast er aktivt, fanges ALLE skrivninger til sagens opgaver i api() (pdDraftIntercept) og
+// laves kun på kladden — Gantt'et, træk, kæder, slet osv. virker præcis som normalt. Kladden gemmes
+// på serveren (project_plan_drafts). "Brug dette udkast" afspiller forskellen mod de rigtige opgaver
+// via de normale ruter, så bookinger flytter med som de plejer.
+var pdDrafts=[],pdDraft=null,pdDraftReal=null,pdDraftSaveT=null,pdDraftPid=null;
+var PDD_FIELDS=['name','start_date','end_date','depends_on','description','status','progress'];
+function pdDraftSlim(t){return {id:String(t.id),name:t.name||'',start_date:t.start_date?String(t.start_date).slice(0,10):null,end_date:t.end_date?String(t.end_date).slice(0,10):null,depends_on:(t.depends_on||[]).map(String),description:t.description||'',status:t.status||null,progress:Number(t.progress)||0,is_new:!!t.is_new};}
+function pdDraftDisplay(){
+  var byId={};(pdDraftReal||[]).forEach(function(r){byId[String(r.id)]=r;});
+  return pdDraft.tasks.map(function(t){var r=byId[t.id];return r?Object.assign({},r,t,{status:t.status||r.status}):Object.assign({bookings:null,has_booking:false,photos:null},t,{status:t.status||'todo'});});
+}
+function pdDraftSame(a,b){return JSON.stringify(a==null?'':a)===JSON.stringify(b==null?'':b);}
+function pdDraftChangedIds(){
+  var byId={},out={changed:new Set(),deleted:0};(pdDraftReal||[]).forEach(function(r){byId[String(r.id)]=r;});
+  var seen=new Set();
+  (pdDraft?pdDraft.tasks:[]).forEach(function(t){var r=byId[t.id];seen.add(t.id);
+    if(!r){out.changed.add(t.id);return;}
+    var rs=pdDraftSlim(r);if(['name','start_date','end_date','depends_on'].some(function(k){return !pdDraftSame(rs[k],t[k]);}))out.changed.add(t.id);});
+  (pdDraftReal||[]).forEach(function(r){if(!seen.has(String(r.id)))out.deleted++;});
+  return out;
+}
+function pdDraftApplyView(){if(pdDraft&&pjCurrent){pjCurrent.tasks=pdDraftDisplay();}}
+function pdDraftTouched(){
+  pdDraftApplyView();
+  clearTimeout(pdDraftSaveT);var d=pdDraft,pid=pdDraftPid;
+  pdDraftSaveT=setTimeout(function(){if(d)api('/api/projects/'+pid+'/plan-drafts/'+d.id,{method:'PUT',_raw:true,body:JSON.stringify({tasks:d.tasks})});},400);
+}
+function pdDraftAddDays(ds,n){var d=date(String(ds).slice(0,10));return iso(add(d,n));}
+function pdDraftShift(t,delta){if(!t.start_date)return;t.start_date=pdDraftAddDays(t.start_date,delta);t.end_date=t.end_date?pdDraftAddDays(t.end_date,delta):t.start_date;}
+function pdDraftIntercept(path,opts){
+  if(!pjCurrent||String(pjCurrent.id)!==String(pdDraftPid))return undefined;
+  var base='/api/projects/'+pjCurrent.id,m=String(opts.method||'GET').toUpperCase();
+  if(path===base&&m==='GET'){return (async function(){var d=await api(path,Object.assign({},opts,{_raw:true}));if(d&&!d.error&&pdDraft){pdDraftReal=d.tasks||[];d.tasks=pdDraftDisplay();}return d;})();}
+  if(path===base+'/convert-quote-lines'||path.indexOf(base+'/bulk-book')===0){toast('Ikke muligt i et udkast — skift til "Nuværende plan" først','🧪');return Promise.resolve(null);}
+  if(path.indexOf(base+'/tasks')!==0)return undefined;
+  var sub=path.slice((base+'/tasks').length),body={};try{body=opts.body?JSON.parse(opts.body):{};}catch(e){}
+  var T=pdDraft.tasks,find=function(id){return T.find(function(x){return x.id===String(id);});};
+  if(m==='POST'&&sub===''){var nid='n'+Date.now().toString(36)+Math.random().toString(36).slice(2,6);
+    T.push({id:nid,name:String(body.name||'Ny opgave'),start_date:body.start_date||null,end_date:body.end_date||body.start_date||null,depends_on:[],description:'',status:null,progress:0,is_new:true});pdDraftTouched();return Promise.resolve({ok:true,id:nid});}
+  if(m==='PUT'&&sub==='/reorder'){var ord=(body.order||[]).map(String);T.sort(function(a,b){return ord.indexOf(a.id)-ord.indexOf(b.id);});pdDraftTouched();return Promise.resolve({ok:true});}
+  if(m==='PUT'&&sub==='/bulk-dates'){var dd=Math.round(Number(body.delta_days))||0;(body.ids||[]).forEach(function(id){var t=find(id);if(t)pdDraftShift(t,dd);});pdDraftTouched();return Promise.resolve({ok:true,updated:body.ids||[],booking_shift_count:0});}
+  var mm=sub.match(/^\/([^\/]+)$/);
+  if(mm&&m==='PUT'){var t=find(decodeURIComponent(mm[1]));if(!t)return Promise.resolve({error:'Opgaven findes ikke i udkastet'});
+    var oldStart=t.start_date,cascaded=[];
+    PDD_FIELDS.forEach(function(k){if(body[k]!==undefined)t[k]=k==='depends_on'?(body[k]||[]).map(String).filter(function(x){return x!==t.id;}):(k==='start_date'||k==='end_date')&&body[k]?String(body[k]).slice(0,10):body[k];});
+    if(oldStart&&t.start_date&&oldStart!==t.start_date){var delta=Math.round((date(t.start_date)-date(oldStart))/86400000);
+      if(delta){var seen=new Set([t.id]),q=[t.id];while(q.length){var cur=q.shift();T.forEach(function(x){if(!seen.has(x.id)&&(x.depends_on||[]).indexOf(cur)>=0){seen.add(x.id);q.push(x.id);}});}
+        seen.delete(t.id);seen.forEach(function(id){var x=find(id);if(x){pdDraftShift(x,delta);cascaded.push(id);}});}}
+    pdDraftTouched();return Promise.resolve({ok:true,cascaded:cascaded,booking_shift_days:0,booking_duration_mismatch:false});}
+  if(mm&&m==='DELETE'){var did=decodeURIComponent(mm[1]);for(var di=T.length-1;di>=0;di--){if(T[di].id===did)T.splice(di,1);}pdDraft.tasks.forEach(function(x){x.depends_on=(x.depends_on||[]).filter(function(y){return y!==did;});});pdDraftTouched();return Promise.resolve({ok:true});}
+  if(m==='GET')return undefined;
+  toast('Det kan ikke ændres i et udkast — skift til "Nuværende plan"','🧪');return Promise.resolve(null);
+}
+async function pdDraftLoad(){
+  pdDraft=null;pdDraftReal=null;pdDrafts=[];pdDraftPid=pjCurrent?pjCurrent.id:null;
+  var bar=document.getElementById('pd-draft-bar');if(bar)bar.innerHTML='';
+  if(!pjCurrent)return;var r=await api('/api/projects/'+pjCurrent.id+'/plan-drafts',{_raw:true});
+  if(Array.isArray(r)&&pjCurrent&&String(pjCurrent.id)===String(pdDraftPid))pdDrafts=r;
+  pdDraftRenderBar();
+}
+async function pdDraftActivate(id){
+  if(pdDraft&&String(pdDraft.id)===String(id))return;
+  clearTimeout(pdDraftSaveT);if(pdDraft){var od=pdDrafts.find(function(x){return String(x.id)===String(pdDraft.id);});if(od)od.tasks=pdDraft.tasks;await api('/api/projects/'+pdDraftPid+'/plan-drafts/'+pdDraft.id,{method:'PUT',_raw:true,body:JSON.stringify({tasks:pdDraft.tasks})});}
+  if(id==null){pdDraft=null;pdDraftReal=null;await reloadPdCurrent();return;}
+  var d=pdDrafts.find(function(x){return String(x.id)===String(id);});if(!d)return;
+  var real=await api('/api/projects/'+pjCurrent.id,{_raw:true});if(!real||real.error)return;
+  pdDraftReal=real.tasks||[];pdDraft={id:d.id,name:d.name,tasks:(d.tasks||[]).map(pdDraftSlim)};d.tasks=pdDraft.tasks;
+  pdGanttSelected.clear&&pdGanttSelected.clear();
+  pdDraftApplyView();renderPdGanttStrip();
+}
+async function pdDraftNew(){
+  var name=await gmPrompt('Giv udkastet et navn, fx "Fliser før tømrer".','Udkast '+(pdDrafts.length+1),'Nyt udkast');
+  if(name===null||name===false||name===undefined)return;
+  var real=await api('/api/projects/'+pjCurrent.id,{_raw:true});if(!real||real.error)return;
+  var r=await api('/api/projects/'+pjCurrent.id+'/plan-drafts',{method:'POST',_raw:true,body:JSON.stringify({name:String(name).trim()||'Udkast',tasks:(real.tasks||[]).map(pdDraftSlim)})});
+  if(!r||r.error){toast((r&&r.error)||'Kunne ikke oprette udkast','❌');return;}
+  pdDrafts.push(r);await pdDraftActivate(r.id);toast('Udkast oprettet — leg løs, intet påvirker den rigtige plan','🧪');
+}
+async function pdDraftRename(){
+  if(!pdDraft)return;var n=await gmPrompt('Nyt navn til udkastet',pdDraft.name,'Omdøb udkast');if(!n)return;n=String(n).trim();if(!n)return;
+  pdDraft.name=n;var d=pdDrafts.find(function(x){return String(x.id)===String(pdDraft.id);});if(d)d.name=n;
+  await api('/api/projects/'+pdDraftPid+'/plan-drafts/'+pdDraft.id,{method:'PUT',_raw:true,body:JSON.stringify({name:n})});pdDraftRenderBar();
+}
+async function pdDraftDelete(){
+  if(!pdDraft)return;if(!await gmConfirm('Slet udkastet "'+pdDraft.name+'"? Den rigtige plan påvirkes ikke.','Slet udkast'))return;
+  var id=pdDraft.id;clearTimeout(pdDraftSaveT);await api('/api/projects/'+pdDraftPid+'/plan-drafts/'+id,{method:'DELETE',_raw:true});
+  pdDrafts=pdDrafts.filter(function(x){return String(x.id)!==String(id);});pdDraft=null;pdDraftReal=null;await reloadPdCurrent();toast('Udkast slettet','🗑');
+}
+async function pdDraftUse(){
+  if(!pdDraft)return;var ch=pdDraftChangedIds();
+  if(!await gmConfirm('Gør "'+pdDraft.name+'" til sagens rigtige plan? '+ch.changed.size+' opgave(r) ændres/oprettes'+(ch.deleted?' og '+ch.deleted+' slettes':'')+'. Bookinger i planlægningen flytter med, ligesom når du trækker normalt.','Brug dette udkast'))return;
+  clearTimeout(pdDraftSaveT);
+  var draft=pdDraft,pid=pdDraftPid,base='/api/projects/'+pid;
+  var real=await api(base,{_raw:true});if(!real||real.error){toast('Kunne ikke hente sagen','❌');return;}
+  var cur={};(real.tasks||[]).forEach(function(r){cur[String(r.id)]=pdDraftSlim(r);});
+  var idMap={},mp=function(id){return idMap[id]||id;},fails=0;
+  for(const t of draft.tasks){if(cur[t.id])continue;
+    var r=await api(base+'/tasks',{method:'POST',_raw:true,body:JSON.stringify({name:t.name||'Ny opgave',start_date:t.start_date||iso(new Date()),end_date:t.end_date||t.start_date||iso(new Date())})});
+    if(!r||!r.id){fails++;continue;}idMap[t.id]=String(r.id);cur[String(r.id)]={id:String(r.id),name:t.name,start_date:t.start_date,end_date:t.end_date||t.start_date,depends_on:[],description:'',status:null,progress:0};}
+  // topologisk rækkefølge (forgængere først), så serverens kæde-forskydning aldrig overskriver et endeligt udkast-tal
+  var order=[],state={},byD={};draft.tasks.forEach(function(t){byD[t.id]=t;});
+  function visit(t){if(state[t.id]===2)return;if(state[t.id]===1)return;state[t.id]=1;(t.depends_on||[]).forEach(function(d){if(byD[d])visit(byD[d]);});state[t.id]=2;order.push(t);}
+  draft.tasks.forEach(visit);
+  for(const t of order){var rid=mp(t.id),c=cur[rid];if(!c)continue;var body={};
+    ['name','start_date','end_date','description','progress'].forEach(function(k){if(!pdDraftSame(c[k],t[k]))body[k]=t[k];});
+    if(t.status&&t.status!==c.status)body.status=t.status;
+    var deps=(t.depends_on||[]).map(mp).filter(function(x){return cur[x];});if(!pdDraftSame(c.depends_on||[],deps))body.depends_on=deps;
+    if(!Object.keys(body).length)continue;
+    var r2=await api(base+'/tasks/'+encodeURIComponent(rid),{method:'PUT',_raw:true,body:JSON.stringify(body)});
+    if(!r2||r2.error){fails++;continue;}
+    if(body.start_date&&c.start_date&&body.start_date!==c.start_date){var dl=Math.round((date(body.start_date)-date(c.start_date))/86400000);(r2.cascaded||[]).forEach(function(cid){var x=cur[String(cid)];if(x)pdDraftShift(x,dl);});}
+    Object.assign(c,body);}
+  var keep=new Set(draft.tasks.map(function(t){return mp(t.id);}));
+  for(const id of Object.keys(cur)){if(!keep.has(id)){var r3=await api(base+'/tasks/'+encodeURIComponent(id),{method:'DELETE',_raw:true});if(!r3||r3.error)fails++;}}
+  await api(base+'/tasks/reorder',{method:'PUT',_raw:true,body:JSON.stringify({order:draft.tasks.map(function(t){return mp(t.id);}).filter(function(x){return cur[x];})})});
+  if(!fails){await api(base+'/plan-drafts/'+draft.id,{method:'DELETE',_raw:true});pdDrafts=pdDrafts.filter(function(x){return String(x.id)!==String(draft.id);});}
+  pdDraft=null;pdDraftReal=null;await reloadPdCurrent();
+  toast(fails?('Udkastet er brugt, men '+fails+' ændring(er) fejlede — tjek planen'):'"'+draft.name+'" er nu sagens plan',fails?'⚠️':'✅');
+}
+function pdDraftRenderBar(){
+  var bar=document.getElementById('pd-draft-bar');if(!bar)return;
+  if(!pjCurrent||String(pjCurrent.id)!==String(pdDraftPid)){bar.innerHTML='';return;}
+  var h='<button type="button" class="pdd-chip'+(pdDraft?'':' on')+'" data-pdd="real">Nuværende plan</button>';
+  pdDrafts.forEach(function(d){h+='<button type="button" class="pdd-chip draft'+(pdDraft&&String(pdDraft.id)===String(d.id)?' on':'')+'" data-pdd="'+d.id+'">🧪 '+esc(d.name)+'</button>';});
+  h+='<button type="button" class="pdd-add" data-pdd="new">+ Nyt udkast</button>';
+  if(pdDraft){var ch=pdDraftChangedIds(),n=ch.changed.size+ch.deleted;
+    h+='<div class="pdd-banner">🧪 <b>Udkast: '+esc(pdDraft.name)+'</b><span>· kun en kladde, medarbejdere og planlægning ser intet · '+(n?n+' ændring'+(n===1?'':'er'):'ingen ændringer endnu')+'</span><span class="sp"></span>'
+      +'<button type="button" class="btn small" data-pdd="rename">Omdøb</button><button type="button" class="btn small" data-pdd="del">Slet udkast</button><button type="button" class="btn small pdd-use" data-pdd="use">Brug dette udkast</button></div>';}
+  bar.innerHTML=h;
+}
+function pdDraftDecorate(){
+  var el=document.getElementById('pd-gantt-strip');if(!el)return;
+  el.classList.toggle('pd-drafting',!!pdDraft);if(!pdDraft)return;
+  var ch=pdDraftChangedIds().changed;
+  el.querySelectorAll('[data-pd-task-id]').forEach(function(b){if(ch.has(String(b.getAttribute('data-pd-task-id'))))b.classList.add('pd-dchg');});
+  el.querySelectorAll('.gantt-list-row[data-task-id]').forEach(function(b){if(ch.has(String(b.getAttribute('data-task-id'))))b.classList.add('pd-dchg');});
+}
+document.addEventListener('click',function(e){
+  var b=e.target.closest('[data-pdd]');if(!b||!b.closest('#pd-draft-bar'))return;var v=b.getAttribute('data-pdd');
+  if(v==='real')pdDraftActivate(null);else if(v==='new')pdDraftNew();else if(v==='rename')pdDraftRename();else if(v==='del')pdDraftDelete();else if(v==='use')pdDraftUse();else pdDraftActivate(v);
+});
+function renderPdGanttStrip(){pdGanttStripInner();pdDraftRenderBar();pdDraftDecorate();}
+function pdGanttStripInner(){
   pdSyncDeadlineInput();
   var el=document.getElementById('pd-gantt-strip');
   // RETTET (RUNDE P, Martins ønske) — listen blev FØR sorteret efter startdato,

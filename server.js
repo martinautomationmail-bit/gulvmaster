@@ -1336,6 +1336,19 @@ async function initSchema() {
       created_at TEXT DEFAULT ${nowTextSQL()}
     );
     CREATE INDEX IF NOT EXISTS idx_customer_uploads_customer ON customer_uploads(customer_id);
+    -- v2.91.1 — navngivne udkast af en sags tidsplan (Opgaver-fanen). Rene
+    -- kladder: medarbejdere/Kapacitet/Daglig plan ser dem aldrig. "Brug dette
+    -- udkast" i admin.html afspiller forskellen mod de rigtige opgaver.
+    CREATE TABLE IF NOT EXISTS project_plan_drafts (
+      id SERIAL PRIMARY KEY,
+      project_id INTEGER NOT NULL,
+      name TEXT NOT NULL,
+      tasks JSONB NOT NULL DEFAULT '[]',
+      created_by INTEGER,
+      created_at TEXT DEFAULT ${nowTextSQL()},
+      updated_at TEXT DEFAULT ${nowTextSQL()}
+    );
+    CREATE INDEX IF NOT EXISTS idx_project_plan_drafts_project ON project_plan_drafts(project_id);
     -- RUNDE CC (Martin: "under tilbud ... en knap hvor AI ud fra tilbuddet kan
     -- tilføje en betalingsplan ... så store tilbud får en betalingsplan man kan
     -- faktuere efter") — ÉN betalingsplan pr. tilbud (overskrives ved ny AI-
@@ -19082,6 +19095,48 @@ app.delete('/api/testplan/bookings', auth, panelAccess('plan'), asyncRoute(async
 app.delete('/api/rework/:id', auth, panelAccessAny(['plan', 'projects']), asyncRoute(async (req, res) => {
   await pool.query('UPDATE time_entries SET rework_id=NULL WHERE rework_id=$1', [req.params.id]);
   await pool.query('DELETE FROM project_rework WHERE id=$1', [req.params.id]);
+  res.json({ ok: true });
+}));
+
+// v2.91.1 — udkast af sagens tidsplan (Martin: "lave et test opgave hvor man så kan lege rundt
+// med tidslinjen ... og hvis man så syntes om den kan man trykke gem og den overtager"). Selve
+// redigeringen sker i admin.html (pdDraft*); her gemmes kun kladden som JSON.
+function sanitizeDraftTasks(arr) {
+  if (!Array.isArray(arr)) return [];
+  return arr.slice(0, 400).map(t => ({
+    id: String(t.id || '').slice(0, 60),
+    name: String(t.name || '').slice(0, 300),
+    start_date: validDate(t.start_date) ? t.start_date : null,
+    end_date: validDate(t.end_date) ? t.end_date : null,
+    depends_on: Array.isArray(t.depends_on) ? t.depends_on.map(x => String(x).slice(0, 60)).slice(0, 50) : [],
+    description: t.description != null ? String(t.description).slice(0, 10000) : '',
+    status: t.status ? String(t.status).slice(0, 40) : null,
+    progress: Number(t.progress) || 0,
+    is_new: !!t.is_new
+  })).filter(t => t.id);
+}
+app.get('/api/projects/:id/plan-drafts', auth, panelAccess('projects'), asyncRoute(async (req, res) => {
+  const r = await pool.query('SELECT id,name,tasks,created_at,updated_at FROM project_plan_drafts WHERE project_id=$1 ORDER BY id', [req.params.id]);
+  res.json(r.rows);
+}));
+app.post('/api/projects/:id/plan-drafts', auth, panelAccess('projects'), asyncRoute(async (req, res) => {
+  const b = req.body || {};
+  const name = String(b.name || '').trim().slice(0, 120) || 'Udkast';
+  const r = await pool.query('INSERT INTO project_plan_drafts (project_id,name,tasks,created_by) VALUES ($1,$2,$3,$4) RETURNING id,name,tasks,created_at,updated_at',
+    [req.params.id, name, JSON.stringify(sanitizeDraftTasks(b.tasks)), req.user.id]);
+  res.json(r.rows[0]);
+}));
+app.put('/api/projects/:id/plan-drafts/:draftId', auth, panelAccess('projects'), asyncRoute(async (req, res) => {
+  const b = req.body || {};
+  const cur = await pgOne('SELECT * FROM project_plan_drafts WHERE id=$1 AND project_id=$2', [req.params.draftId, req.params.id]);
+  if (!cur) return res.status(404).json({ error: 'Udkastet blev ikke fundet' });
+  const name = b.name !== undefined ? (String(b.name).trim().slice(0, 120) || cur.name) : cur.name;
+  const tasks = b.tasks !== undefined ? JSON.stringify(sanitizeDraftTasks(b.tasks)) : JSON.stringify(cur.tasks);
+  await pool.query(`UPDATE project_plan_drafts SET name=$1, tasks=$2, updated_at=${nowTextSQL()} WHERE id=$3`, [name, tasks, cur.id]);
+  res.json({ ok: true });
+}));
+app.delete('/api/projects/:id/plan-drafts/:draftId', auth, panelAccess('projects'), asyncRoute(async (req, res) => {
+  await pool.query('DELETE FROM project_plan_drafts WHERE id=$1 AND project_id=$2', [req.params.draftId, req.params.id]);
   res.json({ ok: true });
 }));
 
