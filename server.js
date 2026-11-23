@@ -1358,6 +1358,7 @@ async function initSchema() {
     -- se POST .../ai-payment-plan og PUT .../payment-plan.
     ALTER TABLE quotes ADD COLUMN IF NOT EXISTS payment_plan JSONB;
     ALTER TABLE quotes ADD COLUMN IF NOT EXISTS payment_plan_generated_at TEXT;
+    ALTER TABLE quotes ADD COLUMN IF NOT EXISTS payment_plan_show BOOLEAN DEFAULT TRUE;
     -- RUNDE CM (Martins ønske: "en knap jeg kan gerener og sende en pdf med
     -- en materiale liste til mine suppliers ... Den skal med AI udregne alt
     -- vi skal bruge baseret på tilbuddet ... Jeg skal efterfølgende kunne
@@ -24798,6 +24799,7 @@ app.put('/api/quotes/:id/payment-plan', auth, panelAccess('quotes'), asyncRoute(
     if (!incomingInvoicedIds.has(id)) return res.status(400).json({ error: 'En allerede faktureret fase mangler i den plan der skal gemmes — genindlæs betalingsplanen og prøv igen' });
   }
   await pool.query(`UPDATE quotes SET payment_plan=$1, payment_plan_generated_at=${nowTextSQL()} WHERE id=$2`, [JSON.stringify({ phases }), quote.id]);
+  if (req.body && req.body.show_in_quote !== undefined) await pool.query('UPDATE quotes SET payment_plan_show=$1 WHERE id=$2', [!!req.body.show_in_quote, quote.id]);
   res.json({ ok: true, phases, total });
 }));
 
@@ -25167,6 +25169,34 @@ async function getCrmEntityCombinedNote(entityType, entityId) {
     parts.push((d ? `[${d}] ` : '') + String(a.body).trim());
   });
   return parts.join('\n\n');
+}
+// v2.91.7 — betalingsplanen vist i selve tilbuddet (PDF + kundesiden), design A: farvebjælke + trin.
+// Beløb regnes altid ud fra tilbuddets AKTUELLE total, så de passer selvom linjerne er rettet siden.
+const QP_STEP_COLORS = ['#4F46E5', '#6366F1', '#818CF8', '#A5B4FC', '#C7D2FE'];
+function quotePlanForCustomer(q) {
+  if (!q || q.payment_plan_show === false) return null;
+  const phases = (q.payment_plan && Array.isArray(q.payment_plan.phases)) ? q.payment_plan.phases : [];
+  if (!phases.length) return null;
+  const total = Number(q.total) || 0;
+  return phases.map((p, i) => ({
+    n: i + 1,
+    label: String(p.label || ('Rate ' + (i + 1))),
+    pct: Number(p.pct) || 0,
+    amount: Math.round(total * (Number(p.pct) || 0)) / 100,
+    when: String(p.milestone || '').split('\n')[0].trim(),
+    color: QP_STEP_COLORS[Math.min(i, QP_STEP_COLORS.length - 1)]
+  }));
+}
+function qpPctTxt(v) { return (Math.round(v * 10) / 10).toLocaleString('da-DK') + ' %'; }
+function quotePlanHtml(q) {
+  const plan = quotePlanForCustomer(q);
+  if (!plan) return '';
+  const sum = plan.reduce((a, p) => a + p.pct, 0) || 1;
+  const esc2 = v => String(v == null ? '' : v).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  const bar = plan.map(p => `<div style="width:${(p.pct / sum * 100).toFixed(2)}%;background:${p.color}"></div>`).join('');
+  const steps = plan.map(p => `<div class="pp-step"><div class="pp-num" style="background:${p.color};color:${p.n > 3 ? '#1E1B4B' : '#fff'}">${p.n}</div><div class="pp-lbl">${esc2(p.label)}</div><div class="pp-amt">${krFmtServer(p.amount)}</div><div class="pp-sub">${qpPctTxt(p.pct)}${p.when ? ' · ' + esc2(p.when) : ''}</div></div>`).join('');
+  const hasOpts = quoteOptionsOf(q).some(o => !o.chosen);
+  return `<div class="card pp-card"><div class="pp-h">Betalingsplan</div><div class="pp-bar">${bar}</div><div class="pp-steps">${steps}</div>${hasOpts ? '<div class="pp-note">Vælger du tilvalg, fordeles den nye pris efter de samme procenter.</div>' : ''}</div>`;
 }
 async function loadQuoteFull(id) {
   const quote = await pgOne('SELECT * FROM quotes WHERE id=$1', [id]);
@@ -27146,6 +27176,39 @@ function drawDocumentPdf(doc, kind, record, company, attachments) {
     y += 20;
   }
 
+  // v2.91.7 — betalingsplan som farvebjælke + nummererede trin (kun tilbud, når den er slået til)
+  const pdfPlan = !isInvoice ? quotePlanForCustomer(record) : null;
+  if (pdfPlan) {
+    const cols = Math.min(4, pdfPlan.length), colW = 515 / cols, rows = Math.ceil(pdfPlan.length / cols);
+    y += 16;
+    y = ensurePdfSpace(doc, y, 40 + rows * 62, ctx);
+    doc.font('DMSans-Bold').fontSize(11).fillColor('#111318').text('Betalingsplan', 40, y);
+    y += 18;
+    const sum = pdfPlan.reduce((a, p) => a + p.pct, 0) || 1;
+    let bx = 40;
+    doc.save();
+    doc.roundedRect(40, y, 515, 7, 3.5).clip();
+    pdfPlan.forEach(p => { const w = 515 * p.pct / sum; doc.rect(bx, y, w + 0.5, 7).fill(p.color); bx += w; });
+    doc.restore();
+    y += 18;
+    for (let r = 0; r < rows; r++) {
+      const rowItems = pdfPlan.slice(r * cols, r * cols + cols);
+      let rowH = 0;
+      rowItems.forEach((p, ci) => {
+        const x = 40 + ci * colW, w = colW - 12;
+        doc.circle(x + 9, y + 9, 9).fill(p.color);
+        doc.font('DMSans-Bold').fontSize(8.5).fillColor(p.n > 3 ? '#1E1B4B' : '#FFFFFF').text(String(p.n), x, y + 4.5, { width: 18, align: 'center' });
+        doc.font('DMSans-Bold').fontSize(9.5).fillColor('#111318').text(p.label, x, y + 23, { width: w, height: 26, ellipsis: true });
+        let yy = doc.y + 1;
+        doc.font('DMSans-Bold').fontSize(11.5).fillColor(accent).text(Math.round(p.amount).toLocaleString('da-DK') + ' kr', x, yy, { width: w });
+        yy = doc.y + 1;
+        doc.font('DMSans').fontSize(8).fillColor('#6B7280').text(qpPctTxt(p.pct) + (p.when ? ' · ' + p.when : ''), x, yy, { width: w, height: 30, ellipsis: true });
+        rowH = Math.max(rowH, doc.y - y);
+      });
+      y += rowH + 12;
+    }
+  }
+
   // v2.90.0 — tilvalg/alternativer i en boks "Kan tilvælges" (kun tilbud, kun ikke-valgte).
   if (!isInvoice) {
     const pOpts = quoteOptionsOf(record).filter(o => !o.chosen);
@@ -28497,6 +28560,14 @@ app.get('/tilbud/:token', asyncRoute(async (req, res) => {
   .sticky-accept-bar button{width:100%;max-width:640px;background:#4F46E5;color:#fff;border:0;border-radius:10px;padding:13px;font-size:14.5px;font-weight:700;cursor:pointer;box-shadow:0 6px 16px rgba(79,70,229,.35)}
   /* RUNDE AD — de to underskrifts-faneblade ("✍️ Tegn" / "⌨️ Skriv"). */
   .sig-mode-tabs{display:flex;gap:6px;margin-top:14px}
+  .pp-card .pp-h{font-size:16px;font-weight:800;color:#111318;margin-bottom:12px}
+  .pp-bar{display:flex;height:9px;border-radius:5px;overflow:hidden;margin-bottom:16px;background:#EEF2FF}
+  .pp-steps{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:14px}
+  .pp-num{width:26px;height:26px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:800;margin-bottom:7px}
+  .pp-lbl{font-size:13.5px;font-weight:700;color:#111318}
+  .pp-amt{font-size:17px;font-weight:800;color:#4338CA;margin:2px 0}
+  .pp-sub{font-size:12px;color:#6B7280;line-height:1.4}
+  .pp-note{margin-top:12px;font-size:12px;color:#6B7280}
   .sig-mode-tab{flex:1;border:1px solid #E5E7EB;background:#fff;border-radius:8px;padding:9px 6px;font-size:12.5px;font-weight:700;color:#6B7280;cursor:pointer}
   .sig-mode-tab.active{border-color:#4F46E5;background:#EEF2FF;color:#3730A3}
   .sig-type-preview{margin-top:6px;background:#fff;border:1px solid #E5E7EB;border-radius:10px;padding:14px 16px;min-height:56px;display:flex;align-items:center;font-family:'Caveat',cursive;font-size:34px;color:#111318;font-weight:700;word-break:break-word}
@@ -28522,6 +28593,7 @@ ${acceptBannerHtml}
   </div>
   ${quote.notes ? `<div class="notecard">${quote.notes}</div>` : ''}
 </div>
+${quotePlanHtml(quote)}
 ${tilvalgHtml}
 <div class="card">${statusBlock}</div>
 ${(company.cvr || company.bankReg || company.bankAccount || company.iban || company.swift || company.footerNote) ? `<div class="pagefooter">${[company.cvr ? 'CVR ' + company.cvr : '', (company.bankReg || company.bankAccount) ? ('Reg. ' + company.bankReg + '  Konto ' + company.bankAccount) : '', company.iban ? 'IBAN ' + company.iban : '', company.swift ? 'SWIFT/BIC ' + company.swift : ''].filter(Boolean).map(esc).join('  ·  ')}${company.footerNote ? `<div class="note">${esc(company.footerNote)}</div>` : ''}</div>` : ''}

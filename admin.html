@@ -5879,6 +5879,7 @@ body.tp-dragging,body.tp-dragging *{cursor:grabbing!important}
 #pd-gantt-strip .pd-ph-bar.dragging{opacity:.7;cursor:grabbing}
 #pd-gantt-strip .gantt-list-row.in-ph{padding-left:30px!important}
 .pdx-glmeta i.sy-off{color:#A32D2D}.pdx-glmeta i.sy-test{color:#854F0B}
+.qp-show-lbl{display:flex;align-items:center;gap:7px;font-size:12.5px;font-weight:600;color:#3730A3;background:#EEF2FF;border-radius:8px;padding:7px 10px;margin:6px 0 10px;cursor:pointer}
 .qp-unit{position:absolute;right:8px;top:9px;font-size:11px;color:#A1A1AA;pointer-events:none}
 .qp-lines{display:flex;flex-wrap:wrap;gap:4px;margin-top:5px}
 .qp-chip{display:inline-flex;align-items:center;gap:4px;font-size:11px;background:#EEF2FF;color:#3730A3;border-radius:999px;padding:2px 4px 2px 9px;max-width:100%}
@@ -6142,7 +6143,7 @@ body.tp-dragging,body.tp-dragging *{cursor:grabbing!important}
        i browseren faktisk ER det nyeste deploy, eller om Render/GitHub bare
        ikke er nået at opdatere endnu — i stedet for at skulle gætte om en
        rettelse "stadig ikke virker" eller bare endnu ikke er live. -->
-  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build v2.91.6 · 2026-11-02</span></div>
+  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build v2.91.7 · 2026-11-02</span></div>
 </aside>
 <div class="app-content">
 <!-- RUNDE FB — AI-ASSISTENTEN (Martin: "en ai der er nede i venstre hjørne af
@@ -12113,6 +12114,7 @@ body.ai-has-reply #ai-fab{animation:ai-nudge 1.4s ease-in-out 3}
     <div id="qp-empty-hint" class="sub" style="display:none;margin-bottom:10px">Ingen betalingsplan endnu — tryk "🤖 Generér forslag med AI" for et forslag, eller tilføj faser manuelt.</div>
     <div id="qp-rows" style="margin-bottom:8px"></div>
     <div id="qp-bulk" class="qp-bulk" hidden><span id="qp-bulk-txt"></span><button type="button" class="bly-btn small" id="qp-bulk-btn">📄 Fakturér valgte faser</button></div>
+    <label class="qp-show-lbl"><input type="checkbox" id="qp-show" checked> Vis betalingsplanen i tilbuddet til kunden (PDF og tilbudssiden)</label>
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
       <button class="bly-btn outline small" id="qp-add-row-btn" type="button">+ Tilføj fase</button>
       <span class="sub" id="qp-summary"></span>
@@ -43257,6 +43259,7 @@ async function qpOpenModal(){
   qpState.total=Number(qd.total)||0;
   document.getElementById('qp-total-label').textContent=krFmt(qpState.total);
   var phases=(qd.payment_plan&&Array.isArray(qd.payment_plan.phases))?qd.payment_plan.phases:[];
+  var shw=document.getElementById('qp-show');if(shw)shw.checked=qd.payment_plan_show!==false;
   if(phases.length){
     phases.forEach(qpAddRow);
     document.getElementById('qp-pdf-link').style.display='inline-flex';
@@ -43493,7 +43496,8 @@ async function qpSave(){
   if(!phases.length){toast('Tilføj mindst én fase først','⚠️');return;}
   var btn=document.getElementById('qp-save-btn');
   btn.disabled=true;btn.textContent='Gemmer…';
-  var r=await api('/api/quotes/'+qpState.quoteId+'/payment-plan',{method:'PUT',body:JSON.stringify({phases:phases})});
+  var shw=document.getElementById('qp-show');
+  var r=await api('/api/quotes/'+qpState.quoteId+'/payment-plan',{method:'PUT',body:JSON.stringify({phases:phases,show_in_quote:shw?shw.checked:true})});
   btn.disabled=false;btn.textContent='💾 Gem betalingsplan';
   if(r&&r.ok){
     qpState.total=Number(r.total)||qpState.total;
