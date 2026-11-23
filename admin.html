@@ -5880,6 +5880,17 @@ body.tp-dragging,body.tp-dragging *{cursor:grabbing!important}
 #pd-gantt-strip .gantt-list-row.in-ph{padding-left:30px!important}
 .pdx-glmeta i.sy-off{color:#A32D2D}.pdx-glmeta i.sy-test{color:#854F0B}
 .qp-show-lbl{display:flex;align-items:center;gap:7px;font-size:12.5px;font-weight:600;color:#3730A3;background:#EEF2FF;border-radius:8px;padding:7px 10px;margin:6px 0 10px;cursor:pointer}
+#qp-rows .qp-row>div{min-width:0}
+.qp-pick-lines{margin-top:4px;width:100%;text-align:left;font-size:11.5px;font-weight:600;color:#3730A3;background:#F5F7FF;border:1px dashed #A5B4FC;border-radius:8px;padding:6px 9px;cursor:pointer}
+.qp-pick-lines:hover{background:#EEF2FF}
+.qp-lp{margin-top:6px;border:1px solid #E4E4E7;border-radius:10px;background:#fff;box-shadow:0 10px 30px rgba(15,23,42,.12);overflow:hidden}
+.qp-lp-h{display:flex;justify-content:space-between;align-items:baseline;gap:8px;padding:8px 11px;border-bottom:1px solid #F0F0F2;font-size:12.5px}.qp-lp-h span{font-size:11px;color:#A1A1AA}
+.qp-lp-list{max-height:300px;overflow:auto;padding:4px 0}
+.qp-lp-sec{display:flex;gap:7px;align-items:center;padding:7px 11px 4px;font-size:11.5px;font-weight:800;color:#3730A3;text-transform:uppercase;letter-spacing:.03em;cursor:pointer}
+.qp-lp-it{display:flex;gap:7px;align-items:center;padding:5px 11px 5px 24px;font-size:12px;cursor:pointer}
+.qp-lp-it:hover{background:#F7F7F8}.qp-lp-it .d{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.qp-lp-it .a{font-weight:700;color:#3F3F46;white-space:nowrap}
+.qp-lp-it.used .d{color:#A1A1AA}.qp-lp-it i{font-style:normal;font-size:11px}
+.qp-lp-f{display:flex;align-items:center;gap:6px;padding:8px 11px;border-top:1px solid #F0F0F2;background:#FAFAFA}.qp-lp-f span{flex:1;font-size:12px;font-weight:700;color:#3730A3}
 .qp-unit{position:absolute;right:8px;top:9px;font-size:11px;color:#A1A1AA;pointer-events:none}
 .qp-lines{display:flex;flex-wrap:wrap;gap:4px;margin-top:5px}
 .qp-chip{display:inline-flex;align-items:center;gap:4px;font-size:11px;background:#EEF2FF;color:#3730A3;border-radius:999px;padding:2px 4px 2px 9px;max-width:100%}
@@ -6143,7 +6154,7 @@ body.tp-dragging,body.tp-dragging *{cursor:grabbing!important}
        i browseren faktisk ER det nyeste deploy, eller om Render/GitHub bare
        ikke er nået at opdatere endnu — i stedet for at skulle gætte om en
        rettelse "stadig ikke virker" eller bare endnu ikke er live. -->
-  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build v2.91.7 · 2026-11-02</span></div>
+  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build v2.92.0 · 2026-11-02</span></div>
 </aside>
 <div class="app-content">
 <!-- RUNDE FB — AI-ASSISTENTEN (Martin: "en ai der er nede i venstre hjørne af
@@ -43307,7 +43318,7 @@ function qpAddRow(phase){
     '<div style="flex:2">'+
       '<input class="qe-input qp-label" placeholder="Fase, fx Depositum ved underskrift">'+
       '<textarea class="qe-input qp-milestone" placeholder="Milepæl, fx Ved underskrift af tilbuddet — tryk Enter for linjeskift" rows="2" style="margin-top:4px;font-size:12px;font-family:inherit;line-height:1.4;resize:vertical;width:100%"></textarea>'+
-      (invoiced?'':'<select class="qe-input qp-insert-line" style="margin-top:4px;font-size:11px;width:100%"><option value="">+ Vælg poster fra tilbuddet (beløbet regnes ud)…</option></select><div class="qp-lines"></div>')+
+      (invoiced?'':'<button type="button" class="qp-pick-lines">☑ Vælg poster fra tilbuddet (beløbet regnes ud)…</button><div class="qp-lines"></div>')+
       (invoiced?'<div style="margin-top:4px;font-size:11px;font-weight:700;color:#15803D">✓ Faktureret ('+esc(phase.invoiced_invoice_number||'')+')</div>':
         '<button type="button" class="bly-btn outline small qp-invoice-phase-btn" style="margin-top:4px;font-size:11px;padding:3px 8px" title="Opret en faktura direkte for denne fases beløb">📄 Fakturér denne fase</button>')+
     '</div>'+
@@ -43334,29 +43345,10 @@ function qpAddRow(phase){
   if(invoiceBtn)invoiceBtn.addEventListener('click',function(){qpInvoicePhases([row]);});
   var pick=row.querySelector('.qp-pick');
   if(pick)pick.addEventListener('change',function(){row.classList.toggle('qp-picked',pick.checked);qpRecalcSummary();});
-  var insertSel=row.querySelector('.qp-insert-line');
-  if(insertSel){
-    (qeState.lines||[]).forEach(function(l,i){
-      if(!l.description)return;
-      var opt=document.createElement('option');
-      opt.value=String(i);
-      opt.textContent=l.description.length>60?l.description.slice(0,60)+'…':l.description;
-      insertSel.appendChild(opt);
-    });
-    insertSel.addEventListener('change',function(){
-      if(insertSel.value==='')return;
-      var line=(qeState.lines||[])[Number(insertSel.value)];
-      if(line){
-        // v2.91.6 — posten lægges på fasen, og fasens beløb = summen af dens poster (inkl. moms/rabat)
-        var key=qpLineKey(line,Number(insertSel.value)),ids=JSON.parse(row.dataset.lines||'[]');
-        if(ids.indexOf(key)<0){ids.push(key);row.dataset.lines=JSON.stringify(ids);
-          if(line.description){var ta=row.querySelector('.qp-milestone');var first=String(line.description).split('\n')[0];ta.value=ta.value?(ta.value.replace(/\s+$/,'')+'\n'+first):first;}
-          qpApplyLines(row);}
-      }
-      insertSel.value='';
-    });
-    qpRenderLineChips(row);
-  }
+  // v2.92.0 — afkrydsningsliste i stedet for én-ad-gangen dropdown (Martin: "bare kan markere 5 fx")
+  var pickBtn=row.querySelector('.qp-pick-lines');
+  if(pickBtn)pickBtn.addEventListener('click',function(e){e.stopPropagation();qpOpenLinePicker(row,pickBtn);});
+  qpRenderLineChips(row);
   document.getElementById('qp-rows').appendChild(row);
   return row;
 }
@@ -43405,6 +43397,33 @@ async function qpInvoicePhases(selRows){
 // — farves rød hvis summen ikke rammer 100%, så Martin ser det med det
 // samme i stedet for først ved Gem.
 // ── v2.91.6 hjælpere: kr-felt + poster fra tilbuddet ──
+function qpIsHead(l){return l&&(l.line_type==='section'||/^\s*\*\*[\s\S]*\*\*\s*$/.test(String(l.description||'')));}
+function qpOpenLinePicker(row,btn){
+  var old=document.getElementById('qp-lp');if(old){old.remove();if(old.dataset.row===row.dataset.rid)return;}
+  if(!row.dataset.rid)row.dataset.rid='r'+Math.random().toString(36).slice(2,8);
+  var L=qeState.lines||[],mine=JSON.parse(row.dataset.lines||'[]'),used={};
+  document.querySelectorAll('#qp-rows .qp-row').forEach(function(r){if(r===row)return;var nm=(r.querySelector('.qp-label').value||'anden fase').trim();JSON.parse(r.dataset.lines||'[]').forEach(function(k){used[k]=nm;});});
+  var h='<div class="qp-lp-h"><b>Vælg poster</b><span>Klik en overskrift for at vælge hele afsnittet</span></div><div class="qp-lp-list">',sec=-1;
+  L.forEach(function(l,i){var k=qpLineKey(l,i),d=String(l.description||'').split('\n')[0].replace(/\*\*/g,'').trim();
+    if(qpIsHead(l)){sec=i;h+='<label class="qp-lp-sec"><input type="checkbox" data-sec="'+i+'"> '+esc(d||'Afsnit')+'</label>';return;}
+    if(!d&&!qeOptLineTotal(l))return;
+    h+='<label class="qp-lp-it'+(used[k]?' used':'')+'"><input type="checkbox" data-k="'+esc(k)+'" data-in="'+sec+'"'+(mine.indexOf(k)>=0?' checked':'')+'><span class="d">'+esc(d||'Linje')+(used[k]?' <i>· i '+esc(used[k])+'</i>':'')+'</span><span class="a">'+krFmt(Math.round(qpLineShare(l)))+'</span></label>';});
+  h+='</div><div class="qp-lp-f"><span id="qp-lp-sum"></span><button type="button" class="bly-btn outline small" data-lp="cancel">Annullér</button><button type="button" class="bly-btn small" data-lp="ok">Brug valgte</button></div>';
+  var pop=document.createElement('div');pop.id='qp-lp';pop.className='qp-lp';pop.dataset.row=row.dataset.rid;pop.innerHTML=h;
+  btn.insertAdjacentElement('afterend',pop);
+  function upd(){var n=0,sum=0;pop.querySelectorAll('input[data-k]:checked').forEach(function(c){var l=qpLineByKey(c.getAttribute('data-k'));n++;if(l)sum+=qpLineShare(l);});
+    pop.querySelector('#qp-lp-sum').textContent=n?n+' valgt · '+krFmt(Math.round(sum)):'Intet valgt';
+    pop.querySelectorAll('input[data-sec]').forEach(function(sc){var its=pop.querySelectorAll('input[data-in="'+sc.getAttribute('data-sec')+'"]'),c=0;its.forEach(function(x){if(x.checked)c++;});sc.checked=its.length>0&&c===its.length;sc.indeterminate=c>0&&c<its.length;});}
+  pop.addEventListener('change',function(e){var sc=e.target.closest('input[data-sec]');if(sc)pop.querySelectorAll('input[data-in="'+sc.getAttribute('data-sec')+'"]').forEach(function(x){x.checked=sc.checked;});upd();});
+  pop.addEventListener('click',function(e){var b=e.target.closest('[data-lp]');if(!b)return;e.preventDefault();
+    if(b.getAttribute('data-lp')==='ok'){var sel=[];pop.querySelectorAll('input[data-k]:checked').forEach(function(c){sel.push(c.getAttribute('data-k'));});
+      var added=sel.filter(function(k){return mine.indexOf(k)<0;}),ta=row.querySelector('.qp-milestone');
+      added.forEach(function(k){var l=qpLineByKey(k);if(l&&l.description){var f=String(l.description).split('\n')[0].replace(/\*\*/g,'').trim();if(f&&ta.value.indexOf(f)<0)ta.value=ta.value?(ta.value.replace(/\s+$/,'')+'\n'+f):f;}});
+      row.dataset.lines=JSON.stringify(sel);qpApplyLines(row);}
+    pop.remove();});
+  upd();
+}
+document.addEventListener('mousedown',function(e){var p=document.getElementById('qp-lp');if(p&&!p.contains(e.target)&&!e.target.closest('.qp-pick-lines'))p.remove();});
 function qpRowPct(row){var x=row.dataset.pctExact;return x!=null&&x!==''?Number(x):(Number(row.querySelector('.qp-pct').value)||0);}
 function qpSetPct(row,v){var i=row.querySelector('.qp-pct');if(v==null){delete row.dataset.pctExact;i.value='';return;}row.dataset.pctExact=String(Math.round(v*1e6)/1e6);i.value=String(Math.round(v*100)/100);}
 function qpParseKr(v){v=String(v||'').replace(/\s|kr/gi,'');if(!v)return null;if(v.indexOf(',')>=0)v=v.replace(/\./g,'').replace(',','.');else if(/\.\d{3}(\.|$)/.test(v))v=v.replace(/\./g,'');var n=Number(v);return isFinite(n)?n:null;}
