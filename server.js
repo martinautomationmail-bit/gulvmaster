@@ -2660,6 +2660,8 @@ async function initSchema() {
     -- Nov. 2026: opgavens EGEN faggruppe (tom = arver sagens project_type), så Gantt-filteret kan vise præcis de opgaver under en sag der hører til de valgte fag.
     ALTER TABLE gantt_tasks ADD COLUMN IF NOT EXISTS trade TEXT;
     ALTER TABLE gantt_tasks ADD COLUMN IF NOT EXISTS trade_source TEXT;
+    ALTER TABLE gantt_tasks ADD COLUMN IF NOT EXISTS phase_id TEXT;
+    ALTER TABLE projects ADD COLUMN IF NOT EXISTS phases JSONB;
     -- v2.56.0 (Martin: "flytte dette med underleverandør faktura under budget
     -- ... hvor man kan tilføje de underleverandør udgifter der er ... så man
     -- kan se det på hele sagen") — udgifter registreres nu pr. SAG under
@@ -18971,6 +18973,7 @@ app.post('/api/projects/:id/tasks', auth, panelAccess('projects'), asyncRoute(as
     INSERT INTO gantt_tasks (id,job_id,job_name,name,description,start_date,end_date,progress,is_group,position,project_id,synced_at)
     VALUES ($1,$2,$3,$4,'',$5,$6,0,0,$7,$8,${nowTextSQL()})
   `, [id, 'project-' + project.id, project.name, name, startDate, endDate, String(countRes ? countRes.n : 0), req.params.id]);
+  if (b.phase_id) await pool.query('UPDATE gantt_tasks SET phase_id=$1 WHERE id=$2', [String(b.phase_id).slice(0, 60), id]);
   await mirrorProjectTaskToPool(id, project, { name, start_date: startDate, end_date: endDate, description: '' });
   res.json({ ok: true, id });
 }));
@@ -19112,9 +19115,22 @@ function sanitizeDraftTasks(arr) {
     description: t.description != null ? String(t.description).slice(0, 10000) : '',
     status: t.status ? String(t.status).slice(0, 40) : null,
     progress: Number(t.progress) || 0,
-    is_new: !!t.is_new
+    is_new: !!t.is_new,
+    phase_id: t.phase_id ? String(t.phase_id).slice(0, 60) : null
   })).filter(t => t.id);
 }
+// v2.91.3 — faser i sagens tidsplan (Martin: "inddel dem i faser lav sådan en overordnet de ligger
+// sig under"). Faserne er kun en gruppering til visning — ikke opgaver — så de aldrig dukker op i
+// Kapacitet/Daglig plan. Opgaverne peger på dem via gantt_tasks.phase_id.
+app.put('/api/projects/:id/phases', auth, panelAccess('projects'), asyncRoute(async (req, res) => {
+  const arr = Array.isArray((req.body || {}).phases) ? req.body.phases : null;
+  if (!arr) return res.status(400).json({ error: 'phases mangler' });
+  const phases = arr.slice(0, 60).map(p => ({ id: String(p.id || '').slice(0, 60), name: String(p.name || 'Fase').trim().slice(0, 120) || 'Fase', collapsed: !!p.collapsed })).filter(p => p.id);
+  await pool.query('UPDATE projects SET phases=$1 WHERE id=$2', [JSON.stringify(phases), req.params.id]);
+  const ids = phases.map(p => p.id);
+  await pool.query('UPDATE gantt_tasks SET phase_id=NULL WHERE project_id=$1 AND phase_id IS NOT NULL AND NOT (phase_id = ANY($2::text[]))', [req.params.id, ids]);
+  res.json({ ok: true, phases });
+}));
 app.get('/api/projects/:id/plan-drafts', auth, panelAccess('projects'), asyncRoute(async (req, res) => {
   const r = await pool.query('SELECT id,name,tasks,created_at,updated_at FROM project_plan_drafts WHERE project_id=$1 ORDER BY id', [req.params.id]);
   res.json(r.rows);
@@ -19240,6 +19256,8 @@ app.put('/api/projects/:id/tasks/:taskId', auth, panelAccess('projects'), asyncR
   await pool.query(`
     UPDATE gantt_tasks SET name=$1, start_date=$2, end_date=$3, progress=$4, description=$5, status=$6, depends_on=$7, subcontractor_cost=$8, subcontractor_note=$9, synced_at=${nowTextSQL()} WHERE id=$10
   `, [merged.name, merged.start_date, merged.end_date, merged.progress, merged.description, merged.status, JSON.stringify(merged.depends_on), merged.subcontractor_cost, merged.subcontractor_note, req.params.taskId]);
+  // v2.91.3 — fase (projects.phases) som opgaven ligger under; null = ingen fase
+  if (b.phase_id !== undefined) await pool.query('UPDATE gantt_tasks SET phase_id=$1 WHERE id=$2', [b.phase_id ? String(b.phase_id).slice(0, 60) : null, req.params.taskId]);
   if (b.trade !== undefined) {
     const tr = TASK_TRADES.includes(b.trade) ? b.trade : null;
     await pool.query('UPDATE gantt_tasks SET trade=$1, trade_source=$2 WHERE id=$3', [tr, tr ? 'manual' : null, req.params.taskId]);

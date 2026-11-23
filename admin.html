@@ -5863,6 +5863,20 @@ body.tp-dragging,body.tp-dragging *{cursor:grabbing!important}
 .pdd-add{font-size:12.5px;font-weight:600;color:#534AB7;background:none;border:none;cursor:pointer;padding:5px 6px}
 .pdd-banner{flex-basis:100%;display:flex;align-items:center;gap:10px;flex-wrap:wrap;background:#F5F4FF;border:1px solid #CECBF6;color:#3C3489;border-radius:10px;padding:8px 12px;font-size:13px;margin-top:4px}
 .pdd-banner .sp{flex:1}.pdd-banner button{font-size:12.5px}
+#pd-gantt-strip .pd-ph-row{flex-direction:row!important;align-items:center!important;gap:6px!important;background:#F5F4FF;border-bottom:1px solid #E4E2FB;padding:0 8px!important}
+#pd-gantt-strip .pd-ph-tog{border:0;background:none;font-size:13px;color:#534AB7;cursor:pointer;width:18px;padding:0}
+#pd-gantt-strip .pd-ph-name{flex:1;min-width:0;border:1px solid transparent;background:transparent;font-weight:750;font-size:13.5px;color:#26215C;padding:3px 5px;border-radius:6px}
+#pd-gantt-strip .pd-ph-name:hover,#pd-gantt-strip .pd-ph-name:focus{border-color:#CECBF6;background:#fff;outline:none}
+#pd-gantt-strip .pd-ph-cnt{font-size:11px;color:#7F77DD;white-space:nowrap}
+#pd-gantt-strip .pd-ph-add{border:0;background:#EEEDFE;color:#3C3489;border-radius:6px;width:22px;height:22px;font-weight:800;cursor:pointer;opacity:0}
+#pd-gantt-strip .pd-ph-row:hover .pd-ph-add{opacity:1}
+#pd-gantt-strip .pd-ph-row.glr-dragover{box-shadow:inset 0 0 0 2px #7F77DD}
+#pd-gantt-strip .pd-ph-trow{background:#FAFAFF}
+#pd-gantt-strip .pd-ph-bar{position:absolute;top:24px;height:9px;background:#534AB7;border-radius:2px;cursor:grab;z-index:2}
+#pd-gantt-strip .pd-ph-bar:before,#pd-gantt-strip .pd-ph-bar:after{content:"";position:absolute;bottom:-6px;border:5px solid transparent;border-top-color:#534AB7}
+#pd-gantt-strip .pd-ph-bar:before{left:-5px}#pd-gantt-strip .pd-ph-bar:after{right:-5px}
+#pd-gantt-strip .pd-ph-bar.dragging{opacity:.7;cursor:grabbing}
+#pd-gantt-strip .gantt-list-row.in-ph{padding-left:30px!important}
 #pd-gantt-strip .pd-ins{position:absolute;left:0;right:0;bottom:-1px;height:11px;border:0;background:none;padding:0;cursor:pointer;opacity:0;transition:opacity .12s;z-index:3}
 #pd-gantt-strip .pd-ins:before{content:"";position:absolute;left:8px;right:8px;top:5px;height:2px;background:#7F77DD;border-radius:2px}
 #pd-gantt-strip .pd-ins span{position:absolute;left:50%;top:-3px;transform:translateX(-50%);width:17px;height:17px;border-radius:50%;background:#534AB7;color:#fff;font-size:14px;line-height:16px;font-weight:700;text-align:center}
@@ -6115,7 +6129,7 @@ body.tp-dragging,body.tp-dragging *{cursor:grabbing!important}
        i browseren faktisk ER det nyeste deploy, eller om Render/GitHub bare
        ikke er nået at opdatere endnu — i stedet for at skulle gætte om en
        rettelse "stadig ikke virker" eller bare endnu ikke er live. -->
-  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build v2.91.2 · 2026-11-02</span></div>
+  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build v2.91.3 · 2026-11-02</span></div>
 </aside>
 <div class="app-content">
 <!-- RUNDE FB — AI-ASSISTENTEN (Martin: "en ai der er nede i venstre hjørne af
@@ -10051,6 +10065,7 @@ body.ai-has-reply #ai-fab{animation:ai-nudge 1.4s ease-in-out 3}
                  nu, med alle rækker, ikke kun det synlige udsnit) som en PDF-fil, se
                  pdDownloadGanttPdf(). -->
             <button class="bly-btn outline" id="pd-gantt-pdf-btn" type="button" title="Download ganttkortet som PDF">📄 Download PDF</button>
+            <button class="bly-btn outline" id="pd-new-phase-btn" type="button" title="Lav en fase som opgaverne kan ligge under">+ Ny fase</button>
             <button class="bly-btn" id="pd-new-task-btn" type="button">+ Ny opgave</button>
           </div>
         </div>
@@ -38627,7 +38642,7 @@ function pdGanttListRow(el){return el&&el.closest&&el.closest('.gantt-list-row[d
 function makePdGanttDragHandler(container){
   container.addEventListener('dragover',function(e){
     if(!pdGanttRowDragId)return;
-    var row=pdGanttListRow(e.target);
+    var row=pdGanttListRow(e.target)||(e.target.closest&&e.target.closest('.pd-ph-row'));
     if(!row)return;
     e.preventDefault();
     e.dataTransfer.dropEffect='move';
@@ -38641,7 +38656,12 @@ function makePdGanttDragHandler(container){
     var fromId=pdGanttRowDragId;
     pdGanttRowDragId=null;
     container.querySelectorAll('.glr-dragging,.glr-dragover').forEach(function(el){el.classList.remove('glr-dragging','glr-dragover');});
+    var phRow=!row&&e.target.closest&&e.target.closest('.pd-ph-row');
+    if(phRow){pdSetTaskPhase(fromId,phRow.dataset.phaseId);return;}
     if(!row||row.dataset.taskId===fromId)return;
+    // v2.91.3 — trækkes en opgave ind blandt en anden fases opgaver, kommer den med i den fase
+    var _tt=(pjCurrent.tasks||[]).find(function(t){return String(t.id)===String(row.dataset.taskId);}),_ft=(pjCurrent.tasks||[]).find(function(t){return String(t.id)===String(fromId);});
+    if(_tt&&_ft&&(_tt.phase_id||null)!==(_ft.phase_id||null)){_ft.phase_id=_tt.phase_id||null;api('/api/projects/'+pjCurrent.id+'/tasks/'+encodeURIComponent(fromId),{method:'PUT',body:JSON.stringify({phase_id:_ft.phase_id})});}
     var toId=row.dataset.taskId;
     var tasks=pjCurrent.tasks||[];
     var fromIdx=tasks.findIndex(function(t){return String(t.id)===String(fromId);});
@@ -38697,8 +38717,8 @@ document.addEventListener('click',function(e){
 // på serveren (project_plan_drafts). "Brug dette udkast" afspiller forskellen mod de rigtige opgaver
 // via de normale ruter, så bookinger flytter med som de plejer.
 var pdDrafts=[],pdDraft=null,pdDraftReal=null,pdDraftSaveT=null,pdDraftPid=null;
-var PDD_FIELDS=['name','start_date','end_date','depends_on','description','status','progress'];
-function pdDraftSlim(t){return {id:String(t.id),name:t.name||'',start_date:t.start_date?String(t.start_date).slice(0,10):null,end_date:t.end_date?String(t.end_date).slice(0,10):null,depends_on:(t.depends_on||[]).map(String),description:t.description||'',status:t.status||null,progress:Number(t.progress)||0,is_new:!!t.is_new};}
+var PDD_FIELDS=['name','start_date','end_date','depends_on','description','status','progress','phase_id'];
+function pdDraftSlim(t){return {id:String(t.id),name:t.name||'',start_date:t.start_date?String(t.start_date).slice(0,10):null,end_date:t.end_date?String(t.end_date).slice(0,10):null,depends_on:(t.depends_on||[]).map(String),description:t.description||'',status:t.status||null,progress:Number(t.progress)||0,is_new:!!t.is_new,phase_id:t.phase_id||null};}
 function pdDraftDisplay(){
   var byId={};(pdDraftReal||[]).forEach(function(r){byId[String(r.id)]=r;});
   return pdDraft.tasks.map(function(t){var r=byId[t.id];return r?Object.assign({},r,t,{status:t.status||r.status}):Object.assign({bookings:null,has_booking:false,photos:null},t,{status:t.status||'todo'});});
@@ -38709,7 +38729,7 @@ function pdDraftChangedIds(){
   var seen=new Set();
   (pdDraft?pdDraft.tasks:[]).forEach(function(t){var r=byId[t.id];seen.add(t.id);
     if(!r){out.changed.add(t.id);return;}
-    var rs=pdDraftSlim(r);if(['name','start_date','end_date','depends_on'].some(function(k){return !pdDraftSame(rs[k],t[k]);}))out.changed.add(t.id);});
+    var rs=pdDraftSlim(r);if(['name','start_date','end_date','depends_on','phase_id'].some(function(k){return !pdDraftSame(rs[k],t[k]);}))out.changed.add(t.id);});
   (pdDraftReal||[]).forEach(function(r){if(!seen.has(String(r.id)))out.deleted++;});
   return out;
 }
@@ -38730,7 +38750,7 @@ function pdDraftIntercept(path,opts){
   var sub=path.slice((base+'/tasks').length),body={};try{body=opts.body?JSON.parse(opts.body):{};}catch(e){}
   var T=pdDraft.tasks,find=function(id){return T.find(function(x){return x.id===String(id);});};
   if(m==='POST'&&sub===''){var nid='n'+Date.now().toString(36)+Math.random().toString(36).slice(2,6);
-    T.push({id:nid,name:String(body.name||'Ny opgave'),start_date:body.start_date||null,end_date:body.end_date||body.start_date||null,depends_on:[],description:'',status:null,progress:0,is_new:true});pdDraftTouched();return Promise.resolve({ok:true,id:nid});}
+    T.push({id:nid,name:String(body.name||'Ny opgave'),start_date:body.start_date||null,end_date:body.end_date||body.start_date||null,depends_on:[],description:'',status:null,progress:0,is_new:true,phase_id:body.phase_id||null});pdDraftTouched();return Promise.resolve({ok:true,id:nid});}
   if(m==='PUT'&&sub==='/reorder'){var ord=(body.order||[]).map(String);T.sort(function(a,b){return ord.indexOf(a.id)-ord.indexOf(b.id);});pdDraftTouched();return Promise.resolve({ok:true});}
   if(m==='PUT'&&sub==='/bulk-dates'){var dd=Math.round(Number(body.delta_days))||0;(body.ids||[]).forEach(function(id){var t=find(id);if(t)pdDraftShift(t,dd);});pdDraftTouched();return Promise.resolve({ok:true,updated:body.ids||[],booking_shift_count:0});}
   var mm=sub.match(/^\/([^\/]+)$/);
@@ -38796,7 +38816,7 @@ async function pdDraftUse(){
   function visit(t){if(state[t.id]===2)return;if(state[t.id]===1)return;state[t.id]=1;(t.depends_on||[]).forEach(function(d){if(byD[d])visit(byD[d]);});state[t.id]=2;order.push(t);}
   draft.tasks.forEach(visit);
   for(const t of order){var rid=mp(t.id),c=cur[rid];if(!c)continue;var body={};
-    ['name','start_date','end_date','description','progress'].forEach(function(k){if(!pdDraftSame(c[k],t[k]))body[k]=t[k];});
+    ['name','start_date','end_date','description','progress','phase_id'].forEach(function(k){if(!pdDraftSame(c[k]||(k==='phase_id'?null:c[k]),t[k]||(k==='phase_id'?null:t[k])))body[k]=t[k];});
     if(t.status&&t.status!==c.status)body.status=t.status;
     var deps=(t.depends_on||[]).map(mp).filter(function(x){return cur[x];});if(!pdDraftSame(c.depends_on||[],deps))body.depends_on=deps;
     if(!Object.keys(body).length)continue;
@@ -38835,6 +38855,76 @@ document.addEventListener('click',function(e){
 });
 // v2.91.2 — indsæt opgaver midt i planen: "+"-linje mellem rækkerne (A) og højreklik-menu (B).
 // Går gennem de normale task-ruter, så det også virker inde i et udkast (pdDraftIntercept).
+// ══ v2.91.3 — FASER ═══════════════════════════════════════
+function pdPhases(){return (pjCurrent&&Array.isArray(pjCurrent.phases))?pjCurrent.phases:[];}
+async function pdSavePhases(list){
+  pjCurrent.phases=list;renderPdGanttStrip();
+  var r=await api('/api/projects/'+pjCurrent.id+'/phases',{method:'PUT',body:JSON.stringify({phases:list})});
+  if(!r||!r.ok){toast((r&&r.error)||'Kunne ikke gemme faserne','❌');}
+}
+async function pdNewPhase(withTaskId){
+  var n=await gmPrompt('Navn på fasen, fx "Fase 1 · Nedrivning"','Fase '+(pdPhases().length+1),'Ny fase');if(!n)return;n=String(n).trim();if(!n)return;
+  var ph={id:'ph'+Date.now().toString(36)+Math.random().toString(36).slice(2,5),name:n,collapsed:false};
+  await pdSavePhases(pdPhases().concat([ph]));
+  if(withTaskId)await pdSetTaskPhase(withTaskId,ph.id);
+  else toast('Fase oprettet — træk opgaver op på den, eller højreklik en opgave → "Flyt til '+n+'"','📁');
+}
+async function pdSetTaskPhase(taskId,phaseId){
+  var r=await api('/api/projects/'+pjCurrent.id+'/tasks/'+encodeURIComponent(taskId),{method:'PUT',body:JSON.stringify({phase_id:phaseId||null})});
+  if(!r||r.error){toast((r&&r.error)||'Kunne ikke flytte opgaven','❌');return;}
+  await reloadPdCurrent();
+}
+async function pdPhaseAddTask(phaseId){
+  var kids=(pjCurrent.tasks||[]).filter(function(t){return t.phase_id===phaseId;});
+  if(kids.length)return pdInsertTask(kids[kids.length-1].id,'after');
+  var today=iso(new Date());
+  var r=await api('/api/projects/'+pjCurrent.id+'/tasks',{method:'POST',body:JSON.stringify({name:'Ny opgave',start_date:today,end_date:today,phase_id:phaseId})});
+  if(!r||!r.id){toast((r&&r.error)||'Kunne ikke oprette opgaven','❌');return;}
+  await reloadPdCurrent();var inp=document.querySelector('#pd-gantt-strip .gantt-list-row[data-task-id="'+String(r.id)+'"] .gantt-inline-name');if(inp){inp.focus();inp.select();}
+}
+function pdPhaseMove(phId,dir){var l=pdPhases().slice(),i=l.findIndex(function(p){return p.id===phId;}),j=i+dir;if(i<0||j<0||j>=l.length)return;var x=l[i];l[i]=l[j];l[j]=x;pdSavePhases(l);}
+async function pdPhaseDelete(phId){
+  var ph=pdPhases().find(function(p){return p.id===phId;});if(!ph)return;
+  if(!await gmConfirm('Slet fasen "'+ph.name+'"? Opgaverne slettes ikke — de lægges bare uden fase.','Slet fase'))return;
+  await pdSavePhases(pdPhases().filter(function(p){return p.id!==phId;}));
+  if(pdDraft){(pjCurrent.tasks||[]).filter(function(t){return t.phase_id===phId;}).forEach(function(t){api('/api/projects/'+pjCurrent.id+'/tasks/'+encodeURIComponent(t.id),{method:'PUT',body:JSON.stringify({phase_id:null})});});}
+  await reloadPdCurrent();
+}
+document.addEventListener('click',function(e){
+  var b=e.target.closest('#pd-gantt-strip [data-ph-tog]');
+  if(b){var id=b.getAttribute('data-ph-tog');pdSavePhases(pdPhases().map(function(p){return p.id===id?Object.assign({},p,{collapsed:!p.collapsed}):p;}));return;}
+  b=e.target.closest('#pd-gantt-strip [data-ph-add]');if(b){pdPhaseAddTask(b.getAttribute('data-ph-add'));return;}
+  if(e.target.closest('#pd-new-phase-btn'))pdNewPhase(null);
+});
+document.addEventListener('change',function(e){
+  var inp=e.target.closest&&e.target.closest('#pd-gantt-strip [data-ph-name]');if(!inp)return;
+  var id=inp.getAttribute('data-ph-name'),v=inp.value.trim();if(!v){renderPdGanttStrip();return;}
+  pdSavePhases(pdPhases().map(function(p){return p.id===id?Object.assign({},p,{name:v}):p;}));
+});
+document.addEventListener('keydown',function(e){if(e.key==='Enter'&&e.target.closest&&e.target.closest('#pd-gantt-strip [data-ph-name]'))e.target.blur();});
+document.addEventListener('contextmenu',function(e){
+  var row=e.target.closest&&e.target.closest('#pd-gantt-strip .pd-ph-row, #pd-gantt-strip .pd-ph-bar');if(!row||e.target.closest('input'))return;
+  e.preventDefault();var id=row.getAttribute('data-phase-id')||row.getAttribute('data-ph-bar'),ph=pdPhases().find(function(p){return p.id===id;});if(!ph)return;
+  showCtxMenu(e.clientX,e.clientY,[{label:true,text:ph.name},
+    {icon:'+',text:'Ny opgave i fasen',onClick:function(){pdPhaseAddTask(id);}},
+    {icon:'✏️',text:'Omdøb',onClick:function(){var i=document.querySelector('#pd-gantt-strip [data-ph-name="'+id+'"]');if(i){i.focus();i.select();}}},
+    {icon:'↑',text:'Flyt fasen op',onClick:function(){pdPhaseMove(id,-1);}},
+    {icon:'↓',text:'Flyt fasen ned',onClick:function(){pdPhaseMove(id,1);}},
+    {sep:true},{icon:'🗑',text:'Slet fase (opgaverne bliver)',danger:true,onClick:function(){pdPhaseDelete(id);}}]);
+});
+// træk i fasebjælken = flyt alle fasens opgaver (samme rute som træk-markering, virker også i udkast)
+document.addEventListener('mousedown',function(e){
+  var bar=e.target.closest&&e.target.closest('#pd-gantt-strip .pd-ph-bar');if(!bar||e.button!==0)return;
+  e.preventDefault();e.stopPropagation();var id=bar.getAttribute('data-ph-bar'),x0=e.clientX,l0=parseFloat(bar.style.left)||0,dw=pdGanttState.dayWidth,delta=0;bar.classList.add('dragging');
+  function mv(ev){delta=Math.round((ev.clientX-x0)/dw);bar.style.left=(l0+delta*dw)+'px';}
+  async function up(){document.removeEventListener('mousemove',mv);document.removeEventListener('mouseup',up);bar.classList.remove('dragging');
+    if(!delta){renderPdGanttStrip();return;}
+    var ids=(pjCurrent.tasks||[]).filter(function(t){return t.phase_id===id&&t.start_date;}).map(function(t){return t.id;});
+    var r=await api('/api/projects/'+pjCurrent.id+'/tasks/bulk-dates',{method:'PUT',body:JSON.stringify({ids:ids,delta_days:delta})});
+    if(r&&r.ok)toast('Fasen er flyttet '+(delta>0?'+':'')+delta+' dag'+(Math.abs(delta)===1?'':'e'),'✓');else toast((r&&r.error)||'Kunne ikke flytte fasen','❌');
+    reloadPdCurrent();}
+  document.addEventListener('mousemove',mv);document.addEventListener('mouseup',up);
+},true);
 function pdNextWorkday(ds,dir){var d=date(String(ds).slice(0,10));do{d=add(d,dir);}while(d.getDay()===0||d.getDay()===6);return iso(d);}
 async function pdInsertTask(refId,where,dup){
   if(!pjCurrent)return;var tasks=(pjCurrent.tasks||[]).slice(),idx=tasks.findIndex(function(t){return String(t.id)===String(refId);});if(idx<0)return;
@@ -38842,7 +38932,7 @@ async function pdInsertTask(refId,where,dup){
   if(dup){st=(ref.start_date||today).slice(0,10);en=(ref.end_date||st).slice(0,10);name=(ref.name||'Opgave')+' (kopi)';}
   else if(where==='before'){en=ref.start_date?pdNextWorkday(ref.start_date,-1):today;st=en;}
   else{st=(ref.end_date||ref.start_date)?pdNextWorkday(ref.end_date||ref.start_date,1):today;en=st;}
-  var r=await api('/api/projects/'+pjCurrent.id+'/tasks',{method:'POST',body:JSON.stringify({name:name,start_date:st,end_date:en})});
+  var r=await api('/api/projects/'+pjCurrent.id+'/tasks',{method:'POST',body:JSON.stringify({name:name,start_date:st,end_date:en,phase_id:ref.phase_id||null})});
   if(!r||!r.id){toast((r&&r.error)||'Kunne ikke oprette opgaven','❌');return;}
   if(dup&&ref.description)await api('/api/projects/'+pjCurrent.id+'/tasks/'+encodeURIComponent(r.id),{method:'PUT',body:JSON.stringify({description:ref.description})});
   var order=tasks.map(function(t){return String(t.id);});order.splice(where==='before'?idx:idx+1,0,String(r.id));
@@ -38863,9 +38953,12 @@ document.addEventListener('contextmenu',function(e){
     {icon:'↑',text:'Indsæt opgave før',onClick:function(){pdInsertTask(id,'before');}},
     {icon:'↓',text:'Indsæt opgave efter',onClick:function(){pdInsertTask(id,'after');}},
     {icon:'⧉',text:'Dupliker',onClick:function(){pdInsertTask(id,'after',true);}},
-    {sep:true},
+    {sep:true}].concat(pdPhases().filter(function(p){return !t||t.phase_id!==p.id;}).map(function(p){return {icon:'📁',text:'Flyt til '+p.name,onClick:function(){pdSetTaskPhase(id,p.id);}};}),
+    [{icon:'➕',text:'Ny fase med denne opgave…',onClick:function(){pdNewPhase(id);}}],
+    (t&&t.phase_id?[{icon:'↩',text:'Fjern fra fase',onClick:function(){pdSetTaskPhase(id,null);}}]:[]),
+    [{sep:true},
     {icon:'🔎',text:'Åbn opgave',onClick:function(){var x=lr&&lr.querySelector('[data-action="glr-open"]');if(x)x.click();}},
-    {icon:'🗑',text:'Slet',onClick:function(){var x=lr&&lr.querySelector('[data-action="glr-delete"]');if(x)x.click();}}]);
+    {icon:'🗑',text:'Slet',onClick:function(){var x=lr&&lr.querySelector('[data-action="glr-delete"]');if(x)x.click();}}]));
 });
 function renderPdGanttStrip(){pdGanttStripInner();pdDraftRenderBar();pdDraftDecorate();}
 function pdGanttStripInner(){
@@ -38876,8 +38969,13 @@ function pdGanttStripInner(){
   // satte eller ændrede dens dato — meget forvirrende ("føles ret mærkeligt").
   // Bruger nu bare den rækkefølge serveren allerede leverer (position ASC, se
   // GET /api/projects/:id) — stabil, ændrer sig ikke af at sætte en dato.
-  var tasks=pjCurrent.tasks||[];
-  if(!tasks.length){el.innerHTML='<div class="sub" style="padding:16px 2px">Ingen opgaver endnu. Opret dem manuelt med "+ Ny opgave", eller tryk "Opret opgaver fra tilbud" hvis sagen har et tilknyttet tilbud.</div>';return;}
+  var allTasks=pjCurrent.tasks||[],phases=pdPhases();
+  // v2.91.3 — faser: opgaver uden fase øverst, derefter hver fase (overskrift + dens opgaver, medmindre foldet sammen)
+  var phIds=new Set(phases.map(function(p){return p.id;})),seq=[];
+  allTasks.forEach(function(t){if(!t.phase_id||!phIds.has(t.phase_id))seq.push({t:t});});
+  phases.forEach(function(ph){var kids=allTasks.filter(function(t){return t.phase_id===ph.id;});seq.push({ph:ph,kids:kids});if(!ph.collapsed)kids.forEach(function(t){seq.push({t:t});});});
+  var tasks=seq.filter(function(x){return x.t;}).map(function(x){return x.t;}),rowOf={};seq.forEach(function(x,i){if(x.t)rowOf[x.t.id]=i;});
+  if(!allTasks.length&&!phases.length){el.innerHTML='<div class="sub" style="padding:16px 2px">Ingen opgaver endnu. Opret dem manuelt med "+ Ny opgave", eller tryk "Opret opgaver fra tilbud" hvis sagen har et tilknyttet tilbud.</div>';return;}
   // RUNDE CZ — opgaver der er markeret men ikke længere findes (slettet,
   // eller det er en helt anden sag) skal ikke blive hængende i udvalget.
   var livingIds=new Set(tasks.map(function(t){return String(t.id);}));
@@ -38898,7 +38996,13 @@ function pdGanttStripInner(){
   }
   flushPdWeekSeg();
   var listRows='<div class="gantt-list-head">Opgave</div>',timelineRows='';
-  tasks.forEach(function(t){
+  seq.forEach(function(it){
+    if(it.ph){var ph=it.ph,kids=it.kids,done=kids.filter(function(k){return pdxGanttStatus(k)==='done';}).length;
+      var ds=kids.map(function(k){return k.start_date;}).filter(Boolean).map(function(x){return String(x).slice(0,10);}).sort(),de=kids.map(function(k){return k.end_date||k.start_date;}).filter(Boolean).map(function(x){return String(x).slice(0,10);}).sort();
+      listRows+='<div class="gantt-list-row pd-ph-row'+(ph.collapsed?' coll':'')+'" data-phase-id="'+esc(ph.id)+'"><button type="button" class="pd-ph-tog" data-ph-tog="'+esc(ph.id)+'" title="Fold ud/sammen">'+(ph.collapsed?'▸':'▾')+'</button><input class="pd-ph-name" data-ph-name="'+esc(ph.id)+'" value="'+esc(ph.name)+'"><span class="pd-ph-cnt">'+(kids.length?done+'/'+kids.length+(done===kids.length?' ✓':''):'tom')+(ds.length?' · '+esc(pdxDate(ds[0]))+'–'+esc(pdxDate(de[de.length-1])):'')+'</span><button type="button" class="pd-ph-add" data-ph-add="'+esc(ph.id)+'" title="Ny opgave i fasen">+</button></div>';
+      var bar='';if(ds.length){var s0=date(ds[0]),e0=date(de[de.length-1]),o0=Math.round((s0-range.start)/86400000),sp0=Math.max(1,Math.round((e0-s0)/86400000)+1);bar='<div class="pd-ph-bar" data-ph-bar="'+esc(ph.id)+'" style="left:'+(o0*dw)+'px;width:'+(sp0*dw)+'px" title="'+esc(ph.name)+' — træk for at flytte hele fasen"></div>';}
+      timelineRows+='<div class="gantt-row pd-ph-trow"><div class="gantt-row-bg">'+bgCols+'</div>'+bar+'</div>';return;}
+    var t=it.t;
     // Omdøb, åbn og slet direkte i venstre kolonne — i stedet for en separat listevisning
     // under Gantt'et (fjernet efter ønske: den tog plads og duplikerede det Gantt'et
     // allerede viser). Navnet er et almindeligt tekstfelt (gemmer ved "change"/Enter),
@@ -38908,7 +39012,7 @@ function pdGanttStripInner(){
     var depId=(t.depends_on&&t.depends_on[0])||'';
     // v2.62.2 — design B: statusprik + navn, og hvem der er booket (detaljer ved hover).
     var stCls=pdxGanttStatus(t),who=pdxGanttWho(t);
-    listRows+='<div class="gantt-list-row pdx-gl st-'+stCls+'" data-task-id="'+t.id+'">'
+    listRows+='<div class="gantt-list-row pdx-gl st-'+stCls+(t.phase_id&&phIds.has(t.phase_id)?' in-ph':'')+'" data-task-id="'+t.id+'">'
       +'<div class="glr-line1"><span class="pdx-gdot" title="'+esc({done:'Færdig',prog:'I gang',wait:'Afventer',todo:'Ikke startet'}[stCls])+'"></span>'
       +'<span class="glr-drag" data-action="glr-drag" draggable="true" title="Træk for at ændre rækkefølgen">⠿</span>'
       // RUNDE BU (Martin: "Hvis man har booket alt i kapacitetsbordet engang
@@ -38928,7 +39032,7 @@ function pdGanttStripInner(){
       +'<div class="pdx-glmeta">'+(who.names.length?esc(who.names.join(', ')):'<i>Ikke booket</i>')+(t.start_date?' · '+esc(pdxDate(t.start_date))+(t.end_date&&t.end_date!==t.start_date?'–'+esc(pdxDate(t.end_date)):''):'')+'</div>'
       +'<div class="glr-line2">'
       +'<input type="date" class="gantt-inline-date" data-action="glr-date" value="'+esc((t.start_date||'').slice(0,10))+'" title="Sæt/ret startdato hurtigt">'
-      +'<select class="gantt-link-select'+(depId?' linked':'')+'" data-action="glr-link" title="Kæd sammen med en anden opgave — når den kædede opgave flytter dato, flytter denne med (og omvendt)">'+pdGanttLinkOptionsHtml(tasks,t.id,depId)+'</select>'
+      +'<select class="gantt-link-select'+(depId?' linked':'')+'" data-action="glr-link" title="Kæd sammen med en anden opgave — når den kædede opgave flytter dato, flytter denne med (og omvendt)">'+pdGanttLinkOptionsHtml(allTasks,t.id,depId)+'</select>'
       +'<div class="gantt-list-row-actions">'
       +'<button type="button" class="qz-icon-btn" data-action="glr-open" title="Åbn — note, tjekpunkter, kapacitet">🔎</button>'
       +'<button type="button" class="qz-icon-btn" data-action="glr-delete" title="Slet">🗑</button>'
@@ -38953,7 +39057,7 @@ function pdGanttStripInner(){
   // rækkehøjde/bjælke-mål (72px/centrum 36px, ikke hovedGanttets 64px/32px) og
   // et andet marker-id, så de to SVG'er ikke kolliderer i samme DOM.
   var PD_ROW_H=56,PD_BAR_CENTER=28;
-  var svgW=range.days*dw,svgH=tasks.length*PD_ROW_H;
+  var svgW=range.days*dw,svgH=seq.length*PD_ROW_H;
   var deps='';
   tasks.forEach(function(t,idx){
     (t.depends_on||[]).forEach(function(depId2){
@@ -38962,8 +39066,8 @@ function pdGanttStripInner(){
       var depTask=tasks[depIdx];
       var depEnd=depTask.end_date?date(depTask.end_date):range.start;
       var myStart=t.start_date?date(t.start_date):range.start;
-      var x1=(Math.round((depEnd-range.start)/86400000)+1)*dw,y1=depIdx*PD_ROW_H+PD_BAR_CENTER;
-      var x2=Math.round((myStart-range.start)/86400000)*dw,y2=idx*PD_ROW_H+PD_BAR_CENTER;
+      var x1=(Math.round((depEnd-range.start)/86400000)+1)*dw,y1=rowOf[depTask.id]*PD_ROW_H+PD_BAR_CENTER;
+      var x2=Math.round((myStart-range.start)/86400000)*dw,y2=rowOf[t.id]*PD_ROW_H+PD_BAR_CENTER;
       var r=6,gap=14,midX=x1+Math.max(gap,Math.min((x2-x1)/2,26)),path;
       if(x2>=x1+gap*2&&Math.abs(y2-y1)>1){
         var vSign=y2>y1?1:-1;
