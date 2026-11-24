@@ -5898,6 +5898,8 @@ body.tp-dragging,body.tp-dragging *{cursor:grabbing!important}
 .qp-lp-it:hover{background:#F7F7F8}.qp-lp-it .d{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.qp-lp-it .a{font-weight:700;color:#3F3F46;white-space:nowrap}
 .qp-lp-it.used .d{color:#A1A1AA}.qp-lp-it i{font-style:normal;font-size:11px}
 .qp-lp-f{display:flex;align-items:center;gap:6px;padding:8px 11px;border-top:1px solid #F0F0F2;background:#FAFAFA}.qp-lp-f span{flex:1;font-size:12px;font-weight:700;color:#3730A3}
+.kb-card.kb-click{cursor:pointer;transition:box-shadow .12s,border-color .12s}
+.kb-card.kb-click:hover{border-color:#C7D2FE;box-shadow:0 4px 14px rgba(79,70,229,.08)}
 .qp-unit{position:absolute;right:8px;top:9px;font-size:11px;color:#A1A1AA;pointer-events:none}
 .qp-lines{display:flex;flex-wrap:wrap;gap:4px;margin-top:5px}
 .qp-chip{display:inline-flex;align-items:center;gap:4px;font-size:11px;background:#EEF2FF;color:#3730A3;border-radius:999px;padding:2px 4px 2px 9px;max-width:100%}
@@ -6161,7 +6163,7 @@ body.tp-dragging,body.tp-dragging *{cursor:grabbing!important}
        i browseren faktisk ER det nyeste deploy, eller om Render/GitHub bare
        ikke er nået at opdatere endnu — i stedet for at skulle gætte om en
        rettelse "stadig ikke virker" eller bare endnu ikke er live. -->
-  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build v2.92.3 · 2026-11-02</span></div>
+  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build v2.92.4 · 2026-11-02</span></div>
 </aside>
 <div class="app-content">
 <!-- RUNDE FB — AI-ASSISTENTEN (Martin: "en ai der er nede i venstre hjørne af
@@ -18214,7 +18216,7 @@ async function saveAssignment(){
   }
   var results=await Promise.all(calls);
   var r=results[0];
-  if(r&&(r.ok||r.id)){closeModal('assign-modal');toast('Booking gemt','✓');await loadAll();}
+  if(r&&(r.ok||r.id)){closeModal('assign-modal');toast('Booking gemt','✓');await loadAll();kbRefreshIfOpen();}
   else if(r)toast(r.error||'Fejl','❌');
 }
 async function copyBooking(id){
@@ -18240,7 +18242,7 @@ async function removeBooking(id){
   if(dates.length<=1){
     if(!await gmConfirm('Fjern booking?'))return;
     var r=await api('/api/assignments/'+id,{method:'DELETE'});
-    if(r&&r.ok){closeModal('assign-modal');toast('Fjernet','🗑');await loadAll();}
+    if(r&&r.ok){closeModal('assign-modal');toast('Fjernet','🗑');await loadAll();kbRefreshIfOpen();}
     else if(r)toast(r.error||'Fejl','❌');
     return;
   }
@@ -18250,7 +18252,7 @@ async function deleteBookingDay(id,date,scope){
   var url='/api/assignments/'+id+(scope==='day'?('?date='+encodeURIComponent(date)+'&scope=day'):'');
   var r=await api(url,{method:'DELETE'});
   closeModal('delete-day-modal');
-  if(r&&r.ok){closeModal('assign-modal');toast(scope==='day'?'Den ene dag fjernet':'Hele bookingen fjernet','🗑');await loadAll();}
+  if(r&&r.ok){closeModal('assign-modal');toast(scope==='day'?'Den ene dag fjernet':'Hele bookingen fjernet','🗑');await loadAll();kbRefreshIfOpen();}
   else if(r)toast(r.error||'Fejl','❌');
 }
 function openDeleteDayChoice(b,dates){
@@ -19219,6 +19221,10 @@ function initKundebesogPage(){
       if(doneBtn){kbMarkDone(doneBtn.dataset.kbDone);return;}
       var bookBtn=e.target.closest('[data-kb-book-task]');
       if(bookBtn){openKbAssignModal(kbData.unbooked.find(function(u){return u.task_id===bookBtn.dataset.kbBookTask;}));return;}
+      // v2.92.4 — klik på kortet (eller "Rediger") åbner bookingen, så medarbejder/dato/tid/adresse kan rettes
+      var ed=e.target.closest('[data-kb-edit]');
+      if(!ed&&!e.target.closest('button,a,input,select,textarea'))ed=e.target.closest('.kb-card[data-kb-edit]');
+      if(ed){kbEditVisit(ed.dataset.kbEdit);return;}
       // RUNDE EH — "📋 Rapport"/"📝 Udfyld rapport", se kbOpenVisitReport.
       var reportBtn=e.target.closest('[data-kb-report]');
       if(reportBtn){
@@ -19233,6 +19239,12 @@ function initKundebesogPage(){
     });
   }
   kbLoad();
+}
+function kbRefreshIfOpen(){var p=document.getElementById('page-kundebesog');if(p&&p.classList.contains('active')&&typeof kbLoad==='function')kbLoad();}
+async function kbEditVisit(bookingId){
+  if(!bookings.find(function(x){return +x.id===+bookingId;}))await loadAll();
+  if(!bookings.find(function(x){return +x.id===+bookingId;})){toast('Kunne ikke finde bookingen — prøv at genindlæse siden','⚠️');return;}
+  openAssign({bookingId:+bookingId});
 }
 async function kbLoad(){
   var r=await api('/api/customer-visits/overview');
@@ -19344,11 +19356,12 @@ function kbRender(){
           :'<button type="button" class="kb-act kb-qg" data-kb-quote-given="'+esc(v.task_id)+'" data-given="0" title="Kunden har fået et opdateret tilbud efter besøget"><span class="kb-box"></span>Tilbud givet</button>');
       }
       else actions.push('<button type="button" class="kb-act success" data-kb-done="'+v.id+'" title="Markér besøget som færdigt">'+KB_ICONS.check+'Markér færdig</button>');
+      actions.unshift('<button type="button" class="kb-act" data-kb-edit="'+v.id+'" title="Ret medarbejder, dato, tid, adresse m.m.">'+KB_ICONS.edit+'Rediger</button>');
     }
     var meta=[];
     if(v.job_address)meta.push('<span class="kb-meta" title="'+esc(v.job_address)+'">'+KB_ICONS.map+'<span>'+esc(v.job_address)+'</span></span>');
     if(v.customer_phone)meta.push('<a class="kb-meta" href="tel:'+esc(String(v.customer_phone).replace(/\s+/g,''))+'" style="color:inherit;text-decoration:none">'+KB_ICONS.phone+'<span>'+esc(v.customer_phone)+'</span></a>');
-    return grpHtml+'<div class="kb-card">'
+    return grpHtml+'<div class="kb-card'+(v._unbooked?'':' kb-click')+'"'+(v._unbooked?'':' data-kb-edit="'+v.id+'" title="Klik for at rette bookingen"')+'>'
       +'<div class="kb-card-main">'
         +'<div class="kb-card-title"><span class="kb-card-name" title="'+esc(name)+'">'+esc(name)+'</span>'+statusHtml+'</div>'
         +(v.visit_notes?'<div class="kb-card-note" title="'+esc(v.visit_notes)+'">'+esc(v.visit_notes)+'</div>':'')
