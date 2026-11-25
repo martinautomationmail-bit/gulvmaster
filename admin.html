@@ -5902,6 +5902,15 @@ body.tp-dragging,body.tp-dragging *{cursor:grabbing!important}
 .kb-card.kb-click:hover{border-color:#C7D2FE;box-shadow:0 4px 14px rgba(79,70,229,.08)}
 #page-capacity.vk-on .board-layout,#page-capacity.vk-on #cap-viewswitch,#page-capacity.vk-on #cap-groupby,#page-capacity.vk-on #cap-outofsync-banner,#page-capacity.vk-on #cap-months,#page-capacity.vk-on #cap-today,#page-capacity.vk-on #cap-workforce-filters{display:none!important}
 .vk-bar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:6px 0 12px}
+.vk-dd{position:relative}
+.vk-ddb{border:1px solid #E4E4E7;background:#fff;border-radius:9px;padding:7px 11px;font-size:12.5px;font-weight:600;cursor:pointer;color:#3F3F46}
+.vk-ddb.on{background:#EEF2FF;border-color:#A5B4FC;color:#3730A3}
+.vk-ddp{position:absolute;top:calc(100% + 6px);left:0;z-index:30;min-width:230px;max-height:340px;overflow:auto;background:#fff;border:1px solid #E4E4E7;border-radius:11px;box-shadow:0 14px 40px rgba(15,23,42,.14);padding:6px}
+.vk-ddp label{display:flex;align-items:center;gap:7px;padding:6px 8px;border-radius:7px;font-size:12.5px;cursor:pointer;white-space:nowrap}.vk-ddp label:hover{background:#F7F7F8}
+.vk-ddp label small{margin-left:auto;color:#A1A1AA;font-size:11px}.vk-ddp input{accent-color:#4F46E5}
+.vk-ddclr{width:100%;margin-top:4px;border:0;border-top:1px solid #F0F0F2;background:none;padding:7px;font-size:12px;font-weight:600;color:#4F46E5;cursor:pointer}
+.vk-chip.mem{background:#F4F4F5;color:#3F3F46}.vk-chip.over{background:#FEE2E2;color:#991B1B}
+.vk-tip-i .d.over{background:#EF4444}
 .vk-nav{display:inline-flex;gap:4px}.vk-nav button{border:1px solid #E4E4E7;background:#fff;border-radius:9px;padding:6px 10px;font-size:12.5px;font-weight:600;cursor:pointer}
 .vk-seg{display:inline-flex;background:#F4F4F5;border-radius:10px;padding:3px}
 .vk-seg button{border:0;background:none;font-size:12.5px;font-weight:600;color:#52525B;padding:6px 12px;border-radius:8px;cursor:pointer}
@@ -5947,9 +5956,8 @@ body.tp-dragging,body.tp-dragging *{cursor:grabbing!important}
 .vk-drag .g{color:#A1A1AA}.vk-drag.done{cursor:default;opacity:.55;background:#FAFAFA}
 .vk-drag.vk-all{background:#EEF2FF;border-color:#C7D2FE;color:#3730A3;font-weight:700;font-size:12.5px}.vk-drag.vk-all span{margin-left:auto;font-weight:500;font-size:11px}
 .vk-empty{padding:40px;text-align:center;color:#A1A1AA}
-.tp-commit-btn{display:inline-flex;align-items:center;gap:7px;border:0;border-radius:10px;padding:8px 14px;font-size:13px;font-weight:700;color:#fff;background:linear-gradient(135deg,#4F46E5,#6366F1);box-shadow:0 4px 12px rgba(79,70,229,.25);cursor:pointer;transition:transform .1s,box-shadow .15s}
-.tp-commit-btn:hover{box-shadow:0 6px 18px rgba(79,70,229,.35);transform:translateY(-1px)}
-.tp-commit-btn span{font-size:14px}
+.tp-commit-btn{border:1px solid #18181B;background:#18181B;color:#fff;border-radius:9px;padding:7px 14px;font-size:13px;font-weight:600;cursor:pointer;transition:background .12s}
+.tp-commit-btn:hover{background:#3F3F46;border-color:#3F3F46}
 .tpc-modal{max-width:620px;width:94vw;padding:0!important;overflow:hidden}
 .tpc-h{display:flex;gap:12px;align-items:flex-start;padding:18px 20px 12px;border-bottom:1px solid #F0F0F2}
 .tpc-h h3{margin:0 0 4px;font-size:17px}.tpc-h p{margin:0;font-size:12.5px;color:#71717A;line-height:1.5}
@@ -6232,7 +6240,7 @@ body.tp-dragging,body.tp-dragging *{cursor:grabbing!important}
        i browseren faktisk ER det nyeste deploy, eller om Render/GitHub bare
        ikke er nået at opdatere endnu — i stedet for at skulle gætte om en
        rettelse "stadig ikke virker" eller bare endnu ikke er live. -->
-  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build v2.93.1 · 2026-11-02</span></div>
+  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build v2.94.0 · 2026-11-02</span></div>
 </aside>
 <div class="app-content">
 <!-- RUNDE FB — AI-ASSISTENTEN (Martin: "en ai der er nede i venstre hjørne af
@@ -10589,7 +10597,7 @@ body.ai-has-reply #ai-fab{animation:ai-nudge 1.4s ease-in-out 3}
     <input id="tp-q" class="input tp-q" type="search" placeholder="Søg sag, kunde eller opgave…" title="Viser kun den sag – både i Ikke planlagt og hos medarbejderne">
     <span class="tp-tf"><button class="btn" id="tp-trade-btn" type="button">Alle fag</button><div class="gtf-pop tp-trade-pop" id="tp-trade-pop"></div></span>
     <label class="tp-chk"><input type="checkbox" id="tp-real"> Vis rigtig plan</label>
-    <button class="tp-commit-btn" id="tp-commit" type="button" title="Vælg hvilke uger/opgaver der skal blive rigtige bookinger i Daglig plan"><span>📤</span>Overfør til Daglig plan</button>
+    <button class="tp-commit-btn" id="tp-commit" type="button" title="Vælg hvilke uger/opgaver der skal blive rigtige bookinger i Daglig plan">Overfør til Daglig plan</button>
   </div>
   <div id="tp-board" class="tp-board"><div class="tp-empty">Henter…</div></div>
 </section>
@@ -15065,7 +15073,7 @@ function isCapacityBooking(b){return String(b.planning_mode||'daily')==='capacit
 // for opgave pool ... 2-3 knapper: Book projekt, Book fejl og mangler, Book kundebesøg").
 // Varmekortet læser SAMME kladde som Testplan (testplan_bookings) + Daglig plan (planning_bookings) + ferie.
 // Projekter → Testplan & Varmekort → Daglig plan.
-var VK={showTasks:(function(){try{return localStorage.getItem('gm_vk_tasks')==='1';}catch(e){return false;}})(),tpAt:0,proj:null,projList:null};
+var VK={view:(function(){try{return localStorage.getItem('gm_vk_view')||'emp';}catch(e){return 'emp';}})(),trades:[],emps:[],showTasks:(function(){try{return localStorage.getItem('gm_vk_tasks')==='1';}catch(e){return false;}})(),tpAt:0,proj:null,projList:null};
 async function vkEnsureTp(force){
   if(!force&&TP.loaded&&Date.now()-VK.tpAt<20000)return;
   var r=await Promise.all([api('/api/gantt/all-tasks'),api('/api/testplan')]);
@@ -15097,10 +15105,25 @@ function vkRender(){
   var box=document.getElementById('vk');if(!box)return;
   if(!TP.loaded||Date.now()-VK.tpAt>20000){if(!VK._loading){VK._loading=true;vkEnsureTp(true).then(function(){VK._loading=false;vkRender();});}if(!TP.loaded){box.innerHTML='<div class="vk-empty">Henter…</div>';return;}}
   if(!VK.start)VK.start=mon(new Date());var weeks=[];for(var wi=0;wi<14;wi++)weeks.push(add(VK.start,wi*7));var today=weekKey(new Date());
-  var us=users.filter(function(u){return u.active&&userBookable(u)&&u.worker_type!=='vendor';});
+  var allUs=users.filter(function(u){return u.active&&userBookable(u)&&u.worker_type!=='vendor';});
+  var us=allUs.filter(function(u){return (!VK.trades.length||VK.trades.indexOf(capTradeLabel(u))>-1)&&(!VK.emps.length||VK.emps.indexOf(+u.id)>-1);});
   var byT={};us.forEach(function(u){var t=capTradeLabel(u);(byT[t]=byT[t]||[]).push(u);});
+  VK._allUs=allUs;
   var head='<div class="vk-row vk-hd"><div class="vk-nm"></div>'+weeks.map(function(m){return '<div class="vk-wk'+(weekKey(m)===today?' now':'')+'"><b>Uge '+weekNo(m)+'</b><span>'+m.getDate()+'/'+(m.getMonth()+1)+'</span></div>';}).join('')+'</div>';
   var body='';
+  if(VK.view==='trade'){
+    // v2.94.0 — Varmekort pr. fag: hele faggruppens belastning pr. uge
+    Object.keys(byT).sort().forEach(function(t){var mem=byT[t];
+      body+='<div class="vk-row"><div class="vk-nm"><span class="vk-av" style="background:#EEF2FF;color:#3730A3">'+esc(t.slice(0,2).toUpperCase())+'</span><div><b>'+esc(t)+'</b><small>'+mem.length+' medarbejder'+(mem.length===1?'':'e')+'</small></div></div>';
+      weeks.forEach(function(m){
+        var cap=0,bk=0,per=[];mem.forEach(function(u){var c=capEffCap(u,m),l=vkLoad(u.id,m);cap+=c;bk+=l;per.push({u:u,l:l,c:c});});
+        var p=cap?bk/cap:(bk?2:0),cls=bk<=0?'l0':p<0.5?'l1':p<=0.85?'l2':p<=1.02?'l3':'l4';
+        var chips=VK.showTasks?per.filter(function(x){return x.l>0;}).sort(function(a,b){return b.l-a.l;}).map(function(x){return '<div class="vk-chip '+(x.l>x.c+0.05?'over':'mem')+'" data-vk-emp="'+x.u.id+'" title="'+esc(x.u.name)+'">'+esc(x.u.name.split(' ')[0])+' <i>'+vkFmt(x.l)+'/'+vkFmt(x.c)+'</i></div>';}).join(''):'';
+        body+='<div class="vk-cell" data-vk-trade="'+esc(t)+'" data-vk-wk="'+iso(m)+'"><div class="vk-heat '+cls+'">'+(bk>0?'<b>'+vkFmt(bk)+'</b><small>/'+vkFmt(cap)+'</small>':'<small>Ledig · '+vkFmt(cap)+' d</small>')+'</div>'+chips+'</div>';
+      });
+      body+='</div>';
+    });
+  } else
   Object.keys(byT).sort().forEach(function(t){
     body+='<div class="vk-grp">'+esc(t)+' <span>'+byT[t].length+'</span></div>';
     byT[t].sort(function(a,b){return a.name.localeCompare(b.name,'da');}).forEach(function(u){
@@ -15115,7 +15138,10 @@ function vkRender(){
       body+='</div>';
     });
   });
-  box.innerHTML='<div class="vk-bar"><div class="vk-nav"><button type="button" data-vk-nav="-4" title="4 uger tilbage">◀</button><button type="button" data-vk-nav="0">I dag</button><button type="button" data-vk-nav="4" title="4 uger frem">▶</button></div><div class="vk-seg"><button type="button" data-vk-mode="0" class="'+(VK.showTasks?'':'on')+'">Kun belastning</button><button type="button" data-vk-mode="1" class="'+(VK.showTasks?'on':'')+'">Vis opgaver</button></div>'
+  var tradesAll={};allUs.forEach(function(u){var k=capTradeLabel(u);tradesAll[k]=(tradesAll[k]||0)+1;});
+  var fTrade='<span class="vk-dd"><button type="button" class="vk-ddb'+(VK.trades.length?' on':'')+'" data-vk-dd="trade">'+(VK.trades.length?(VK.trades.length===1?esc(VK.trades[0]):VK.trades.length+' fag'):'Alle fag')+' ▾</button><div class="vk-ddp" data-vk-ddp="trade" hidden>'+Object.keys(tradesAll).sort().map(function(k){return '<label><input type="checkbox" data-vk-ft="'+esc(k)+'"'+(VK.trades.indexOf(k)>-1?' checked':'')+'> '+esc(k)+' <small>'+tradesAll[k]+'</small></label>';}).join('')+'<button type="button" class="vk-ddclr" data-vk-clr="trade">Vis alle</button></div></span>';
+  var fEmp='<span class="vk-dd"><button type="button" class="vk-ddb'+(VK.emps.length?' on':'')+'" data-vk-dd="emp">'+(VK.emps.length?(VK.emps.length===1?esc((allUs.find(function(u){return +u.id===VK.emps[0];})||{name:'1'}).name.split(' ')[0]):VK.emps.length+' medarbejdere'):'Alle medarbejdere')+' ▾</button><div class="vk-ddp" data-vk-ddp="emp" hidden>'+allUs.slice().sort(function(a,b){return a.name.localeCompare(b.name,'da');}).map(function(u){return '<label><input type="checkbox" data-vk-fe="'+u.id+'"'+(VK.emps.indexOf(+u.id)>-1?' checked':'')+'> '+esc(u.name)+' <small>'+esc(capTradeLabel(u))+'</small></label>';}).join('')+'<button type="button" class="vk-ddclr" data-vk-clr="emp">Vis alle</button></div></span>';
+  box.innerHTML='<div class="vk-bar"><div class="vk-seg"><button type="button" data-vk-view="emp" class="'+(VK.view==='trade'?'':'on')+'">Pr. medarbejder</button><button type="button" data-vk-view="trade" class="'+(VK.view==='trade'?'on':'')+'">Pr. fag</button></div>'+fTrade+fEmp+'<div class="vk-nav"><button type="button" data-vk-nav="-4" title="4 uger tilbage">◀</button><button type="button" data-vk-nav="0">I dag</button><button type="button" data-vk-nav="4" title="4 uger frem">▶</button></div><div class="vk-seg"><button type="button" data-vk-mode="0" class="'+(VK.showTasks?'':'on')+'">Kun belastning</button><button type="button" data-vk-mode="1" class="'+(VK.showTasks?'on':'')+'">Vis opgaver</button></div>'
     +'<span class="vk-leg"><i class="l1"></i>Under 50 % <i class="l2"></i>50–85 % <i class="l3"></i>Fuld <i class="l4"></i>Overbooket <i class="tst"></i>Testplan <i class="pln"></i>Daglig plan</span><span style="flex:1"></span>'
     +'<button type="button" class="vk-bk pri" data-vk-book="project">📁 Book projekt</button><button type="button" class="vk-bk" data-vk-book="rework">🔧 Book fejl &amp; mangler</button><button type="button" class="vk-bk" data-vk-book="visit">📅 Book kundebesøg</button></div>'
     +'<div class="vk-wrap'+(VK.proj?' with-side':'')+'"><div class="vk-grid'+(VK.showTasks?' tasks':'')+'" style="--vk-n:'+weeks.length+'">'+head+body+'</div>'+(VK.proj?vkSideHtml():'')+'</div><div class="vk-tip" id="vk-tip" hidden></div>';
@@ -15124,6 +15150,10 @@ function vkRender(){
 document.addEventListener('mouseover',function(e){
   var cell=e.target.closest&&e.target.closest('#vk .vk-cell');var tip=document.getElementById('vk-tip');if(!tip)return;
   if(!cell||VK.dragging){tip.hidden=true;return;}
+  if(cell.dataset.vkTrade){var tm=date(cell.dataset.vkWk),tr=cell.dataset.vkTrade,mem=(VK._allUs||[]).filter(function(u){return capTradeLabel(u)===tr&&(!VK.emps.length||VK.emps.indexOf(+u.id)>-1);}),tc=0,tb=0;
+    var rows=mem.map(function(u){var c=capEffCap(u,tm),l=vkLoad(u.id,tm);tc+=c;tb+=l;return {u:u,c:c,l:l};}).sort(function(a,b){return b.l-a.l;});
+    tip.innerHTML='<b>'+esc(tr)+' · uge '+weekNo(tm)+'</b><div class="vk-tip-s">'+vkFmt(tb)+' af '+vkFmt(tc)+' dage booket · '+vkFmt(Math.max(0,tc-tb))+' ledige</div>'+rows.map(function(x){return '<div class="vk-tip-i"><span class="d '+(x.l>x.c+0.05?'over':'plan')+'"></span><span class="t">'+esc(x.u.name)+(capOffDaysInWeek(x.u.id,tm)?' 🏖':'')+'</span><span class="n">'+vkFmt(x.l)+' / '+vkFmt(x.c)+'</span></div>';}).join('');
+    var rr=cell.getBoundingClientRect();tip.hidden=false;tip.style.left=Math.min(window.innerWidth-tip.offsetWidth-10,rr.left)+'px';tip.style.top=(rr.bottom+6+tip.offsetHeight>window.innerHeight?rr.top-tip.offsetHeight-6:rr.bottom+6)+'px';return;}
   var uid=+cell.dataset.vkUid,m=date(cell.dataset.vkWk),u=users.find(function(x){return +x.id===uid;}),items=vkWeekItems(uid,m),cap=u?capEffCap(u,m):0,bk=items.reduce(function(n,x){return n+x.days;},0);
   tip.innerHTML='<b>'+esc(u?u.name:'')+' · uge '+weekNo(m)+'</b><div class="vk-tip-s">'+vkFmt(bk)+' af '+vkFmt(cap)+' dage'+(capOffDaysInWeek(uid,m)?' · 🏖 '+capOffDaysInWeek(uid,m)+' fri':'')+'</div>'
     +(items.length?items.map(function(x){return '<div class="vk-tip-i"><span class="d '+x.kind+'"></span><span class="t">'+esc(x.who)+(x.what?' · '+esc(x.what):'')+'</span><span class="n">'+vkFmt(x.days)+'d</span></div>';}).join(''):'<div class="vk-tip-s">Ingen opgaver</div>');
@@ -15132,6 +15162,11 @@ document.addEventListener('mouseover',function(e){
 });
 document.addEventListener('click',function(e){
   if(!e.target.closest||!e.target.closest('#vk'))return;
+  var vw=e.target.closest('[data-vk-view]');if(vw){VK.view=vw.dataset.vkView;try{localStorage.setItem('gm_vk_view',VK.view);}catch(_){}vkRender();return;}
+  var dd=e.target.closest('[data-vk-dd]');if(dd){var pp=document.querySelector('#vk [data-vk-ddp="'+dd.dataset.vkDd+'"]');document.querySelectorAll('#vk [data-vk-ddp]').forEach(function(x){if(x!==pp)x.hidden=true;});if(pp)pp.hidden=!pp.hidden;return;}
+  var cl=e.target.closest('[data-vk-clr]');if(cl){if(cl.dataset.vkClr==='trade')VK.trades=[];else VK.emps=[];vkRender();return;}
+  var ce=e.target.closest('[data-vk-emp]');if(ce){VK.view='emp';VK.emps=[+ce.dataset.vkEmp];vkRender();return;}
+  if(e.target.closest('.vk-ddp'))return;
   var nv=e.target.closest('[data-vk-nav]');if(nv){var n=+nv.dataset.vkNav;VK.start=n?add(VK.start||mon(new Date()),n*7):mon(new Date());vkRender();return;}
   var b=e.target.closest('[data-vk-mode]');if(b){VK.showTasks=b.dataset.vkMode==='1';try{localStorage.setItem('gm_vk_tasks',VK.showTasks?'1':'0');}catch(_){}vkRender();return;}
   b=e.target.closest('[data-vk-book]');if(b){var k=b.dataset.vkBook;if(k==='project'){VK.proj=VK.proj||{q:''};vkRender();var i=document.getElementById('vk-ps');if(i)i.focus();vkSearch('');}else if(k==='rework')openReworkModal({});else openKbAssignModal();return;}
@@ -15140,6 +15175,13 @@ document.addEventListener('click',function(e){
   b=e.target.closest('[data-vk-pick]');if(b){vkPickProject(+b.dataset.vkPick);return;}
   if(e.target.closest('[data-vk-back]')){VK.proj={q:VK.proj.q||''};vkRender();vkSearch(VK.proj.q);}
 });
+document.addEventListener('change',function(e){
+  var ft=e.target.closest&&e.target.closest('#vk [data-vk-ft]'),fe=e.target.closest&&e.target.closest('#vk [data-vk-fe]');if(!ft&&!fe)return;
+  if(ft){var k=ft.dataset.vkFt;VK.trades=VK.trades.filter(function(x){return x!==k;});if(ft.checked)VK.trades.push(k);}
+  if(fe){var id=+fe.dataset.vkFe;VK.emps=VK.emps.filter(function(x){return x!==id;});if(fe.checked)VK.emps.push(id);}
+  var which=ft?'trade':'emp';vkRender();var pp=document.querySelector('#vk [data-vk-ddp="'+which+'"]');if(pp)pp.hidden=false;
+});
+document.addEventListener('mousedown',function(e){if(e.target.closest&&(e.target.closest('#vk .vk-dd')))return;document.querySelectorAll('#vk [data-vk-ddp]').forEach(function(x){x.hidden=true;});});
 document.addEventListener('input',function(e){if(e.target.id==='vk-ps'){VK.proj.q=e.target.value;vkSearch(e.target.value);}});
 // ── Book projekt: find sagen, træk opgaver (eller hele sagen) ud på en medarbejder/uge ──
 function vkSideHtml(){
@@ -15207,7 +15249,7 @@ function tpcOpen(){
       +'<span class="tpc-wm">'+arr.length+' opgave'+(arr.length===1?'':'r')+' · '+String(Math.round(days*10)/10).replace('.',',')+' dage · '+esc(Object.keys(ppl).join(', '))+'</span><button type="button" class="tpc-more" data-tpc-more="'+k+'">Vælg enkelte ▾</button></label>'
       +'<div class="tpc-items" hidden>'+arr.map(function(b){var t=TP.taskById[String(b.gantt_task_id)]||{},u=users.find(function(x){return +x.id===+b.user_id;});
         return '<label class="tpc-it"><input type="checkbox" data-tpc="'+b.id+'" data-tpc-in="'+k+'"><span>'+esc((t.project_name||'')+' · '+String(t.name||'').split('\n')[0])+'</span><small>'+esc(u?u.name.split(' ')[0]:'')+' · '+String(b.days).replace('.',',')+'d · fra '+esc(pdxDate(String(b.start_date).slice(0,10)))+'</small></label>';}).join('')+'</div></div>';}).join('');
-  m.innerHTML='<div class="modal tpc-modal"><div class="tpc-h"><div><h3>📤 Overfør til Daglig plan</h3><p>Vælg de uger, der er klar. De valgte opgaver bliver rigtige bookinger, medarbejderne får besked, og de forsvinder fra Testplan-kladden.</p></div><button type="button" class="tpc-x" data-tpc-x>✕</button></div>'
+  m.innerHTML='<div class="modal tpc-modal"><div class="tpc-h"><div><h3>Overfør til Daglig plan</h3><p>Vælg de uger, der er klar. De valgte opgaver bliver rigtige bookinger, medarbejderne får besked, og de forsvinder fra Testplan-kladden.</p></div><button type="button" class="tpc-x" data-tpc-x>✕</button></div>'
     +(list.length?'<div class="tpc-list">'+weeksH+'</div>':'<div class="tpc-empty">Der er ingen kommende opgaver i Testplan.</div>')
     +'<div class="tpc-f"><span id="tpc-sum">Intet valgt</span><button type="button" class="btn" data-tpc-x>Annullér</button><button type="button" class="btn primary" data-tpc-go disabled>Overfør</button></div></div>';
   m.classList.add('open');
