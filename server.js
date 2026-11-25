@@ -5739,6 +5739,35 @@ async function migrateCapacityToTestplan20261125() {
     await pool.query('INSERT INTO app_migrations (name, details) VALUES ($1, $2)', [name, JSON.stringify({ moved_to_testplan: moved.rowCount, removed: del.rowCount })]);
   } catch (e) { console.error('migrateCapacityToTestplan20261125 fejlede:', e.message); }
 }
+// Tilbud oprettet uden kundekort (fx fra en opportunity) har kun mail/telefon.
+// Find kunden ud fra mailen (præcis ét match) og udfyld kundekobling + adresse,
+// så sagen og medarbejdernes Daglig plan får adressen med.
+async function fillQuoteCustomerFromContact(quoteId) {
+  const q = await pgOne('SELECT id, customer_id, customer_address, customer_email FROM quotes WHERE id=$1', [quoteId]);
+  if (!q || (q.customer_id && q.customer_address)) return false;
+  let c = null;
+  if (q.customer_id) c = await pgOne('SELECT id, address FROM customers WHERE id=$1', [q.customer_id]);
+  else if (q.customer_email) {
+    const m = (await pool.query("SELECT id, address FROM customers WHERE lower(trim(email))=lower(trim($1)) LIMIT 2", [q.customer_email])).rows;
+    if (m.length === 1) c = m[0];
+  }
+  if (!c) return false;
+  const r = await pool.query(`UPDATE quotes SET customer_id=COALESCE(customer_id,$2), customer_address=COALESCE(NULLIF(customer_address,''),$3) WHERE id=$1`, [q.id, c.id, c.address || null]);
+  return r.rowCount > 0;
+}
+async function migrateQuoteMissingAddress20261125() {
+  try {
+    const name = 'quote_missing_address_20261125';
+    if (await pgOne('SELECT 1 FROM app_migrations WHERE name=$1', [name])) return;
+    const qs = (await pool.query("SELECT id FROM quotes WHERE COALESCE(customer_address,'')='' AND (customer_id IS NOT NULL OR COALESCE(customer_email,'')<>'')")).rows;
+    const fixedQ = [];
+    for (const q of qs) if (await fillQuoteCustomerFromContact(q.id)) fixedQ.push(q.id);
+    const ps = (await pool.query(`UPDATE projects p SET customer_id=COALESCE(p.customer_id,q.customer_id), customer_address=q.customer_address
+      FROM quotes q WHERE q.id=p.quote_id AND COALESCE(p.customer_address,'')='' AND COALESCE(q.customer_address,'')<>'' RETURNING p.id`)).rows;
+    for (const p of ps) await syncProjectContactToTasks(p.id);
+    await pool.query('INSERT INTO app_migrations (name, details) VALUES ($1, $2)', [name, JSON.stringify({ quotes: fixedQ, projects: ps.map(x => x.id) })]);
+  } catch (e) { console.error('migrateQuoteMissingAddress20261125 fejlede:', e.message); }
+}
 async function migrateInvoiceFixedDiscount20261123() {
   try {
     const name = 'invoice_fixed_discount_20261123';
@@ -17468,6 +17497,14 @@ async function createProjectFromAcceptedQuote(quote) {
         projectType = fields.projekt_type || null;
       }
     } catch (e3) { console.error('Kunne ikke udlede faggruppe fra CRM-kortet:', e3.message); }
+    if (!quote.customer_id || !quote.customer_address) {
+      try {
+        if (await fillQuoteCustomerFromContact(quote.id)) {
+          const fq = await pgOne('SELECT customer_id, customer_address FROM quotes WHERE id=$1', [quote.id]);
+          quote.customer_id = fq.customer_id; quote.customer_address = fq.customer_address;
+        }
+      } catch (e4) { console.error('Kunne ikke udfylde kunde på tilbud:', e4.message); }
+    }
     const p = await pgOne(`
       INSERT INTO projects (quote_id, name, customer_id, customer_address, customer_phone, customer_email, job_number, project_type)
       VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING id
@@ -31293,6 +31330,7 @@ async function start() {
   await migrateShiftExpensesBackOneMonth();
   migrateAddressSync20261118();
   migrateInvoiceFixedDiscount20261123();
+  migrateQuoteMissingAddress20261125();
   migrateCapacityToTestplan20261125().then(convertCapacityRowsToTestplan);
   migrateProfitSnapshotFormula2();
   await backfillBankUploadHistory();
