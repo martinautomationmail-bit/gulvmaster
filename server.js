@@ -1362,6 +1362,7 @@ async function initSchema() {
     ALTER TABLE quotes ADD COLUMN IF NOT EXISTS payment_plan JSONB;
     ALTER TABLE quotes ADD COLUMN IF NOT EXISTS payment_plan_generated_at TEXT;
     ALTER TABLE quotes ADD COLUMN IF NOT EXISTS payment_plan_show BOOLEAN DEFAULT TRUE;
+    ALTER TABLE quotes ADD COLUMN IF NOT EXISTS project_counted BOOLEAN;
     -- RUNDE CM (Martins ønske: "en knap jeg kan gerener og sende en pdf med
     -- en materiale liste til mine suppliers ... Den skal med AI udregne alt
     -- vi skal bruge baseret på tilbuddet ... Jeg skal efterfølgende kunne
@@ -17235,18 +17236,20 @@ async function mirrorProjectTaskToPool(id, project, fields, exec) {
 // Et ekstra tilbud der stadig er kladde/sendt vises på sagen, men tælles ikke.
 const PQ_COUNTED_STATUSES = ['accepted', 'converted'];
 function pqCountedSql(qAlias, pAlias) {
-  return `(${qAlias}.id = ${pAlias}.quote_id OR (${qAlias}.project_id = ${pAlias}.id AND ${qAlias}.status IN ('accepted','converted')))`;
+  // v2.94.4 — Martin kan selv vælge om et tilbud tæller med (quotes.project_counted); NULL = standardreglen.
+  return `((${qAlias}.id = ${pAlias}.quote_id OR ${qAlias}.project_id = ${pAlias}.id) AND COALESCE(${qAlias}.project_counted, (${qAlias}.id = ${pAlias}.quote_id OR ${qAlias}.status IN ('accepted','converted'))))`;
 }
 async function projectQuotes(project, exec) {
   if (!project) return [];
   const rows = (await (exec || pool).query(
-    `SELECT id, quote_number, quote_title, job_name, job_number, total, tax_amount, status, signed_at, created_at
+    `SELECT id, quote_number, quote_title, job_name, job_number, total, tax_amount, status, signed_at, created_at, project_counted
      FROM quotes WHERE project_id=$1 OR id=$2
      ORDER BY (id=$2) DESC, created_at ASC, id ASC`, [project.id, project.quote_id || -1])).rows;
   return rows.map(q => ({
     ...q, total: Number(q.total) || 0, tax_amount: Number(q.tax_amount) || 0,
     is_primary: q.id === project.quote_id,
-    counted: q.id === project.quote_id || PQ_COUNTED_STATUSES.includes(q.status)
+    counted_override: q.project_counted == null ? null : !!q.project_counted,
+    counted: q.project_counted != null ? !!q.project_counted : (q.id === project.quote_id || PQ_COUNTED_STATUSES.includes(q.status))
   }));
 }
 // Finder sagen et tilbud hører til (primært eller ekstra).
@@ -18874,6 +18877,15 @@ app.put('/api/projects/:id/attach-quote', auth, panelAccess('projects'), asyncRo
 }));
 // v2.73.0 — fjern et tilbud fra sagen (tilbuddet slettes ikke). Er det sagens
 // primære tilbud, bliver det næste tilbud på sagen det primære.
+app.put('/api/projects/:id/quotes/:quoteId/counted', auth, panelAccess('projects'), asyncRoute(async (req, res) => {
+  const project = await pgOne('SELECT id, quote_id FROM projects WHERE id=$1', [req.params.id]);
+  if (!project) return res.status(404).json({ error: 'Sagen blev ikke fundet' });
+  const q = await pgOne('SELECT id FROM quotes WHERE id=$1 AND (project_id=$2 OR id=$3)', [req.params.quoteId, project.id, project.quote_id || -1]);
+  if (!q) return res.status(404).json({ error: 'Tilbuddet hører ikke til sagen' });
+  const v = req.body && req.body.counted;
+  await pool.query('UPDATE quotes SET project_counted=$1 WHERE id=$2', [v === null || v === undefined ? null : !!v, q.id]);
+  res.json({ ok: true });
+}));
 app.delete('/api/projects/:id/quotes/:quoteId', auth, panelAccess('projects'), asyncRoute(async (req, res) => {
   const project = await pgOne('SELECT * FROM projects WHERE id=$1', [req.params.id]);
   if (!project) return res.status(404).json({ error: 'Projektet blev ikke fundet' });
