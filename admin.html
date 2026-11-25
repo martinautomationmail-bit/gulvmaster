@@ -5979,6 +5979,8 @@ body.tp-dragging,body.tp-dragging *{cursor:grabbing!important}
 .tpc-f .btn.primary[disabled]{opacity:.45;cursor:not-allowed}
 .gm-newver{position:fixed;left:50%;bottom:22px;transform:translateX(-50%);z-index:5000;display:flex;align-items:center;gap:14px;background:#18181B;color:#fff;border-radius:12px;padding:11px 12px 11px 18px;font-size:13px;box-shadow:0 14px 40px rgba(0,0,0,.25)}
 .gm-newver button{border:0;background:#fff;color:#18181B;border-radius:8px;padding:7px 12px;font-weight:700;cursor:pointer}
+.pdx-qsum small{font-weight:500;color:#9CA3AF;font-size:11px}
+.pdx-q .st.prim{background:#EEF2FF;color:#3730A3}
 .qp-unit{position:absolute;right:8px;top:9px;font-size:11px;color:#A1A1AA;pointer-events:none}
 .qp-lines{display:flex;flex-wrap:wrap;gap:4px;margin-top:5px}
 .qp-chip{display:inline-flex;align-items:center;gap:4px;font-size:11px;background:#EEF2FF;color:#3730A3;border-radius:999px;padding:2px 4px 2px 9px;max-width:100%}
@@ -6242,7 +6244,7 @@ body.tp-dragging,body.tp-dragging *{cursor:grabbing!important}
        i browseren faktisk ER det nyeste deploy, eller om Render/GitHub bare
        ikke er nået at opdatere endnu — i stedet for at skulle gætte om en
        rettelse "stadig ikke virker" eller bare endnu ikke er live. -->
-  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build v2.94.2 · 2026-11-02</span></div>
+  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build v2.94.3 · 2026-11-02</span></div>
 </aside>
 <div class="app-content">
 <!-- RUNDE FB — AI-ASSISTENTEN (Martin: "en ai der er nede i venstre hjørne af
@@ -38099,12 +38101,12 @@ function pdxQuotesCard(d){
     +L.map(function(q){
       var title=q.quote_title||'';
       return '<a class="pdx-q'+(q.counted?'':' off')+'" href="/admin#quotes/tilbud/'+q.id+'" target="_blank" rel="noopener" title="'+(q.counted?'Åbn tilbuddet i en ny fane':'Tæller ikke med i sagens pris før det er godkendt')+'">'
-        +'<span class="m"><b>'+esc(q.quote_number||('Tilbud #'+q.id))+'</b><small>'+pdxQuoteStatus(q)+(title?' '+esc(title):'')+'</small></span>'
+        +'<span class="m"><b>'+esc(q.quote_number||('Tilbud #'+q.id))+'</b><small>'+pdxQuoteStatus(q)+(L.length>1&&q.is_primary?' <span class="st prim">Hovedtilbud</span>':'')+(title?' '+esc(title):'')+'</small></span>'
         +(hasPrice?'<span class="v">'+pdxKr(q.total)+'</span>':'')
         +(L.length>1?'<button type="button" class="x" data-pdx-qunlink="'+q.id+'" title="Fjern tilbuddet fra sagen (tilbuddet slettes ikke)">✕</button>':'')
         +'</a>';
     }).join('')+'</div>'
-    +(hasPrice&&L.length>1?'<div class="pdx-qsum"><span>Samlet (godkendte)</span><b>'+pdxKr(sum)+'</b></div>':'')
+    +(hasPrice&&L.length>1?'<div class="pdx-qsum" title="Sagens pris = hovedtilbuddet (det sagen blev oprettet fra) + alle godkendte tilbud. Ikke-godkendte ekstra tilbud tæller først med, når kunden godkender dem."><span>Sagens pris'+(L.some(function(q){return q.counted&&q.status!=='accepted'&&q.status!=='converted';})?' <small>(inkl. hovedtilbud, ikke godkendt endnu)</small>':' <small>(godkendte)</small>')+'</span><b>'+pdxKr(sum)+'</b></div>':'')
     +'</div>';
 }
 async function pdxUnlinkQuote(qid){
