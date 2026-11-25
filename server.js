@@ -19371,6 +19371,15 @@ app.put('/api/projects/:id/tasks/:taskId', auth, panelAccess('projects'), asyncR
     if (oldDuration !== newDuration) {
       const hasBooking = await pgOne('SELECT 1 FROM planning_bookings WHERE task_id=$1 LIMIT 1', [req.params.taskId]);
       bookingDurationMismatch = !!hasBooking;
+      // v2.94.2 — strækkes/forkortes opgaven, følger Testplan-kladden med (Martin: "strække en opgave for at se om
+      // det påvirkede bookning i kapacitet"). Kun når opgaven har ÉN testplan-booking — er den delt på flere
+      // medarbejdere, er fordelingen et bevidst valg og røres ikke.
+      const tps = (await pool.query('SELECT id FROM testplan_bookings WHERE gantt_task_id=$1', [req.params.taskId])).rows;
+      if (tps.length === 1) {
+        let wd = 0;
+        for (let d = new Date(`${merged.start_date}T12:00:00`); d <= new Date(`${merged.end_date}T12:00:00`); d.setDate(d.getDate() + 1)) if (d.getDay() !== 0) wd++;
+        await pool.query(`UPDATE testplan_bookings SET start_date=$1, days=$2, updated_at=${nowTextSQL()} WHERE id=$3`, [merged.start_date, Math.max(1, wd), tps[0].id]);
+      }
     }
   }
 
