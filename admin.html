@@ -5947,10 +5947,28 @@ body.tp-dragging,body.tp-dragging *{cursor:grabbing!important}
 .vk-drag .g{color:#A1A1AA}.vk-drag.done{cursor:default;opacity:.55;background:#FAFAFA}
 .vk-drag.vk-all{background:#EEF2FF;border-color:#C7D2FE;color:#3730A3;font-weight:700;font-size:12.5px}.vk-drag.vk-all span{margin-left:auto;font-weight:500;font-size:11px}
 .vk-empty{padding:40px;text-align:center;color:#A1A1AA}
-.tp-commit-pop{position:absolute;z-index:1100;width:360px;max-height:420px;overflow:auto;background:#fff;border:1px solid #E4E4E7;border-radius:12px;box-shadow:0 14px 40px rgba(15,23,42,.16);padding:10px 12px;font-size:12.5px}
-.tp-commit-pop h4{margin:0 0 6px;font-size:13.5px}.tp-commit-pop .wk{font-weight:800;font-size:11px;color:#71717A;text-transform:uppercase;margin:8px 0 3px;display:flex;gap:6px;align-items:center}
-.tp-commit-pop label{display:flex;gap:6px;align-items:center;padding:3px 0;cursor:pointer}.tp-commit-pop label span{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.tp-commit-pop .f{display:flex;gap:6px;justify-content:flex-end;border-top:1px solid #F0F0F2;margin-top:8px;padding-top:8px}
+.tp-commit-btn{display:inline-flex;align-items:center;gap:7px;border:0;border-radius:10px;padding:8px 14px;font-size:13px;font-weight:700;color:#fff;background:linear-gradient(135deg,#4F46E5,#6366F1);box-shadow:0 4px 12px rgba(79,70,229,.25);cursor:pointer;transition:transform .1s,box-shadow .15s}
+.tp-commit-btn:hover{box-shadow:0 6px 18px rgba(79,70,229,.35);transform:translateY(-1px)}
+.tp-commit-btn span{font-size:14px}
+.tpc-modal{max-width:620px;width:94vw;padding:0!important;overflow:hidden}
+.tpc-h{display:flex;gap:12px;align-items:flex-start;padding:18px 20px 12px;border-bottom:1px solid #F0F0F2}
+.tpc-h h3{margin:0 0 4px;font-size:17px}.tpc-h p{margin:0;font-size:12.5px;color:#71717A;line-height:1.5}
+.tpc-x{margin-left:auto;border:0;background:#F4F4F5;border-radius:8px;width:30px;height:30px;cursor:pointer;flex-shrink:0}
+.tpc-list{max-height:55vh;overflow:auto;padding:12px 20px;display:flex;flex-direction:column;gap:8px}
+.tpc-wk{border:1px solid #E4E4E7;border-radius:12px;transition:border-color .12s,background .12s}
+.tpc-wk.on{border-color:#A5B4FC;background:#F8F9FF}
+.tpc-wh{display:flex;align-items:center;gap:10px;padding:11px 13px;cursor:pointer}
+.tpc-wh input{width:17px;height:17px;accent-color:#4F46E5}
+.tpc-wt{display:flex;flex-direction:column;min-width:90px}.tpc-wt b{font-size:14px}.tpc-wt small{font-size:11px;color:#A1A1AA}
+.tpc-wm{flex:1;font-size:12px;color:#52525B;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tpc-more{border:0;background:none;color:#4F46E5;font-size:12px;font-weight:600;cursor:pointer;white-space:nowrap}
+.tpc-items{border-top:1px solid #F0F0F2;padding:6px 13px 9px 40px}
+.tpc-it{display:flex;align-items:center;gap:8px;padding:4px 0;font-size:12.5px;cursor:pointer}
+.tpc-it span{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.tpc-it small{color:#A1A1AA;white-space:nowrap}
+.tpc-empty{padding:30px 20px;text-align:center;color:#A1A1AA}
+.tpc-f{display:flex;align-items:center;gap:8px;padding:12px 20px;border-top:1px solid #F0F0F2;background:#FAFAFA}
+.tpc-f span{flex:1;font-size:12.5px;font-weight:700;color:#3730A3}
+.tpc-f .btn.primary[disabled]{opacity:.45;cursor:not-allowed}
 .qp-unit{position:absolute;right:8px;top:9px;font-size:11px;color:#A1A1AA;pointer-events:none}
 .qp-lines{display:flex;flex-wrap:wrap;gap:4px;margin-top:5px}
 .qp-chip{display:inline-flex;align-items:center;gap:4px;font-size:11px;background:#EEF2FF;color:#3730A3;border-radius:999px;padding:2px 4px 2px 9px;max-width:100%}
@@ -6214,7 +6232,7 @@ body.tp-dragging,body.tp-dragging *{cursor:grabbing!important}
        i browseren faktisk ER det nyeste deploy, eller om Render/GitHub bare
        ikke er nået at opdatere endnu — i stedet for at skulle gætte om en
        rettelse "stadig ikke virker" eller bare endnu ikke er live. -->
-  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build v2.93.0 · 2026-11-02</span></div>
+  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build v2.93.1 · 2026-11-02</span></div>
 </aside>
 <div class="app-content">
 <!-- RUNDE FB — AI-ASSISTENTEN (Martin: "en ai der er nede i venstre hjørne af
@@ -10571,7 +10589,7 @@ body.ai-has-reply #ai-fab{animation:ai-nudge 1.4s ease-in-out 3}
     <input id="tp-q" class="input tp-q" type="search" placeholder="Søg sag, kunde eller opgave…" title="Viser kun den sag – både i Ikke planlagt og hos medarbejderne">
     <span class="tp-tf"><button class="btn" id="tp-trade-btn" type="button">Alle fag</button><div class="gtf-pop tp-trade-pop" id="tp-trade-pop"></div></span>
     <label class="tp-chk"><input type="checkbox" id="tp-real"> Vis rigtig plan</label>
-    <button class="btn primary" id="tp-commit" type="button" title="Gør valgte uger/opgaver til rigtige bookinger i Daglig plan">➜ Overfør til Daglig plan</button>
+    <button class="tp-commit-btn" id="tp-commit" type="button" title="Vælg hvilke uger/opgaver der skal blive rigtige bookinger i Daglig plan"><span>📤</span>Overfør til Daglig plan</button>
   </div>
   <div id="tp-board" class="tp-board"><div class="tp-empty">Henter…</div></div>
 </section>
@@ -15062,9 +15080,11 @@ function vkTaskLabel(id){var t=(TP.taskById&&TP.taskById[String(id)])||tasks.fin
 function vkWeekItems(uid,m){
   var ds=[];for(var i=0;i<6;i++)ds.push(iso(add(m,i)));
   var out={},inTp={};(TP.bk||[]).forEach(function(b){inTp[String(b.gantt_task_id)]=1;});
-  (TP.bk||[]).forEach(function(b){if(+b.user_id!==+uid||tpIsV(b.gantt_task_id))return;var d=0;tpBkDates(b).forEach(function(x){if(ds.indexOf(x.ds)>-1)d+=x.f;});
+  // v2.93.1 — Sagsstatus-filteret (fx "På hold") gælder også Varmekortet
+  var stOk=function(id){if(poolProjectStatusFilter==='all')return true;if(!VK._st||VK._stAt!==tasks.length){VK._st={};tasks.forEach(function(t){VK._st[String(t.id)]=t.project_status||null;});VK._stAt=tasks.length;}return matchesPoolProjectStatus(VK._st[String(id)]||null);};
+  (TP.bk||[]).forEach(function(b){if(+b.user_id!==+uid||tpIsV(b.gantt_task_id)||!stOk(b.gantt_task_id))return;var d=0;tpBkDates(b).forEach(function(x){if(ds.indexOf(x.ds)>-1)d+=x.f;});
     if(d>0){var k='t'+b.id,l=vkTaskLabel(b.gantt_task_id);out[k]={kind:'test',days:d,who:l.who,what:l.what,id:b.id};}});
-  bookings.forEach(function(b){if(isCapacityBooking(b)||+b.user_id!==+uid||b.is_visit||inTp[String(b.task_id)])return;
+  bookings.forEach(function(b){if(isCapacityBooking(b)||+b.user_id!==+uid||b.is_visit||inTp[String(b.task_id)]||!stOk(b.task_id))return;
     var w=planWorkDates(b).filter(function(x){return date(x).getDay()!==0;});if(!w.length)return;var per=(+b.days||w.length)/w.length,d=0;
     w.forEach(function(x){if(ds.indexOf(x)>-1)d+=per;});
     if(d>0)out['p'+b.id]={kind:'plan',days:d,who:b.job_name||b.customer_name||'',what:String(b.task_name||'').split('\n')[0],id:b.id};});
@@ -15175,32 +15195,49 @@ document.addEventListener('drop',async function(e){
   toast(ok+' opgave'+(ok===1?'':'r')+' lagt i Testplan på '+(u?u.name.split(' ')[0]:'medarbejderen'),'🧪');
   await vkEnsureTp(true);await vkPickProject(pr.id);if(delta&&typeof loadAll==='function')loadAll();
 });
-// v2.93.0 — "Overfør til Daglig plan": vælg uger/opgaver fra Testplan-kladden → rigtige bookinger.
+// v2.93.1 — "Overfør til Daglig plan" som pænt vindue: vælg selv hvilke uger (og evt. enkelte opgaver).
+// Intet er valgt på forhånd, så der aldrig overføres mere end man har krydset af.
+function tpcOpen(){
+  var start=iso(mon(new Date())),list=(TP.bk||[]).filter(function(b){return !tpIsV(b.gantt_task_id)&&String(b.start_date).slice(0,10)>=start;}).sort(function(a,b){return String(a.start_date).localeCompare(String(b.start_date));});
+  var m=document.getElementById('tpc-modal');if(!m){m=document.createElement('div');m.className='mo';m.id='tpc-modal';document.body.appendChild(m);}
+  var byW={};list.forEach(function(b){var k=iso(mon(date(String(b.start_date).slice(0,10))));(byW[k]=byW[k]||[]).push(b);});
+  var weeksH=Object.keys(byW).sort().map(function(k){var arr=byW[k],ppl={};arr.forEach(function(b){var u=users.find(function(x){return +x.id===+b.user_id;});if(u)ppl[u.name.split(' ')[0]]=1;});
+    var d=date(k),e=add(d,5),days=arr.reduce(function(n,b){return n+(Number(b.days)||0);},0);
+    return '<div class="tpc-wk" data-tpc-card="'+k+'"><label class="tpc-wh"><input type="checkbox" data-tpc-wk="'+k+'"><span class="tpc-wt"><b>Uge '+weekNo(d)+'</b><small>'+d.getDate()+'/'+(d.getMonth()+1)+' – '+e.getDate()+'/'+(e.getMonth()+1)+'</small></span>'
+      +'<span class="tpc-wm">'+arr.length+' opgave'+(arr.length===1?'':'r')+' · '+String(Math.round(days*10)/10).replace('.',',')+' dage · '+esc(Object.keys(ppl).join(', '))+'</span><button type="button" class="tpc-more" data-tpc-more="'+k+'">Vælg enkelte ▾</button></label>'
+      +'<div class="tpc-items" hidden>'+arr.map(function(b){var t=TP.taskById[String(b.gantt_task_id)]||{},u=users.find(function(x){return +x.id===+b.user_id;});
+        return '<label class="tpc-it"><input type="checkbox" data-tpc="'+b.id+'" data-tpc-in="'+k+'"><span>'+esc((t.project_name||'')+' · '+String(t.name||'').split('\n')[0])+'</span><small>'+esc(u?u.name.split(' ')[0]:'')+' · '+String(b.days).replace('.',',')+'d · fra '+esc(pdxDate(String(b.start_date).slice(0,10)))+'</small></label>';}).join('')+'</div></div>';}).join('');
+  m.innerHTML='<div class="modal tpc-modal"><div class="tpc-h"><div><h3>📤 Overfør til Daglig plan</h3><p>Vælg de uger, der er klar. De valgte opgaver bliver rigtige bookinger, medarbejderne får besked, og de forsvinder fra Testplan-kladden.</p></div><button type="button" class="tpc-x" data-tpc-x>✕</button></div>'
+    +(list.length?'<div class="tpc-list">'+weeksH+'</div>':'<div class="tpc-empty">Der er ingen kommende opgaver i Testplan.</div>')
+    +'<div class="tpc-f"><span id="tpc-sum">Intet valgt</span><button type="button" class="btn" data-tpc-x>Annullér</button><button type="button" class="btn primary" data-tpc-go disabled>Overfør</button></div></div>';
+  m.classList.add('open');
+}
+function tpcSync(){
+  var m=document.getElementById('tpc-modal');if(!m)return;
+  m.querySelectorAll('[data-tpc-wk]').forEach(function(w){var its=m.querySelectorAll('[data-tpc-in="'+w.getAttribute('data-tpc-wk')+'"]'),c=0;its.forEach(function(x){if(x.checked)c++;});w.checked=its.length&&c===its.length;w.indeterminate=c>0&&c<its.length;w.closest('.tpc-wk').classList.toggle('on',c>0);});
+  var sel=m.querySelectorAll('input[data-tpc]:checked'),n=sel.length,b=m.querySelector('[data-tpc-go]');
+  m.querySelector('#tpc-sum').textContent=n?n+' opgave'+(n===1?'':'r')+' valgt':'Intet valgt';
+  if(b){b.disabled=!n;b.textContent=n?'Overfør '+n+' opgave'+(n===1?'':'r'):'Overfør';}
+}
 document.addEventListener('click',async function(e){
-  var btn=e.target.closest&&e.target.closest('#tp-commit');
-  var pop=document.getElementById('tp-commit-pop');
-  if(!btn){if(pop&&!pop.contains(e.target))pop.remove();if(!pop||!e.target.closest('#tp-commit-pop'))return;}
-  if(btn){if(pop){pop.remove();return;}
-    var today=iso(new Date()),list=(TP.bk||[]).filter(function(b){return !tpIsV(b.gantt_task_id)&&String(b.start_date).slice(0,10)>=iso(add(mon(new Date()),0));}).sort(function(a,b){return String(a.start_date).localeCompare(String(b.start_date));});
-    pop=document.createElement('div');pop.id='tp-commit-pop';pop.className='tp-commit-pop';
-    if(!list.length){pop.innerHTML='<h4>Overfør til Daglig plan</h4><div style="color:#71717A">Der er ingen kommende opgaver i Testplan.</div>';}
-    else{var byW={};list.forEach(function(b){var k=iso(mon(date(String(b.start_date).slice(0,10))));(byW[k]=byW[k]||[]).push(b);});
-      pop.innerHTML='<h4>Overfør til Daglig plan</h4><div style="color:#71717A;font-size:11.5px;margin-bottom:4px">De valgte bliver rigtige bookinger, som medarbejderne kan se, og forsvinder fra kladden.</div>'
-        +Object.keys(byW).sort().map(function(k){return '<div class="wk"><input type="checkbox" data-tpc-wk="'+k+'"> Uge '+weekNo(date(k))+'</div>'+byW[k].map(function(b){var t=TP.taskById[String(b.gantt_task_id)]||{},u=users.find(function(x){return +x.id===+b.user_id;});
-          return '<label><input type="checkbox" data-tpc="'+b.id+'" data-tpc-in="'+k+'"><span>'+esc((t.project_name||'')+' · '+String(t.name||'').split('\n')[0])+'</span><small>'+esc(u?u.name.split(' ')[0]:'')+' · '+String(b.days).replace('.',',')+'d</small></label>';}).join('');}).join('')
-        +'<div class="f"><button type="button" class="btn small" data-tpc-x>Annullér</button><button type="button" class="btn small primary" data-tpc-go>Overfør valgte</button></div>';}
-    document.body.appendChild(pop);var r=btn.getBoundingClientRect();pop.style.left=Math.max(10,Math.min(window.innerWidth-370,r.right-360))+window.scrollX+'px';pop.style.top=(r.bottom+6+window.scrollY)+'px';return;}
-  if(e.target.closest('[data-tpc-x]')){pop.remove();return;}
+  if(e.target.closest&&e.target.closest('#tp-commit')){tpcOpen();return;}
+  var m=document.getElementById('tpc-modal');if(!m||!e.target.closest||!e.target.closest('#tpc-modal'))return;
+  if(e.target===m||e.target.closest('[data-tpc-x]')){m.classList.remove('open');return;}
+  var mo=e.target.closest('[data-tpc-more]');if(mo){e.preventDefault();var box=mo.closest('.tpc-wk').querySelector('.tpc-items');box.hidden=!box.hidden;mo.textContent=box.hidden?'Vælg enkelte ▾':'Skjul ▴';return;}
   if(e.target.closest('[data-tpc-go]')){
-    var ids=[].map.call(pop.querySelectorAll('input[data-tpc]:checked'),function(c){return +c.getAttribute('data-tpc');});
-    if(!ids.length){toast('Vælg mindst én opgave','⚠️');return;}
-    if(!await gmConfirm('Overfør '+ids.length+' opgave'+(ids.length===1?'':'r')+' til Daglig plan? Medarbejderne får besked og kan se dem.','Overfør'))return;
-    var r2=await api('/api/testplan/commit',{method:'POST',body:JSON.stringify({ids:ids})});pop.remove();
-    if(r2&&r2.ok){toast(r2.created+' overført til Daglig plan'+(r2.failed&&r2.failed.length?' · '+r2.failed.length+' fejlede':''),'✅');if(typeof loadAll==='function')await loadAll();await tpInit();}
-    else toast((r2&&r2.error)||'Kunne ikke overføre','❌');
+    var ids=[].map.call(m.querySelectorAll('input[data-tpc]:checked'),function(c){return +c.getAttribute('data-tpc');});if(!ids.length)return;
+    var g=e.target.closest('[data-tpc-go]');g.disabled=true;g.textContent='Overfører…';
+    var r=await api('/api/testplan/commit',{method:'POST',body:JSON.stringify({ids:ids})});
+    m.classList.remove('open');
+    if(r&&r.ok){toast(r.created+' overført til Daglig plan'+(r.failed&&r.failed.length?' · '+r.failed.length+' fejlede':''),'✅');if(typeof loadAll==='function')await loadAll();await tpInit();}
+    else toast((r&&r.error)||'Kunne ikke overføre','❌');
   }
 });
-document.addEventListener('change',function(e){var w=e.target.closest&&e.target.closest('#tp-commit-pop [data-tpc-wk]');if(!w)return;document.querySelectorAll('#tp-commit-pop [data-tpc-in="'+w.getAttribute('data-tpc-wk')+'"]').forEach(function(c){c.checked=w.checked;});});
+document.addEventListener('change',function(e){
+  var m=document.getElementById('tpc-modal');if(!m||!e.target.closest||!e.target.closest('#tpc-modal'))return;
+  var w=e.target.closest('[data-tpc-wk]');if(w)m.querySelectorAll('[data-tpc-in="'+w.getAttribute('data-tpc-wk')+'"]').forEach(function(c){c.checked=w.checked;});
+  tpcSync();
+});
 function capBookingOutOfSync(b){
   if(!isCapacityBooking(b))return false;
   if(!capTlValidDate(b.task_start_date))return false;
