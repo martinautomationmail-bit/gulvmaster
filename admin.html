@@ -5977,6 +5977,8 @@ body.tp-dragging,body.tp-dragging *{cursor:grabbing!important}
 .tpc-f{display:flex;align-items:center;gap:8px;padding:12px 20px;border-top:1px solid #F0F0F2;background:#FAFAFA}
 .tpc-f span{flex:1;font-size:12.5px;font-weight:700;color:#3730A3}
 .tpc-f .btn.primary[disabled]{opacity:.45;cursor:not-allowed}
+.gm-newver{position:fixed;left:50%;bottom:22px;transform:translateX(-50%);z-index:5000;display:flex;align-items:center;gap:14px;background:#18181B;color:#fff;border-radius:12px;padding:11px 12px 11px 18px;font-size:13px;box-shadow:0 14px 40px rgba(0,0,0,.25)}
+.gm-newver button{border:0;background:#fff;color:#18181B;border-radius:8px;padding:7px 12px;font-weight:700;cursor:pointer}
 .qp-unit{position:absolute;right:8px;top:9px;font-size:11px;color:#A1A1AA;pointer-events:none}
 .qp-lines{display:flex;flex-wrap:wrap;gap:4px;margin-top:5px}
 .qp-chip{display:inline-flex;align-items:center;gap:4px;font-size:11px;background:#EEF2FF;color:#3730A3;border-radius:999px;padding:2px 4px 2px 9px;max-width:100%}
@@ -6240,7 +6242,7 @@ body.tp-dragging,body.tp-dragging *{cursor:grabbing!important}
        i browseren faktisk ER det nyeste deploy, eller om Render/GitHub bare
        ikke er nået at opdatere endnu — i stedet for at skulle gætte om en
        rettelse "stadig ikke virker" eller bare endnu ikke er live. -->
-  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build v2.94.0 · 2026-11-02</span></div>
+  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build v2.94.1 · 2026-11-02</span></div>
 </aside>
 <div class="app-content">
 <!-- RUNDE FB — AI-ASSISTENTEN (Martin: "en ai der er nede i venstre hjørne af
@@ -14427,13 +14429,21 @@ async function applyFinPanelBoxSizes(panel,containerId,boxSelector){
 function logout(){localStorage.removeItem('gm_token');localStorage.removeItem('gm_user');window.location.href='/';}
 // Runde H #4: "Hvis du trykker på det skal man spørgers om man faktisk vil log ud."
 async function logoutWithConfirm(){if(await gmConfirm('Er du sikker på at du vil logge ud?','Log ud'))logout();}
+// v2.94.1 — gammel åben fane? Vis en tydelig "Genindlæs"-bjælke, når serveren kører en nyere version.
+var GM_CLIENT_VERSION=(function(){var m=document.documentElement.innerHTML.match(/build v(\d+\.\d+\.\d+)/);return m?m[1]:'';})();
+function gmCheckVersion(v){
+  if(!v||!GM_CLIENT_VERSION||v===GM_CLIENT_VERSION||document.getElementById('gm-newver'))return;
+  var d=document.createElement('div');d.id='gm-newver';d.className='gm-newver';
+  d.innerHTML='<span>Der er kommet en ny version af programmet ('+v+'). Genindlæs, så du ikke arbejder i den gamle.</span><button type="button" onclick="location.reload()">Genindlæs nu</button>';
+  document.body.appendChild(d);
+}
 async function api(path,opts){
   opts=opts||{};
   if(pdDraft&&!opts._raw){var _dx=pdDraftIntercept(path,opts);if(_dx!==undefined)return _dx;}
   var h=Object.assign({'Authorization':'Bearer '+token},opts.headers||{});
   var isFormData=typeof FormData!=='undefined'&&opts.body instanceof FormData;
   if(opts.body&&!h['Content-Type']&&!isFormData)h['Content-Type']='application/json';
-  try{var r=await fetch(API+path,Object.assign({},opts,{headers:h}));var d=await r.json().catch(function(){return{error:'Ugyldigt svar'};});if(r.status===401){logout();return null;}return r.ok?d:Object.assign({ok:false},d);}
+  try{var r=await fetch(API+path,Object.assign({},opts,{headers:h}));gmCheckVersion(r.headers.get('X-App-Version'));var d=await r.json().catch(function(){return{error:'Ugyldigt svar'};});if(r.status===401){logout();return null;}return r.ok?d:Object.assign({ok:false},d);}
   catch(e){toast('Netværksfejl','❌');return null;}
 }
 

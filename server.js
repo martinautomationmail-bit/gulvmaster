@@ -79,6 +79,9 @@ app.disable('x-powered-by');
 // verificere Close CRM-webhookets signatur (se CLOSE-integrationen nederst i
 // filen) — Close signerer den originale byte-for-byte body, ikke den
 // genparsede/genserialiserede JSON, så den skal fanges her inden parsing.
+// v2.94.1 — alle API-svar fortæller hvilken version serveren kører, så en gammel åben fane kan bede om genindlæsning.
+const APP_VERSION = (() => { try { return require('./package.json').version; } catch (_) { return ''; } })();
+app.use('/api', (req, res, next) => { res.setHeader('X-App-Version', APP_VERSION); next(); });
 app.use(express.json({ limit: '40mb', verify: (req, res, buf) => { req.rawBody = buf; } }));
 // RUNDE FM — ændres en sags tidslinje (opgaver oprettet/flyttet/slettet),
 // placeres sagen i den rigtige automatiske Kanban-kolonne med det samme.
@@ -5698,6 +5701,27 @@ async function migrateProfitSnapshotFormula2() {
 // spiller sammen": Projekter → Testplan & Varmekort → Daglig plan). Backup i planning_bookings_cap_bak_20261125.
 // Fremtidige reservationer på opgaver fra sager, som hverken ligger i Testplan eller Daglig plan, bliver til
 // Testplan-bookinger; resten (gamle / dobbelte) fjernes.
+// v2.94.1 — kapacitets-reservationer findes ikke længere: oprettes der alligevel nogen (fx fra en gammel
+// åben fane), laves de straks om til Testplan-bookinger. Backup i samme tabel som migrationen.
+async function convertCapacityRowsToTestplan() {
+  try {
+    const rows = (await pool.query("SELECT * FROM planning_bookings WHERE planning_mode='capacity'")).rows;
+    if (!rows.length) return 0;
+    await pool.query("CREATE TABLE IF NOT EXISTS planning_bookings_cap_bak_20261125 AS SELECT * FROM planning_bookings WHERE false");
+    await pool.query("INSERT INTO planning_bookings_cap_bak_20261125 SELECT * FROM planning_bookings WHERE planning_mode='capacity'");
+    let n = 0;
+    for (const b of rows) {
+      if (!String(b.task_id || '').startsWith('p')) continue;
+      const dup = await pgOne('SELECT 1 FROM testplan_bookings WHERE gantt_task_id=$1 AND user_id=$2 AND start_date=$3', [b.task_id, b.user_id, b.start_date]);
+      if (dup) continue;
+      const days = Math.max(0.5, Math.round((Number(b.capacity_days) || Number(b.days) || 1) * 2) / 2);
+      await pool.query(`INSERT INTO testplan_bookings (gantt_task_id, user_id, start_date, days, note, updated_at) VALUES ($1,$2,$3,$4,$5,${nowTextSQL()})`, [b.task_id, b.user_id, b.start_date, days, b.capacity_label || null]);
+      n++;
+    }
+    await pool.query("DELETE FROM planning_bookings WHERE planning_mode='capacity'");
+    return n;
+  } catch (e) { console.error('convertCapacityRowsToTestplan fejlede:', e.message); return 0; }
+}
 async function migrateCapacityToTestplan20261125() {
   try {
     const name = 'capacity_to_testplan_20261125';
@@ -9387,7 +9411,8 @@ app.post('/api/capacity-reservations', auth, panelAccess('capacity'), asyncRoute
     const splitNote = segments.length > 1
       ? `Fordelt over ${segments.length} uger (${segments.map(s => s.capacity_days + 'd').join(' + ')}), da medarbejderens uge-kapacitet ikke rakte til det hele på én gang.`
       : null;
-    res.json({ ok: true, id: insertedIds[0], ids: insertedIds, weeks: segments.length, split_note: splitNote });
+    await convertCapacityRowsToTestplan();
+    res.json({ ok: true, id: insertedIds[0], ids: insertedIds, weeks: segments.length, split_note: splitNote, moved_to_testplan: true });
   } catch (error) {
     try { await client.query('ROLLBACK'); } catch (_) {}
     res.status(400).json({ error: error.message || 'Kapacitetsreservationen kunne ikke gemmes' });
@@ -18988,7 +19013,8 @@ app.post('/api/projects/:id/bulk-book-capacity', auth, panelAccess('capacity'), 
     booked++;
     results.push({ task_id: t.id, name: t.name, weeks: segments.length, first_week: segments[0].week_key });
   }
-  res.json({ ok: true, booked, skipped, results });
+  await convertCapacityRowsToTestplan();
+  res.json({ ok: true, booked, skipped, results, moved_to_testplan: true });
 }));
 
 app.post('/api/projects/:id/tasks', auth, panelAccess('projects'), asyncRoute(async (req, res) => {
@@ -31246,7 +31272,7 @@ async function start() {
   await migrateShiftExpensesBackOneMonth();
   migrateAddressSync20261118();
   migrateInvoiceFixedDiscount20261123();
-  migrateCapacityToTestplan20261125();
+  migrateCapacityToTestplan20261125().then(convertCapacityRowsToTestplan);
   migrateProfitSnapshotFormula2();
   await backfillBankUploadHistory();
   await migrateNotPerformedStage();
