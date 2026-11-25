@@ -5694,6 +5694,26 @@ async function migrateProfitSnapshotFormula2() {
 }
 // v2.91.0 — fakturaer oprettet direkte med rabat i kr fik kr-beløbet gemt som % (fx FAK-2026-0078:
 // 1.900 kr → "Rabat (1.900%)" på PDF'en). Beløbene var rigtige — kun discount_pct omregnes til %.
+// v2.93.0 — Kapacitetsbordets egne reservationer samles i Testplan (Martin: "så vi bare har 3 steder der
+// spiller sammen": Projekter → Testplan & Varmekort → Daglig plan). Backup i planning_bookings_cap_bak_20261125.
+// Fremtidige reservationer på opgaver fra sager, som hverken ligger i Testplan eller Daglig plan, bliver til
+// Testplan-bookinger; resten (gamle / dobbelte) fjernes.
+async function migrateCapacityToTestplan20261125() {
+  try {
+    const name = 'capacity_to_testplan_20261125';
+    if (await pgOne('SELECT 1 FROM app_migrations WHERE name=$1', [name])) return;
+    await pool.query("CREATE TABLE IF NOT EXISTS planning_bookings_cap_bak_20261125 AS SELECT * FROM planning_bookings WHERE planning_mode='capacity'");
+    const moved = await pool.query(`INSERT INTO testplan_bookings (gantt_task_id, user_id, start_date, days, note, updated_at)
+      SELECT b.task_id, b.user_id, b.start_date, GREATEST(0.5, ROUND(COALESCE(NULLIF(b.capacity_days,0), b.days, 1)::numeric * 2) / 2), NULLIF(b.capacity_label,''), ${nowTextSQL()}
+      FROM planning_bookings b
+      WHERE b.planning_mode='capacity' AND b.task_id LIKE 'p%' AND COALESCE(b.end_date,b.start_date) >= '2026-11-23'
+        AND NOT EXISTS (SELECT 1 FROM testplan_bookings t WHERE t.gantt_task_id=b.task_id)
+        AND NOT EXISTS (SELECT 1 FROM planning_bookings d WHERE d.task_id=b.task_id AND COALESCE(d.planning_mode,'daily')<>'capacity')
+      RETURNING id`);
+    const del = await pool.query("DELETE FROM planning_bookings WHERE planning_mode='capacity' RETURNING id");
+    await pool.query('INSERT INTO app_migrations (name, details) VALUES ($1, $2)', [name, JSON.stringify({ moved_to_testplan: moved.rowCount, removed: del.rowCount })]);
+  } catch (e) { console.error('migrateCapacityToTestplan20261125 fejlede:', e.message); }
+}
 async function migrateInvoiceFixedDiscount20261123() {
   try {
     const name = 'invoice_fixed_discount_20261123';
@@ -19091,6 +19111,29 @@ app.post('/api/testplan/bookings', auth, panelAccess('plan'), asyncRoute(async (
     RETURNING *`, [String(b.gantt_task_id), c.user_id, c.start_date, c.days || 1, req.user.id]);
   res.json({ ok: true, booking: { ...r, days: Number(r.days) } });
 }));
+// v2.93.0 — "Overfør til Daglig plan": Testplan-kladden bliver til rigtige bookinger (planning_bookings),
+// samme vej som en normal booking (normalizeBooking). Kladden slettes bagefter. Én samlet besked pr. medarbejder.
+app.post('/api/testplan/commit', auth, panelAccess('plan'), asyncRoute(async (req, res) => {
+  const ids = Array.isArray((req.body || {}).ids) ? req.body.ids.map(Number).filter(Boolean).slice(0, 300) : [];
+  if (!ids.length) return res.status(400).json({ error: 'Vælg mindst én opgave' });
+  const rows = (await pool.query('SELECT * FROM testplan_bookings WHERE id = ANY($1::int[]) ORDER BY start_date', [ids])).rows;
+  let created = 0; const failed = [], perUser = {};
+  for (const tb of rows) {
+    if (String(tb.gantt_task_id || '').startsWith('v:')) { failed.push({ id: tb.id, error: 'Kundebesøg overføres i Kundebesøg' }); continue; }
+    try {
+      const booking = await normalizeBooking({ task_id: tb.gantt_task_id, user_id: tb.user_id, start_date: tb.start_date, days: Number(tb.days) || 1, notes: tb.note || undefined }, true);
+      await pool.query(`INSERT INTO planning_bookings (task_id,user_id,week_key,days,capacity_days,notes,note_link,note_attachments,start_time,start_date,end_date,updated_at)
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,${nowTextSQL()})`,
+        [booking.task_id, booking.user_id, booking.week_key, booking.days, booking.capacity_days, booking.notes, booking.note_link, booking.note_attachments, booking.start_time, booking.start_date, booking.end_date]);
+      await pool.query('DELETE FROM testplan_bookings WHERE id=$1', [tb.id]);
+      created++; perUser[tb.user_id] = (perUser[tb.user_id] || 0) + 1;
+    } catch (e) { failed.push({ id: tb.id, error: e.message }); }
+  }
+  for (const uid of Object.keys(perUser)) {
+    notifyEmployee(Number(uid), 'Nye opgaver i din plan', `Du har fået ${perUser[uid]} ny${perUser[uid] === 1 ? '' : 'e'} opgave${perUser[uid] === 1 ? '' : 'r'} i din plan.`, '#plan').catch(() => {});
+  }
+  res.json({ ok: true, created, failed });
+}));
 app.put('/api/testplan/bookings/:id', auth, panelAccess('plan'), asyncRoute(async (req, res) => {
   const cur = await pgOne('SELECT * FROM testplan_bookings WHERE id=$1', [Number(req.params.id)]);
   if (!cur) return res.status(404).json({ error: 'Findes ikke længere' });
@@ -31203,6 +31246,7 @@ async function start() {
   await migrateShiftExpensesBackOneMonth();
   migrateAddressSync20261118();
   migrateInvoiceFixedDiscount20261123();
+  migrateCapacityToTestplan20261125();
   migrateProfitSnapshotFormula2();
   await backfillBankUploadHistory();
   await migrateNotPerformedStage();
