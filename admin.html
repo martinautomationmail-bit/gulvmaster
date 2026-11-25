@@ -6163,7 +6163,7 @@ body.tp-dragging,body.tp-dragging *{cursor:grabbing!important}
        i browseren faktisk ER det nyeste deploy, eller om Render/GitHub bare
        ikke er nået at opdatere endnu — i stedet for at skulle gætte om en
        rettelse "stadig ikke virker" eller bare endnu ikke er live. -->
-  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build v2.92.4 · 2026-11-02</span></div>
+  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build v2.92.5 · 2026-11-02</span></div>
 </aside>
 <div class="app-content">
 <!-- RUNDE FB — AI-ASSISTENTEN (Martin: "en ai der er nede i venstre hjørne af
@@ -14993,7 +14993,10 @@ function capBookingOutOfSync(b){
   if(!capTlValidDate(b.task_start_date))return false;
   var bStart=String(b.start_date||'').slice(0,10),bEnd=String(b.end_date||b.start_date||'').slice(0,10);
   var tStart=String(b.task_start_date).slice(0,10),tEnd=capTlValidDate(b.task_end_date)?String(b.task_end_date).slice(0,10):tStart;
-  return !(bStart<=tEnd&&bEnd>=tStart);
+  // v2.92.5 — kapacitet planlægges i UGER ("Uge 49 · 1 dag"), så sammenlign på ugeniveau.
+  // Før blev fx Niels Brink (reserveret man 30/11, opgaven ons 2/12 — samme uge) flaget rød.
+  function wk(d){var x=date(d);x.setDate(x.getDate()-((x.getDay()+6)%7));return iso(x);}
+  return !(wk(bStart)<=wk(tEnd)&&wk(bEnd)>=wk(tStart));
 }
 function dailyBookingsForTask(t){return bookings.filter(function(b){return b.task_id===t.id&&!isCapacityBooking(b);});}
 function taskIsCompleted(t){if(t.manually_completed_at)return true;var rows=dailyBookingsForTask(t);return rows.length>0&&rows.every(function(b){return !!b.completed_at;});}
