@@ -361,6 +361,26 @@
     </div>
   </div>
 </div>
+<!-- v2.95.0 — Rapport ved fejl & mangler (altid påkrævet før opgaven kan meldes færdig). -->
+<div id="rw-report-modal" class="modal-backdrop" onclick="if(event.target===this)closeRwReport()">
+  <div class="modal doc-modal">
+    <div class="modal-head req-head"><div class="modal-title"><span class="req-icon">🔧</span> Rapport · fejl &amp; mangler</div><button class="modal-close" onclick="closeRwReport()">Luk</button></div>
+    <div class="modal-body">
+      <p class="req-intro" id="rwr-intro">Udfyld rapporten før opgaven kan markeres som færdig. Den lægges på sagen, så kontoret kan følge op.</p>
+      <div class="vrf-field" id="rwr-w-done"><div class="req-label-row" style="margin-top:12px"><label class="req-label" style="margin:0">Hvad blev udført<span class="vrf-req">*</span></label><button type="button" class="vr-mic-btn" id="rwr-done-mic-btn" onclick="toggleVoiceNote('rwr-done')"><span class="vr-mic-icon">🎤</span> Indtal</button></div>
+        <textarea id="rwr-done" class="req-textarea vrf-input" rows="3" placeholder="Fx knirk ved vindue fjernet, 2 brædder skruet fast, lak pletrettet i stuen"></textarea></div>
+      <div class="vrf-field" id="rwr-w-ok"><label class="req-label" style="margin-top:12px">Er alt i orden nu?<span class="vrf-req">*</span></label>
+        <div class="vrf-choices vrf-yesno"><label class="vrf-choice"><input type="radio" name="rwr-ok" value="Ja" onchange="rwrToggle()">Ja</label><label class="vrf-choice"><input type="radio" name="rwr-ok" value="Nej" onchange="rwrToggle()">Nej</label></div></div>
+      <div class="vrf-field" id="rwr-w-fu" style="display:none"><div class="req-label-row" style="margin-top:12px"><label class="req-label" style="margin:0">Hvad mangler / skal følges op<span class="vrf-req">*</span></label><button type="button" class="vr-mic-btn" id="rwr-fu-mic-btn" onclick="toggleVoiceNote('rwr-fu')"><span class="vr-mic-icon">🎤</span> Indtal</button></div>
+        <textarea id="rwr-fu" class="req-textarea vrf-input" rows="2" placeholder="Fx der mangler en liste, lakken skal tørre før sidste strøg"></textarea></div>
+      <label class="req-label" style="margin-top:12px">Billeder (før / efter)</label>
+      <div id="rwr-photo-grid" class="vr-photo-grid"></div>
+      <input type="file" accept="image/*" multiple id="rwr-photo-input" style="display:none" onchange="rwrAddPhotos(event)">
+      <div id="rwr-feedback" class="req-feedback"></div>
+      <button type="button" class="req-submit" id="rwr-submit-btn" onclick="submitRwReport()"><span class="req-submit-label">Gem rapport & markér som færdig →</span></button>
+    </div>
+  </div>
+</div>
 <div id="rules-modal" class="modal-backdrop" onclick="closeRulesOnBackdrop(event)">
   <div class="modal rules-modal">
     <div class="modal-head req-head"><div class="modal-title"><span class="req-icon">📜</span> Regler og lovgivning</div><button class="modal-close" onclick="closeRulesModal()">Luk</button></div>
@@ -1752,6 +1772,57 @@ async function submitVisitReportAndComplete(){
     setBtnText(origLabel);
   }
 }
+// v2.95.0 — Rapport ved fejl & mangler.
+let rwrBookingId=null;const rwrFiles=[],rwrPreviews=[];
+function rwrRenderGrid(){
+  document.getElementById('rwr-photo-grid').innerHTML=rwrPreviews.map((u,i)=>`<div class="vr-photo-thumb"><img src="${esc(u)}"><button type="button" class="vr-photo-del" onclick="rwrRemovePhoto(${i})">✕</button></div>`).join('')
+    +`<div class="vr-photo-add" onclick="document.getElementById('rwr-photo-input').click()">+</div>`;
+}
+function rwrAddPhotos(e){Array.from(e.target.files||[]).forEach(f=>{rwrFiles.push(f);rwrPreviews.push(URL.createObjectURL(f));});e.target.value='';rwrRenderGrid();}
+function rwrRemovePhoto(i){try{URL.revokeObjectURL(rwrPreviews[i]);}catch(_){}rwrFiles.splice(i,1);rwrPreviews.splice(i,1);rwrRenderGrid();}
+function rwrOkVal(){const r=document.querySelector('input[name="rwr-ok"]:checked');return r?r.value:'';}
+function rwrToggle(){document.getElementById('rwr-w-fu').style.display=rwrOkVal()==='Nej'?'':'none';}
+function openRwReport(id){
+  const a=assignments.find(x=>+x.id===+id);if(!a)return;
+  rwrBookingId=id;
+  rwrFiles.length=0;rwrPreviews.forEach(u=>{try{URL.revokeObjectURL(u);}catch(_){}});rwrPreviews.length=0;
+  document.getElementById('rwr-done').value='';document.getElementById('rwr-fu').value='';
+  document.querySelectorAll('input[name="rwr-ok"]').forEach(r=>{r.checked=false;});rwrToggle();
+  ['rwr-w-done','rwr-w-ok','rwr-w-fu'].forEach(k=>document.getElementById(k).classList.remove('missing'));
+  document.getElementById('rwr-feedback').className='req-feedback';
+  document.getElementById('rwr-intro').textContent=(a.task_name||'Fejl & mangler').replace(/^🔧\s*/,'')+' — udfyld rapporten før opgaven kan markeres som færdig. Den lægges på sagen, så kontoret kan følge op.';
+  if(!SpeechRecognitionCtor)document.querySelectorAll('#rw-report-modal .vr-mic-btn').forEach(b=>{b.style.display='none';});
+  rwrRenderGrid();
+  document.getElementById('rw-report-modal').classList.add('open');
+}
+function closeRwReport(){document.getElementById('rw-report-modal').classList.remove('open');rwrBookingId=null;stopVoiceNote();}
+async function submitRwReport(){
+  const fb=document.getElementById('rwr-feedback');
+  const done=document.getElementById('rwr-done').value.trim(),ok=rwrOkVal(),fu=document.getElementById('rwr-fu').value.trim();
+  const miss=[];
+  document.getElementById('rwr-w-done').classList.toggle('missing',!done);if(!done)miss.push('Hvad blev udført');
+  document.getElementById('rwr-w-ok').classList.toggle('missing',!ok);if(!ok)miss.push('Er alt i orden');
+  const fuMiss=ok==='Nej'&&!fu;document.getElementById('rwr-w-fu').classList.toggle('missing',fuMiss);if(fuMiss)miss.push('Hvad skal følges op');
+  if(miss.length){fb.textContent='Udfyld: '+miss.join(', ');fb.className='req-feedback show error';return;}
+  const btn=document.getElementById('rwr-submit-btn'),lab=btn.querySelector('.req-submit-label'),orig=lab.textContent;
+  btn.disabled=true;
+  const id=rwrBookingId;
+  try{
+    const urls=[];
+    for(let i=0;i<rwrFiles.length;i++){
+      lab.textContent='Uploader billede '+(i+1)+'/'+rwrFiles.length+'…';
+      const up=await pmUploadPhoto(await pmReadFileAsDataUrl(rwrFiles[i]),'rework/'+id);
+      if(!up||!up.ok){fb.textContent=(up&&up.data&&up.data.error)||'Kunne ikke uploade et billede — prøv igen';fb.className='req-feedback show error';return;}
+      urls.push(up.data.url);
+    }
+    lab.textContent='Gemmer…';
+    const r=await api('/api/rework-reports',{method:'POST',body:JSON.stringify({booking_id:id,done_text:done,all_ok:ok==='Ja',followup_text:fu,photo_urls:urls})});
+    if(!r||!r.ok){fb.textContent=(r&&r.data&&r.data.error)||'Kunne ikke gemme — prøv igen';fb.className='req-feedback show error';return;}
+    const a=assignments.find(x=>+x.id===+id);if(a){a.completed_at=new Date().toISOString();}
+    closeRwReport();render();toast(ok==='Ja'?'Rapport gemt — opgaven er færdig ✓':'Rapport gemt — kontoret følger op ✓');
+  }catch(err){fb.textContent=(err&&err.pmFriendly)?err.message:'Ingen forbindelse — prøv igen';fb.className='req-feedback show error';}
+  finally{btn.disabled=false;lab.textContent=orig;}
+}
 async function confirmDocumentationAndComplete(){
   const feedback=document.getElementById('doc-feedback');
   const allChecked=document.getElementById('doc-moisture').checked&&document.getElementById('doc-level').checked&&document.getElementById('doc-other').checked;
@@ -1857,6 +1928,8 @@ function render(){
         ?`<button class="action undone-btn" type="button" style="grid-column:1/-1" onclick="${a.completed_at&&!doneDates.length?`toggleTaskDone(${noteId},false)`:`markDayDone(${noteId},'${date}',false)`}">↩ Fortryd (${a.completed_at?'opgaven er markeret færdig':'færdig for i dag'})</button>`
         :(a.is_visit
           ?`<button class="action done-btn" type="button" style="grid-column:1/-1" onclick="openVisitReportModal(${noteId},'${esc(a.task_id)}')">✅ Mark as done</button>`
+          :a.rework_id
+          ?(Number(a.days||1)>1?`<button class="action day-done-btn" type="button" onclick="markDayDone(${noteId},'${date}',true)">✓ Færdig for i dag</button><button class="action done-btn" type="button" onclick="openRwReport(${noteId})">🔧 Udfyld rapport og afslut</button>`:`<button class="action done-btn" type="button" style="grid-column:1/-1" onclick="openRwReport(${noteId})">🔧 Udfyld rapport og afslut</button>`)
           :`<button class="action day-done-btn" type="button" onclick="markDayDone(${noteId},'${date}',true)">✓ Færdig for i dag</button><button class="action done-btn" type="button" onclick="openDocModal(${noteId})">🏁 Opgaven er løst og slut</button>`);
       const descBlock=a.task_description&&String(a.task_description).trim()?`<div class="task-description"><div class="task-description-label">📝 ${a.task_project_id?'Note på opgaven':'Beskrivelse'}</div><div class="task-description-body${empIsRich(a.task_description)?' rich':''}">${empIsRich(a.task_description)?empSafeHtml(a.task_description):esc(a.task_description).replace(/\n/g,'<br>')}</div></div>`:'';
       // SAGS-HANDLINGER: alle opgaver styres nu fra Martins eget program, så
