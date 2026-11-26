@@ -220,6 +220,7 @@
 .rules-link-sub{font-size:11.5px;color:#64748B}
 .rules-link-arrow{margin-left:auto;font-size:16px;color:#94A3B8;flex-shrink:0}
 .action.undone-btn{background:#F1F5F9;color:#64748B}
+.action.rep-edit-btn{background:#EEF2FF;color:#4338CA;border-color:#C7D2FE;font-weight:800}.action.rep-edit-btn:hover{background:#E0E7FF;color:#3730A3}
 .action.day-done-btn{background:#fff;color:#15803D;border-color:#86EFAC;font-weight:800}.action.day-done-btn:hover{background:#F0FDF4;color:#15803D;border-color:#22C55E}
 @media(max-width:560px){.main{padding:12px}.user-name{display:none}.week-buttons{gap:4px}.week-buttons .small-btn{padding:7px}.task{padding:12px}.topbar{padding:8px 12px}.actions{grid-template-columns:1fr 1fr}.action{font-size:10px;padding:9px 6px}.week-nav{align-items:flex-start}.week-buttons{flex-wrap:wrap;justify-content:flex-end}.week-title{font-size:17px}}
 .task.done{background:linear-gradient(135deg,#F0FDF4,#fff)}.task{box-shadow:0 1px 2px rgba(17,19,24,.05),0 8px 20px rgba(17,19,24,.035)}.task:hover{transform:translateY(-1px)}
@@ -1304,6 +1305,10 @@ async function loadMyHours(){
     renderMyHours();
   }catch(e){body.innerHTML='<p class="modal-empty">Kunne ikke hente dine timer.</p>';}
 }
+function mhPhotos(t){let a=t.photo_urls;if(typeof a==='string'){try{a=JSON.parse(a)}catch(_){a=[]}}if(!Array.isArray(a))a=[];if(!a.length&&t.photo_url)a=[t.photo_url];return a.filter(Boolean);}
+function mhIsVideo(u){return /\.(mp4|mov|webm|m4v)(\?|$)/i.test(String(u||''))||/\/video\/upload\//.test(String(u||''));}
+function mhThumb(u,del){const m=mhIsVideo(u)?`<video src="${esc(u)}" muted style="width:56px;height:56px;object-fit:cover;border-radius:8px;border:1px solid var(--border)"></video>`:`<img src="${esc(u)}" style="width:56px;height:56px;object-fit:cover;border-radius:8px;border:1px solid var(--border)">`;return `<div style="position:relative">${m}${del?`<button type="button" onclick="${del}" style="position:absolute;top:-6px;right:-6px;background:rgba(17,19,24,.8);color:#fff;border:0;border-radius:50%;width:18px;height:18px;font-size:10px;cursor:pointer">✕</button>`:''}</div>`;}
+let mhEdit=null;
 function renderMyHours(){
   const body=document.getElementById('my-hours-body');
   if(!myHoursEntries.length){body.innerHTML='<p class="modal-empty">Du har ikke registreret nogen timer endnu.</p>';return}
@@ -1311,43 +1316,96 @@ function renderMyHours(){
   const totalH=(totalMin/60).toFixed(1).replace('.0','').replace('.',',');
   body.innerHTML='<div class="tm-section-label">I alt registreret: '+totalH+' timer</div>'
     +myHoursEntries.map(t=>{
-      if(myHoursEditingId===t.id){
-        return `<div class="file-item" style="display:block">
-          <label class="req-label">Dato</label>
-          <input type="date" id="mh-edit-date" class="req-input" value="${esc(String(t.entry_date).slice(0,10))}">
-          <label class="req-label">Minutter</label>
-          <input type="number" min="1" step="1" id="mh-edit-minutes" class="req-input" value="${Number(t.minutes)||0}">
-          <label class="req-label">Note</label>
-          <textarea id="mh-edit-note" class="req-textarea" rows="2">${esc(t.note)}</textarea>
-          <div id="mh-edit-feedback" class="req-feedback"></div>
-          <div style="display:flex;gap:8px;margin-top:8px">
-            <button class="req-submit" type="button" onclick="saveMyHoursEdit(${t.id})" style="flex:1">Gem</button>
-            <button class="small-btn" type="button" onclick="cancelMyHoursEdit()">Annullér</button>
-          </div>
-        </div>`;
-      }
-      return `<div class="file-item">
-        <div><span class="file-cat">${esc(fmtPmDate(t.entry_date))} · ${esc(t.project_name)} · ${Number(t.minutes)||0} min</span><br><span style="font-size:12px">${esc(t.note)}</span></div>
+      if(myHoursEditingId===t.id)return mhEditHtml(t);
+      const ph=mhPhotos(t);
+      const amount=t.akkord_item_id?`${esc(t.akkord_name||'Akkord')} × ${Number(t.akkord_quantity)||0}`:`${Number(t.minutes)||0} min`;
+      return `<div class="file-item" style="align-items:flex-start">
+        <div style="min-width:0"><span class="file-cat">${esc(fmtPmDate(t.entry_date))} · ${esc(t.project_name)} · ${amount}</span><br><span style="font-size:12px">${esc(t.note)}</span>
+        ${t.bought_materials?`<br><span style="font-size:11px;color:var(--muted)">🧾 ${esc(t.bought_materials)}</span>`:''}
+        ${ph.length?`<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px">${ph.slice(0,6).map(u=>mhThumb(u)).join('')}${ph.length>6?`<span class="sub">+${ph.length-6}</span>`:''}</div>`:''}</div>
         <div style="display:flex;gap:4px;flex-shrink:0">
-          <button class="small-btn" type="button" onclick="startMyHoursEdit(${t.id})" title="Ret">✏️</button>
+          <button class="small-btn" type="button" onclick="startMyHoursEdit(${t.id})" title="Ret og tilføj billeder">✏️ Ret</button>
           <button class="small-btn" type="button" onclick="deleteMyHoursEntry(${t.id})" title="Slet">🗑️</button>
         </div>
       </div>`;
     }).join('');
 }
-function startMyHoursEdit(id){myHoursEditingId=id;renderMyHours();}
-function cancelMyHoursEdit(){myHoursEditingId=null;renderMyHours();}
+function mhEditHtml(t){
+  const e=mhEdit||{photos:[],files:[],previews:[],project:null};
+  const p=e.project||{};
+  const qlo=(p.quote_line_options||[]).filter(l=>l.line_type!=='text');
+  const qnums=[...new Set(qlo.map(l=>l.quote_number||''))];
+  const opt=l=>`<option value="${l.id}"${+t.quote_line_id===+l.id?' selected':''}>${esc(String(l.description||'').split('\n')[0].trim())}</option>`;
+  const lineOptions=qnums.length>1?qnums.map(n=>`<optgroup label="Tilbud ${esc(n)}">`+qlo.filter(l=>(l.quote_number||'')===n).map(opt).join('')+'</optgroup>').join(''):qlo.map(opt).join('');
+  const rw=(p.rework||[]);
+  const mins=Number(t.minutes)||0;
+  return `<div class="file-item" style="display:block">
+    <label class="req-label">Dato</label>
+    <input type="date" id="mh-edit-date" class="req-input" value="${esc(String(t.entry_date).slice(0,10))}">
+    ${t.akkord_item_id?`<label class="req-label">${esc(t.akkord_name||'Akkord')} — antal</label><input class="req-input" type="text" inputmode="decimal" id="mh-edit-qty" value="${Number(t.akkord_quantity)||''}">`
+    :`<label class="req-label">Tid brugt</label><div style="display:flex;gap:8px"><div style="flex:1"><input class="req-input" type="number" min="0" step="1" id="mh-edit-h" value="${Math.floor(mins/60)}"><div class="sub">timer</div></div><div style="flex:1"><input class="req-input" type="number" min="0" max="59" step="1" id="mh-edit-m" value="${mins%60}"><div class="sub">minutter</div></div></div>`}
+    <label class="req-label">Note — hvad blev der lavet</label>
+    <textarea id="mh-edit-note" class="req-textarea" rows="3">${esc(t.note)}</textarea>
+    <label class="req-label">Billeder / video</label>
+    <div id="mh-photos" style="display:flex;gap:8px;flex-wrap:wrap;margin:6px 0">${mhPhotosInner()}</div>
+    <label class="small-btn primary" style="cursor:pointer;display:inline-flex;margin-bottom:10px">+ Tilføj billeder/video<input type="file" accept="image/*,video/*" multiple style="display:none" onchange="mhAddPhotos(event)"></label>
+    ${!e.project?'<p class="sub">Henter sagens poster…</p>':(qlo.length?`<label class="req-label">Post fra tilbud</label><select class="req-input" id="mh-edit-line"><option value="">Ingen / andet arbejde</option>${lineOptions}</select>`:'')}
+    ${rw.length?`<label class="req-label">🔧 Fejl &amp; mangler — er det en rettelse?</label><select class="req-input" id="mh-edit-rework"><option value="">Nej — almindeligt arbejde</option>${rw.map(r=>`<option value="${r.id}"${+t.rework_id===+r.id?' selected':''}>🔧 ${esc(r.title)}</option>`).join('')}</select>`:''}
+    <label class="req-label">Købt materialer — valgfrit</label>
+    <input class="req-input" id="mh-edit-mat" value="${esc(t.bought_materials||'')}" placeholder="Fx 'Lim, 2 spande, Bilka, 340 kr'">
+    <div id="mh-edit-feedback" class="req-feedback"></div>
+    <div style="display:flex;gap:8px;margin-top:8px">
+      <button class="req-submit" type="button" id="mh-save" onclick="saveMyHoursEdit(${t.id})" style="flex:1">Gem ændringer</button>
+      <button class="small-btn" type="button" onclick="cancelMyHoursEdit()">Annullér</button>
+    </div>
+  </div>`;
+}
+function mhPhotosInner(){
+  const e=mhEdit;if(!e)return '';
+  const all=e.photos.map((u,i)=>mhThumb(u,`mhRemovePhoto(${i},false)`)).join('')+e.previews.map((u,i)=>mhThumb(u,`mhRemovePhoto(${i},true)`)).join('');
+  return all||'<span class="sub">Ingen billeder endnu</span>';
+}
+function mhRefreshPhotos(){const b=document.getElementById('mh-photos');if(b)b.innerHTML=mhPhotosInner();}
+function mhAddPhotos(ev){Array.from(ev.target.files||[]).forEach(f=>{mhEdit.files.push(f);mhEdit.previews.push(URL.createObjectURL(f));});ev.target.value='';mhRefreshPhotos();}
+function mhRemovePhoto(i,isNew){if(isNew){try{URL.revokeObjectURL(mhEdit.previews[i])}catch(_){}mhEdit.files.splice(i,1);mhEdit.previews.splice(i,1);}else mhEdit.photos.splice(i,1);mhRefreshPhotos();}
+async function startMyHoursEdit(id){
+  const t=myHoursEntries.find(x=>x.id===id);if(!t)return;
+  myHoursEditingId=id;mhEdit={photos:mhPhotos(t),files:[],previews:[],project:null};
+  renderMyHours();
+  const r=await api('/api/projects/'+t.project_id);
+  if(myHoursEditingId!==id)return;
+  mhEdit.project=r&&r.ok?r.data:{};
+  // bevar det der allerede er tastet ind
+  const keep={};['mh-edit-date','mh-edit-note','mh-edit-mat','mh-edit-h','mh-edit-m','mh-edit-qty'].forEach(k=>{const el=document.getElementById(k);if(el)keep[k]=el.value;});
+  renderMyHours();
+  Object.keys(keep).forEach(k=>{const el=document.getElementById(k);if(el)el.value=keep[k];});
+}
+function cancelMyHoursEdit(){myHoursEditingId=null;mhEdit=null;renderMyHours();}
 async function saveMyHoursEdit(id){
-  const dateVal=document.getElementById('mh-edit-date').value;
-  const minutesVal=Number(document.getElementById('mh-edit-minutes').value);
-  const noteVal=document.getElementById('mh-edit-note').value.trim();
+  const t=myHoursEntries.find(x=>x.id===id)||{};
   const fb=document.getElementById('mh-edit-feedback');
   function fbShow(msg){fb.textContent=msg;fb.className='req-feedback show error';}
+  const noteVal=document.getElementById('mh-edit-note').value.trim();
   if(!noteVal){fbShow('Skriv en note');return}
-  if(!minutesVal||minutesVal<=0){fbShow('Angiv gyldige minutter');return}
-  const r=await api('/api/time-entries/'+id,{method:'PUT',body:JSON.stringify({minutes:minutesVal,note:noteVal,entry_date:dateVal})});
-  if(r&&r.ok){toast('Registrering opdateret ✓');myHoursEditingId=null;await loadMyHours();}
-  else fbShow((r&&r.data&&r.data.error)||'Kunne ikke gemme ændringen');
+  const body={note:noteVal,entry_date:document.getElementById('mh-edit-date').value,bought_materials:document.getElementById('mh-edit-mat').value.trim()||null};
+  if(t.akkord_item_id){const q=Number(String(document.getElementById('mh-edit-qty').value).replace(',','.'));if(!q||q<=0){fbShow('Angiv et gyldigt antal');return}body.akkord_quantity=q;}
+  else{const mins=(Number(document.getElementById('mh-edit-h').value)||0)*60+(Number(document.getElementById('mh-edit-m').value)||0);if(!mins||mins<=0){fbShow('Angiv hvor lang tid du har brugt');return}body.minutes=mins;}
+  const ln=document.getElementById('mh-edit-line');if(ln)body.quote_line_id=ln.value||null;
+  const rw=document.getElementById('mh-edit-rework');if(rw)body.rework_id=rw.value||null;
+  const btn=document.getElementById('mh-save');btn.disabled=true;
+  try{
+    const urls=mhEdit.photos.slice();let fails=0;
+    for(let i=0;i<mhEdit.files.length;i++){
+      btn.textContent='Uploader '+(i+1)+'/'+mhEdit.files.length+'…';
+      try{const up=await pmUploadPhoto(await pmReadFileAsDataUrl(mhEdit.files[i]),'projects/'+t.project_id);if(up&&up.ok&&up.data&&up.data.url)urls.push(up.data.url);else fails++;}catch(_){fails++}
+    }
+    body.photo_urls=urls;
+    btn.textContent='Gemmer…';
+    const r=await api('/api/time-entries/'+id,{method:'PUT',body:JSON.stringify(body)});
+    if(r&&r.ok){toast(fails?('Gemt ✓ — '+fails+' billede(r) kunne ikke uploades'):'Registrering opdateret ✓');myHoursEditingId=null;mhEdit=null;await loadMyHours();}
+    else fbShow((r&&r.data&&r.data.error)||'Kunne ikke gemme ændringen');
+  }catch(e){fbShow((e&&e.pmFriendly)?e.message:'Netværksfejl — prøv igen');}
+  finally{if(btn.isConnected){btn.disabled=false;btn.textContent='Gem ændringer';}}
 }
 async function deleteMyHoursEntry(id){
   if(!confirm('Slet denne tidsregistrering?'))return;
@@ -1566,7 +1624,10 @@ function vrRenderFields(existing){
     return vrFieldHtml(f,raw);
   }).join('')||'<p class="req-intro">Ingen felter på besøgsrapporten lige nu.</p>';
 }
-async function openVisitReportModal(id,taskId){
+let visitReportEditOnly=false;
+async function openVisitReportModal(id,taskId,editOnly){
+  visitReportEditOnly=!!editOnly;
+  const vrl=document.querySelector('#vr-submit-btn .req-submit-label');if(vrl)vrl.textContent=editOnly?'Gem ændringer i rapporten':'Gem & markér som færdig →';
   visitReportAssignmentId=id;
   visitReportTaskId=taskId;
   visitReportPhotos=[];
@@ -1761,8 +1822,10 @@ async function submitVisitReportAndComplete(){
     vrNewPhotoFiles.length=0;
     vrNewPhotoPreviewUrls.forEach(u=>{try{URL.revokeObjectURL(u);}catch(e){}});
     vrNewPhotoPreviewUrls.length=0;
+    const editOnly=visitReportEditOnly;
     closeVisitReportModal();
-    await toggleTaskDone(assignmentId,true,true,'Besøgsrapport udfyldt');
+    if(editOnly)toast('Besøgsrapport opdateret ✓');
+    else await toggleTaskDone(assignmentId,true,true,'Besøgsrapport udfyldt');
   }catch(err){
     feedback.textContent=(err&&err.pmFriendly)?err.message:'Ingen forbindelse — prøv igen';
     feedback.className='req-feedback show error';
@@ -1773,18 +1836,19 @@ async function submitVisitReportAndComplete(){
   }
 }
 // v2.95.0 — Rapport ved fejl & mangler.
-let rwrBookingId=null;const rwrFiles=[],rwrPreviews=[];
+let rwrBookingId=null,rwrExisting=null,rwrPhotos=[];const rwrFiles=[],rwrPreviews=[];
+function rwrRemoveExisting(i){rwrPhotos.splice(i,1);rwrRenderGrid();}
 function rwrRenderGrid(){
-  document.getElementById('rwr-photo-grid').innerHTML=rwrPreviews.map((u,i)=>`<div class="vr-photo-thumb"><img src="${esc(u)}"><button type="button" class="vr-photo-del" onclick="rwrRemovePhoto(${i})">✕</button></div>`).join('')
+  document.getElementById('rwr-photo-grid').innerHTML=rwrPhotos.map((u,i)=>`<div class="vr-photo-thumb"><img src="${esc(u)}"><button type="button" class="vr-photo-del" onclick="rwrRemoveExisting(${i})">✕</button></div>`).join('')+rwrPreviews.map((u,i)=>`<div class="vr-photo-thumb"><img src="${esc(u)}"><button type="button" class="vr-photo-del" onclick="rwrRemovePhoto(${i})">✕</button></div>`).join('')
     +`<div class="vr-photo-add" onclick="document.getElementById('rwr-photo-input').click()">+</div>`;
 }
 function rwrAddPhotos(e){Array.from(e.target.files||[]).forEach(f=>{rwrFiles.push(f);rwrPreviews.push(URL.createObjectURL(f));});e.target.value='';rwrRenderGrid();}
 function rwrRemovePhoto(i){try{URL.revokeObjectURL(rwrPreviews[i]);}catch(_){}rwrFiles.splice(i,1);rwrPreviews.splice(i,1);rwrRenderGrid();}
 function rwrOkVal(){const r=document.querySelector('input[name="rwr-ok"]:checked');return r?r.value:'';}
 function rwrToggle(){document.getElementById('rwr-w-fu').style.display=rwrOkVal()==='Nej'?'':'none';}
-function openRwReport(id){
+async function openRwReport(id,editOnly){
   const a=assignments.find(x=>+x.id===+id);if(!a)return;
-  rwrBookingId=id;
+  rwrBookingId=id;rwrExisting=null;rwrPhotos=[];
   rwrFiles.length=0;rwrPreviews.forEach(u=>{try{URL.revokeObjectURL(u);}catch(_){}});rwrPreviews.length=0;
   document.getElementById('rwr-done').value='';document.getElementById('rwr-fu').value='';
   document.querySelectorAll('input[name="rwr-ok"]').forEach(r=>{r.checked=false;});rwrToggle();
@@ -1792,6 +1856,18 @@ function openRwReport(id){
   document.getElementById('rwr-feedback').className='req-feedback';
   document.getElementById('rwr-intro').textContent=(a.task_name||'Fejl & mangler').replace(/^🔧\s*/,'')+' — udfyld rapporten før opgaven kan markeres som færdig. Den lægges på sagen, så kontoret kan følge op.';
   if(!SpeechRecognitionCtor)document.querySelectorAll('#rw-report-modal .vr-mic-btn').forEach(b=>{b.style.display='none';});
+  document.querySelector('#rwr-submit-btn .req-submit-label').textContent=editOnly?'Gem ændringer i rapporten':'Gem rapport & markér som færdig →';
+  if(editOnly){
+    const r=await api('/api/rework-reports/by-booking/'+id);
+    const rep=r&&r.ok&&r.data?r.data.report:null;
+    if(rep){
+      rwrExisting=rep;
+      document.getElementById('rwr-done').value=rep.done_text||'';
+      document.getElementById('rwr-fu').value=rep.followup_text||'';
+      const v=rep.all_ok?'Ja':'Nej';document.querySelectorAll('input[name="rwr-ok"]').forEach(x=>{x.checked=x.value===v;});rwrToggle();
+      rwrPhotos=Array.isArray(rep.photo_urls)?rep.photo_urls.slice():[];
+    }
+  }
   rwrRenderGrid();
   document.getElementById('rw-report-modal').classList.add('open');
 }
@@ -1816,10 +1892,13 @@ async function submitRwReport(){
       urls.push(up.data.url);
     }
     lab.textContent='Gemmer…';
-    const r=await api('/api/rework-reports',{method:'POST',body:JSON.stringify({booking_id:id,done_text:done,all_ok:ok==='Ja',followup_text:fu,photo_urls:urls})});
+    const payload={booking_id:id,done_text:done,all_ok:ok==='Ja',followup_text:fu,photo_urls:rwrPhotos.concat(urls)};
+    const editing=!!rwrExisting;
+    const r=editing?await api('/api/rework-reports/'+rwrExisting.id,{method:'PUT',body:JSON.stringify(payload)}):await api('/api/rework-reports',{method:'POST',body:JSON.stringify(payload)});
     if(!r||!r.ok){fb.textContent=(r&&r.data&&r.data.error)||'Kunne ikke gemme — prøv igen';fb.className='req-feedback show error';return;}
-    const a=assignments.find(x=>+x.id===+id);if(a){a.completed_at=new Date().toISOString();}
-    closeRwReport();render();toast(ok==='Ja'?'Rapport gemt — opgaven er færdig ✓':'Rapport gemt — kontoret følger op ✓');
+    rwrFiles.length=0;rwrPreviews.length=0;
+    const a=assignments.find(x=>+x.id===+id);if(a&&!a.completed_at){a.completed_at=new Date().toISOString();}
+    closeRwReport();render();toast(editing?'Rapport opdateret ✓':(ok==='Ja'?'Rapport gemt — opgaven er færdig ✓':'Rapport gemt — kontoret følger op ✓'));
   }catch(err){fb.textContent=(err&&err.pmFriendly)?err.message:'Ingen forbindelse — prøv igen';fb.className='req-feedback show error';}
   finally{btn.disabled=false;lab.textContent=orig;}
 }
@@ -1924,8 +2003,10 @@ function render(){
       // melder kun DENNE dag færdig; "Opgaven er løst og slut" afslutter hele
       // opgaven (alle dage) efter dokumentations-tjeklisten. Kundebesøg beholder
       // ét flow med besøgsrapporten.
+      const editRepBtn=isDone&&a.is_visit?`<button class="action rep-edit-btn" type="button" style="grid-column:1/-1" onclick="openVisitReportModal(${noteId},'${esc(a.task_id)}',true)">📋 Ret / tilføj til besøgsrapport</button>`
+        :(isDone&&a.rework_id?`<button class="action rep-edit-btn" type="button" style="grid-column:1/-1" onclick="openRwReport(${noteId},true)">🔧 Ret / tilføj til rapport</button>`:'');
       const doneBtn=isDone
-        ?`<button class="action undone-btn" type="button" style="grid-column:1/-1" onclick="${a.completed_at&&!doneDates.length?`toggleTaskDone(${noteId},false)`:`markDayDone(${noteId},'${date}',false)`}">↩ Fortryd (${a.completed_at?'opgaven er markeret færdig':'færdig for i dag'})</button>`
+        ?editRepBtn+`<button class="action undone-btn" type="button" style="grid-column:1/-1" onclick="${a.completed_at&&!doneDates.length?`toggleTaskDone(${noteId},false)`:`markDayDone(${noteId},'${date}',false)`}">↩ Fortryd (${a.completed_at?'opgaven er markeret færdig':'færdig for i dag'})</button>`
         :(a.is_visit
           ?`<button class="action done-btn" type="button" style="grid-column:1/-1" onclick="openVisitReportModal(${noteId},'${esc(a.task_id)}')">✅ Mark as done</button>`
           :a.rework_id

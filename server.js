@@ -19201,6 +19201,34 @@ app.post('/api/rework-reports', auth, asyncRoute(async (req, res) => {
       `${who} har udfyldt rapport på ${sag}.` + (allOk ? ' Alt er i orden.' : ' Skal følges op: ' + followup), '#project-detail/' + rw.project_id);
   } catch (e) { console.error('Rapport-notifikation fejlede:', e.message); }
 }));
+app.get('/api/rework-reports/by-booking/:bookingId', auth, asyncRoute(async (req, res) => {
+  const r = await pgOne('SELECT * FROM rework_reports WHERE booking_id=$1 ORDER BY id DESC LIMIT 1', [Number(req.params.bookingId)]);
+  if (r && req.user.role !== 'admin' && +r.user_id !== +req.user.id) return res.status(403).json({ error: 'Ikke din rapport' });
+  res.json({ report: r || null });
+}));
+app.put('/api/rework-reports/:id', auth, asyncRoute(async (req, res) => {
+  const cur = await pgOne('SELECT * FROM rework_reports WHERE id=$1', [Number(req.params.id)]);
+  if (!cur) return res.status(404).json({ error: 'Rapporten blev ikke fundet' });
+  if (req.user.role !== 'admin' && +cur.user_id !== +req.user.id) return res.status(403).json({ error: 'Du kan kun rette dine egne rapporter' });
+  const b = req.body || {};
+  const doneText = String(b.done_text || '').trim().slice(0, 4000);
+  const allOk = b.all_ok === true || b.all_ok === 'Ja';
+  const followup = allOk ? null : (String(b.followup_text || '').trim().slice(0, 4000) || null);
+  if (!doneText) return res.status(400).json({ error: 'Skriv hvad der blev udført' });
+  if (!allOk && !followup) return res.status(400).json({ error: 'Skriv hvad der skal følges op på' });
+  const photos = (Array.isArray(b.photo_urls) ? b.photo_urls : []).filter(u => typeof u === 'string' && /^https?:\/\//.test(u)).slice(0, 40);
+  await pool.query('UPDATE rework_reports SET done_text=$1, all_ok=$2, followup_text=$3, photo_urls=$4 WHERE id=$5', [doneText, allOk, followup, JSON.stringify(photos), cur.id]);
+  const latest = await pgOne('SELECT id FROM rework_reports WHERE rework_id=$1 ORDER BY id DESC LIMIT 1', [cur.rework_id]);
+  if (latest && latest.id === cur.id) await pool.query(`UPDATE project_rework SET status=$1, updated_at=${nowTextSQL()} WHERE id=$2`, [allOk ? 'done' : 'followup', cur.rework_id]);
+  res.json({ ok: true });
+  if (!!cur.all_ok !== allOk) {
+    try {
+      const rw = await pgOne('SELECT title, project_id FROM project_rework WHERE id=$1', [cur.rework_id]);
+      const who = (await pgOne('SELECT name FROM users WHERE id=$1', [req.user.id]) || {}).name || 'Medarbejder';
+      if (rw) await createNotification('rework_report', allOk ? `🔧 Rettet: ${rw.title}` : `⚠️ Opfølgning: ${rw.title}`, `${who} har rettet rapporten.` + (allOk ? ' Alt er i orden.' : ' Skal følges op: ' + followup), '#project-detail/' + rw.project_id);
+    } catch (e) { console.error('Rapport-notifikation fejlede:', e.message); }
+  }
+}));
 app.put('/api/rework/:id', auth, panelAccessAny(['plan', 'projects']), asyncRoute(async (req, res) => {
   const cur = await pgOne('SELECT * FROM project_rework WHERE id=$1', [req.params.id]);
   if (!cur) return res.status(404).json({ error: 'Ikke fundet' });
@@ -19755,9 +19783,10 @@ app.delete('/api/projects/:id/time-entries/:entryId', auth, panelAccess('project
 // — det kræver stadig kontorets fulde redigeringsvej ovenfor.
 app.get('/api/time-entries/mine', auth, asyncRoute(async (req, res) => {
   const rows = await pool.query(`
-    SELECT te.*, p.name AS project_name
+    SELECT te.*, p.name AS project_name, ai.name AS akkord_name
     FROM time_entries te
     JOIN projects p ON p.id = te.project_id
+    LEFT JOIN akkord_items ai ON ai.id = te.akkord_item_id
     WHERE te.user_id = $1
     ORDER BY te.entry_date DESC, te.created_at DESC, te.id DESC
   `, [req.user.id]);
@@ -19772,13 +19801,29 @@ app.put('/api/time-entries/:entryId', auth, asyncRoute(async (req, res) => {
   }
   const b = req.body || {};
   const note = String(b.note || '').trim();
-  const minutes = Number(b.minutes);
+  const isAkkord = !!existing.akkord_item_id;
+  const minutes = b.minutes !== undefined ? Number(b.minutes) : Number(existing.minutes) || 0;
   if (!note) return res.status(400).json({ error: 'Skriv en note om det udførte arbejde' });
-  if (!minutes || minutes <= 0) return res.status(400).json({ error: 'Angiv hvor mange minutter der er brugt' });
+  if (!isAkkord && (!minutes || minutes <= 0)) return res.status(400).json({ error: 'Angiv hvor mange minutter der er brugt' });
   const entryDate = validDate(b.entry_date) ? b.entry_date : existing.entry_date;
-  await pool.query(`
-    UPDATE time_entries SET minutes=$1, note=$2, entry_date=$3, updated_at=${nowTextSQL()} WHERE id=$4
-  `, [Math.round(minutes), note, entryDate, req.params.entryId]);
+  // v2.95.1 — medarbejderen kan rette alt fra første registrering: billeder, post, fejl & mangler, materialer.
+  const sets = ['minutes=$1', 'note=$2', 'entry_date=$3'];
+  const vals = [Math.max(0, Math.round(minutes || 0)), note, entryDate];
+  if (Array.isArray(b.photo_urls)) {
+    const urls = b.photo_urls.filter(u => typeof u === 'string' && /^https?:\/\//.test(u)).slice(0, 30);
+    vals.push(JSON.stringify(urls)); sets.push('photo_urls=$' + vals.length);
+    vals.push(urls[0] || null); sets.push('photo_url=$' + vals.length);
+  }
+  if (b.bought_materials !== undefined) { vals.push(b.bought_materials ? String(b.bought_materials).slice(0, 500) : null); sets.push('bought_materials=$' + vals.length); }
+  if (b.quote_line_id !== undefined) { vals.push(Number(b.quote_line_id) || null); sets.push('quote_line_id=$' + vals.length); }
+  if (b.rework_id !== undefined) { vals.push(Number(b.rework_id) || null); sets.push('rework_id=$' + vals.length); }
+  if (isAkkord && b.akkord_quantity !== undefined) {
+    const q = Number(String(b.akkord_quantity).replace(',', '.'));
+    if (!q || q <= 0) return res.status(400).json({ error: 'Angiv et gyldigt antal' });
+    vals.push(q); sets.push('akkord_quantity=$' + vals.length);
+  }
+  vals.push(req.params.entryId);
+  await pool.query(`UPDATE time_entries SET ${sets.join(', ')}, updated_at=${nowTextSQL()} WHERE id=$${vals.length}`, vals);
   res.json({ ok: true });
 }));
 
