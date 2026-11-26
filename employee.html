@@ -232,7 +232,7 @@
 <body>
 <header class="topbar">
   <div class="brand"><span class="logo" id="tb-logo">🪵</span><span id="tb-name">Gulv Master</span></div>
-  <div class="topbar-actions" id="topbar-actions"><button class="lib-btn" onclick="openProjectsModal()"><span class="lib-btn-icon">🔍</span><span class="lib-btn-label"> Find projekt</span></button><button class="lib-btn" onclick="openRequestModal()"><span class="lib-btn-icon">🏖</span><span class="lib-btn-label"> Ferie</span></button><button class="lib-btn" onclick="openMyHours()"><span class="lib-btn-icon">⏱</span><span class="lib-btn-label"> Mine timer</span></button><a class="lib-btn" href="/noter" style="text-decoration:none" title="Dine noter og to-do-lister"><span class="lib-btn-icon">📝</span><span class="lib-btn-label"> Noter</span></a>
+  <div class="topbar-actions" id="topbar-actions"><button class="lib-btn" onclick="openProjectsModal()"><span class="lib-btn-icon">🔍</span><span class="lib-btn-label"> Find projekt</span></button><button class="lib-btn" onclick="openRequestModal()"><span class="lib-btn-icon">🏖</span><span class="lib-btn-label"> Ferie</span></button><button class="lib-btn" onclick="openMyHours()"><span class="lib-btn-icon">⏱</span><span class="lib-btn-label"> Mine timer</span></button><button class="lib-btn" onclick="openMyReports('visits')" title="Se og ret dine besøgsrapporter"><span class="lib-btn-icon">📋</span><span class="lib-btn-label"> Besøgsrapporter</span></button><button class="lib-btn" onclick="openMyReports('rework')" title="Se og ret dine rapporter fra fejl &amp; mangler"><span class="lib-btn-icon">🔧</span><span class="lib-btn-label"> Fejl &amp; mangler</span></button><a class="lib-btn" href="/noter" style="text-decoration:none" title="Dine noter og to-do-lister"><span class="lib-btn-icon">📝</span><span class="lib-btn-label"> Noter</span></a>
     <div style="position:relative;display:inline-block">
       <button class="lib-btn" id="notif-bell-btn" onclick="toggleNotifDropdown()"><span class="lib-btn-icon">🔔</span><span class="lib-btn-mobilelabel"> Notifikationer</span><span id="notif-bell-count" style="display:none;background:#EF4444;color:#fff;border-radius:999px;font-size:9px;font-weight:800;padding:1px 5px;margin-left:4px"></span></button>
       <div id="notif-dropdown" style="display:none;position:absolute;right:0;top:calc(100% + 6px);width:300px;max-height:360px;overflow:auto;background:#fff;border-radius:12px;box-shadow:0 12px 32px rgba(17,19,24,.25);z-index:500;color:#1a1a1a"></div>
@@ -265,6 +265,12 @@
   <div class="modal" style="width:min(520px,96vw)">
     <div class="modal-head"><div class="modal-title" id="pm-title">🔍 Find projekt</div><button class="modal-close" onclick="closeProjectsModal()">Close</button></div>
     <div class="modal-body" id="pm-body"></div>
+  </div>
+</div>
+<div id="my-reports-modal" class="modal-backdrop" onclick="if(event.target===this)closeMyReports()">
+  <div class="modal" style="width:min(560px,96vw)">
+    <div class="modal-head"><div class="modal-title" id="my-reports-title">📋 Mine besøgsrapporter</div><button class="modal-close" onclick="closeMyReports()">Luk</button></div>
+    <div class="modal-body" id="my-reports-body" style="max-height:74vh"></div>
   </div>
 </div>
 <div id="my-hours-modal" class="modal-backdrop" onclick="closeMyHoursOnBackdrop(event)">
@@ -1824,7 +1830,7 @@ async function submitVisitReportAndComplete(){
     vrNewPhotoPreviewUrls.length=0;
     const editOnly=visitReportEditOnly;
     closeVisitReportModal();
-    if(editOnly)toast('Besøgsrapport opdateret ✓');
+    if(editOnly){toast('Besøgsrapport opdateret ✓');myReportsRefresh();}
     else await toggleTaskDone(assignmentId,true,true,'Besøgsrapport udfyldt');
   }catch(err){
     feedback.textContent=(err&&err.pmFriendly)?err.message:'Ingen forbindelse — prøv igen';
@@ -1846,8 +1852,8 @@ function rwrAddPhotos(e){Array.from(e.target.files||[]).forEach(f=>{rwrFiles.pus
 function rwrRemovePhoto(i){try{URL.revokeObjectURL(rwrPreviews[i]);}catch(_){}rwrFiles.splice(i,1);rwrPreviews.splice(i,1);rwrRenderGrid();}
 function rwrOkVal(){const r=document.querySelector('input[name="rwr-ok"]:checked');return r?r.value:'';}
 function rwrToggle(){document.getElementById('rwr-w-fu').style.display=rwrOkVal()==='Nej'?'':'none';}
-async function openRwReport(id,editOnly){
-  const a=assignments.find(x=>+x.id===+id);if(!a)return;
+async function openRwReport(id,editOnly,title){
+  const a=assignments.find(x=>+x.id===+id)||{task_name:title||'Fejl & mangler'};
   rwrBookingId=id;rwrExisting=null;rwrPhotos=[];
   rwrFiles.length=0;rwrPreviews.forEach(u=>{try{URL.revokeObjectURL(u);}catch(_){}});rwrPreviews.length=0;
   document.getElementById('rwr-done').value='';document.getElementById('rwr-fu').value='';
@@ -1898,9 +1904,47 @@ async function submitRwReport(){
     if(!r||!r.ok){fb.textContent=(r&&r.data&&r.data.error)||'Kunne ikke gemme — prøv igen';fb.className='req-feedback show error';return;}
     rwrFiles.length=0;rwrPreviews.length=0;
     const a=assignments.find(x=>+x.id===+id);if(a&&!a.completed_at){a.completed_at=new Date().toISOString();}
-    closeRwReport();render();toast(editing?'Rapport opdateret ✓':(ok==='Ja'?'Rapport gemt — opgaven er færdig ✓':'Rapport gemt — kontoret følger op ✓'));
+    closeRwReport();render();myReportsRefresh();toast(editing?'Rapport opdateret ✓':(ok==='Ja'?'Rapport gemt — opgaven er færdig ✓':'Rapport gemt — kontoret følger op ✓'));
   }catch(err){fb.textContent=(err&&err.pmFriendly)?err.message:'Ingen forbindelse — prøv igen';fb.className='req-feedback show error';}
   finally{btn.disabled=false;lab.textContent=orig;}
+}
+// v2.95.2 — menu-knapperne "Besøgsrapporter" og "Fejl & mangler": se og ret det man har indberettet.
+let myReportsKind='visits',myReportsItems=[];
+async function openMyReports(kind){
+  myReportsKind=kind;
+  document.getElementById('my-reports-title').textContent=kind==='visits'?'📋 Mine besøgsrapporter':'🔧 Mine rapporter · fejl & mangler';
+  document.getElementById('my-reports-modal').classList.add('open');
+  await myReportsLoad();
+}
+function closeMyReports(){document.getElementById('my-reports-modal').classList.remove('open');}
+function myReportsRefresh(){if(document.getElementById('my-reports-modal').classList.contains('open'))myReportsLoad();}
+async function myReportsLoad(){
+  const body=document.getElementById('my-reports-body');
+  body.innerHTML='<p style="color:var(--muted)">Henter…</p>';
+  const r=await api('/api/my-reports/'+myReportsKind);
+  myReportsItems=r&&r.ok&&r.data&&Array.isArray(r.data.items)?r.data.items:[];
+  if(!myReportsItems.length){body.innerHTML='<p class="modal-empty">'+(myReportsKind==='visits'?'Du har ingen besøgsrapporter endnu.':'Du har ingen fejl &amp; mangler-opgaver endnu.')+'</p>';return;}
+  const pill=(bg,fg,t)=>`<span style="font-size:10.5px;font-weight:800;border-radius:999px;padding:2px 8px;background:${bg};color:${fg};white-space:nowrap">${t}</span>`;
+  body.innerHTML=myReportsItems.map((x,i)=>{
+    const d=esc(fmtPmDate(x.start_date));
+    if(myReportsKind==='visits'){
+      const st=x.submitted_at?pill('#DCFCE7','#15803D','✓ Udfyldt'):pill('#FEF3C7','#92400E','Mangler rapport');
+      return `<div class="file-item" style="cursor:pointer;align-items:flex-start" onclick="myReportsOpen(${i})">
+        <div style="min-width:0"><span class="file-cat">${d} · ${esc(x.customer_name||'Kundebesøg')}</span><br><span style="font-size:12px;color:var(--muted)">${esc(x.address||'')}</span>
+        ${x.notes?`<br><span style="font-size:12px">${esc(String(x.notes).slice(0,140))}</span>`:''}${Number(x.photos)?`<br><span style="font-size:11px;color:var(--muted)">📷 ${x.photos} billede${x.photos==1?'':'r'}</span>`:''}</div>
+        <div style="display:flex;flex-direction:column;gap:6px;align-items:flex-end;flex-shrink:0">${st}<button class="small-btn" type="button">✏️ ${x.submitted_at?'Ret':'Udfyld'}</button></div></div>`;
+    }
+    const st=!x.report_id?pill('#FEF3C7','#92400E','Mangler rapport'):(x.all_ok?pill('#DCFCE7','#15803D','✓ I orden'):pill('#FEF3C7','#92400E','Opfølgning'));
+    return `<div class="file-item" style="cursor:pointer;align-items:flex-start" onclick="myReportsOpen(${i})">
+      <div style="min-width:0"><span class="file-cat">${d} · ${esc(x.project_name||'Sag')}</span><br><span style="font-size:12px;font-weight:700">🔧 ${esc(x.title||'')}</span>
+      ${x.done_text?`<br><span style="font-size:12px">${esc(String(x.done_text).slice(0,140))}</span>`:''}${x.report_id&&!x.all_ok&&x.followup_text?`<br><span style="font-size:12px;color:#92400E">Opfølgning: ${esc(String(x.followup_text).slice(0,120))}</span>`:''}${Number(x.photos)?`<br><span style="font-size:11px;color:var(--muted)">📷 ${x.photos} billede${x.photos==1?'':'r'}</span>`:''}</div>
+      <div style="display:flex;flex-direction:column;gap:6px;align-items:flex-end;flex-shrink:0">${st}<button class="small-btn" type="button">✏️ ${x.report_id?'Ret':'Udfyld'}</button></div></div>`;
+  }).join('');
+}
+function myReportsOpen(i){
+  const x=myReportsItems[i];if(!x)return;
+  if(myReportsKind==='visits')openVisitReportModal(x.booking_id,x.task_id,true);
+  else openRwReport(x.booking_id,true,'🔧 '+(x.title||''));
 }
 async function confirmDocumentationAndComplete(){
   const feedback=document.getElementById('doc-feedback');

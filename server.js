@@ -19201,6 +19201,29 @@ app.post('/api/rework-reports', auth, asyncRoute(async (req, res) => {
       `${who} har udfyldt rapport på ${sag}.` + (allOk ? ' Alt er i orden.' : ' Skal følges op: ' + followup), '#project-detail/' + rw.project_id);
   } catch (e) { console.error('Rapport-notifikation fejlede:', e.message); }
 }));
+// v2.95.2 — medarbejderens egne indberetninger (menu-knapperne i employee-appen).
+app.get('/api/my-reports/visits', auth, asyncRoute(async (req, res) => {
+  const r = await pool.query(`SELECT b.id AS booking_id, b.task_id, b.start_date, b.completed_at,
+      COALESCE(NULLIF(cv.customer_name,''), t.job_name) AS customer_name, COALESCE(NULLIF(cv.address,''), t.job_address) AS address,
+      cv.submitted_at, cv.updated_at, cv.notes, COALESCE(jsonb_array_length(cv.photo_urls),0) AS photos, cv.visit_type
+    FROM planning_bookings b JOIN jt_tasks t ON t.id=b.task_id AND t.is_visit=1
+    LEFT JOIN customer_visits cv ON cv.task_id=b.task_id
+    WHERE b.user_id=$1 AND (b.completed_at IS NOT NULL OR cv.submitted_at IS NOT NULL)
+    ORDER BY b.start_date DESC, b.id DESC LIMIT 200`, [req.user.id]);
+  res.json({ items: r.rows });
+}));
+app.get('/api/my-reports/rework', auth, asyncRoute(async (req, res) => {
+  const r = await pool.query(`SELECT b.id AS booking_id, b.task_id, b.start_date, b.completed_at, rw.id AS rework_id, rw.title, rw.status,
+      p.name AS project_name, p.job_number, t.job_address AS address,
+      rr.id AS report_id, rr.done_text, rr.all_ok, rr.followup_text, COALESCE(jsonb_array_length(rr.photo_urls),0) AS photos, rr.created_at AS report_at
+    FROM planning_bookings b JOIN project_rework rw ON rw.gantt_task_id=b.task_id
+    LEFT JOIN projects p ON p.id=rw.project_id
+    LEFT JOIN jt_tasks t ON t.id=b.task_id
+    LEFT JOIN LATERAL (SELECT * FROM rework_reports x WHERE x.booking_id=b.id ORDER BY x.id DESC LIMIT 1) rr ON true
+    WHERE b.user_id=$1 AND (b.completed_at IS NOT NULL OR rr.id IS NOT NULL OR b.start_date <= to_char(CURRENT_DATE,'YYYY-MM-DD'))
+    ORDER BY b.start_date DESC, b.id DESC LIMIT 200`, [req.user.id]);
+  res.json({ items: r.rows });
+}));
 app.get('/api/rework-reports/by-booking/:bookingId', auth, asyncRoute(async (req, res) => {
   const r = await pgOne('SELECT * FROM rework_reports WHERE booking_id=$1 ORDER BY id DESC LIMIT 1', [Number(req.params.bookingId)]);
   if (r && req.user.role !== 'admin' && +r.user_id !== +req.user.id) return res.status(403).json({ error: 'Ikke din rapport' });
