@@ -5787,6 +5787,7 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
 .tp-fchip:hover{border-color:#C7D2FE}.tp-fchip.on{background:#111827;border-color:#111827;color:#fff}.tp-fchip.on span{color:#D1D5DB}
 .tp-pane{overflow-x:auto;overflow-y:hidden;scrollbar-width:thin}.tp-head{overflow-x:hidden;background:#FAFAFB;border-bottom:1px solid #E5E7EB;border-top:1px solid #EEF0F3}
 .tp-card>.tp-head:first-child{border-top:0}
+.tp-card>.tp-head{position:sticky;top:var(--gm-hdr,0px);z-index:18;box-shadow:0 4px 8px -6px rgba(16,24,40,.18)}
 .tp-gantt{max-height:44vh;overflow-y:auto}
 .tp-inner{position:relative}
 .tp-row{display:flex;border-top:1px solid #F1F2F4}
@@ -5922,9 +5923,9 @@ body.tp-dragging,body.tp-dragging *{cursor:grabbing!important}
 .vk-bk{border:1px solid #E4E4E7;background:#fff;border-radius:10px;padding:8px 13px;font-size:13px;font-weight:650;cursor:pointer;color:#18181B}
 .vk-bk:hover{border-color:#A1A1AA}.vk-bk.pri{background:#18181B;color:#fff;border-color:#18181B}
 .vk-wrap{display:flex;gap:14px;align-items:flex-start}
-.vk-grid{flex:1;min-width:0;overflow:auto;background:#fff;border:1px solid #EEF0F3;border-radius:14px;padding:6px 10px 10px}
+.vk-grid{flex:1;min-width:0;overflow:auto;background:#fff;border:1px solid #EEF0F3;border-radius:14px;padding:0 10px 10px;max-height:calc(100vh - var(--gm-hdr,64px) - 24px)}
 .vk-row{display:grid;grid-template-columns:190px repeat(var(--vk-n),minmax(74px,1fr));gap:4px;align-items:start;padding:3px 0}
-.vk-hd{position:sticky;top:0;background:#fff;z-index:2;border-bottom:1px solid #F0F0F2;padding-bottom:6px}
+.vk-hd{position:sticky;top:0;background:#fff;z-index:6;border-bottom:1px solid #F0F0F2;padding:6px 0;box-shadow:0 4px 8px -6px rgba(16,24,40,.18)}
 .vk-wk{text-align:center;font-size:11px;color:#71717A}.vk-wk b{display:block;font-size:12px;color:#18181B}.vk-wk.now b{color:#4F46E5}
 .vk-grp{font-size:10.5px;font-weight:800;text-transform:uppercase;letter-spacing:.05em;color:#71717A;margin:10px 0 2px}.vk-grp span{color:#A1A1AA}
 .vk-nm{display:flex;align-items:center;gap:8px;min-width:0;padding-top:4px}.vk-nm b{display:block;font-size:12.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.vk-nm small{font-size:10.5px;color:#A1A1AA}
@@ -6251,7 +6252,7 @@ body.tp-dragging,body.tp-dragging *{cursor:grabbing!important}
        i browseren faktisk ER det nyeste deploy, eller om Render/GitHub bare
        ikke er nået at opdatere endnu — i stedet for at skulle gætte om en
        rettelse "stadig ikke virker" eller bare endnu ikke er live. -->
-  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build v2.95.2 · 2026-11-02</span></div>
+  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build v2.95.3 · 2026-11-02</span></div>
 </aside>
 <div class="app-content">
 <!-- RUNDE FB — AI-ASSISTENTEN (Martin: "en ai der er nede i venstre hjørne af
@@ -14786,6 +14787,10 @@ function tpRender(){
   var gp=boardEl.querySelector('#tp-gantt');if(gp)gp.scrollTop=gy;
   TP.col=col;TP.days=days;
 }
+// v2.95.3 — ugedagene bliver i toppen når man scroller (Testplan + Varmekort): mål den faste topbar.
+(function(){function m(){var h=document.querySelector('.app-header-sticky');if(!h)return;var b=h.getBoundingClientRect();var v=getComputedStyle(h).position==='fixed'||getComputedStyle(h).position==='sticky'?Math.round(b.height):0;document.documentElement.style.setProperty('--gm-hdr',v+'px');}
+  window.addEventListener('resize',m);document.addEventListener('DOMContentLoaded',m);setTimeout(m,300);setTimeout(m,1500);
+  try{new ResizeObserver(m).observe(document.querySelector('.app-header-sticky'));}catch(_){}})();
 window.addEventListener('resize',function(){if(document.getElementById('page-testplan')&&document.getElementById('page-testplan').classList.contains('active')){clearTimeout(TP._rz);TP._rz=setTimeout(tpRender,150);}});
 function tpShift(dir){var z=TP_ZOOM[TP.zoom]||TP_ZOOM.month;var step=Math.max(1,Math.round(z.weeks/2));TP.start=add(TP.start,dir*step*7);tpRender();}
 function tpDateAt(track,clientX){var r=track.getBoundingClientRect(),i=Math.floor((clientX-r.left)/TP.col);i=Math.max(0,Math.min(TP.days.length-1,i));return TP.days[i];}
