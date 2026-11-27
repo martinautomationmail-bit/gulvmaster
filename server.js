@@ -5769,6 +5769,17 @@ async function fillQuoteCustomerFromContact(quoteId) {
   const r = await pool.query(`UPDATE quotes SET customer_id=COALESCE(customer_id,$2), customer_address=COALESCE(NULLIF(customer_address,''),$3) WHERE id=$1`, [q.id, c.id, c.address || null]);
   return r.rowCount > 0;
 }
+// v2.95.5 — Martin: "opdele vvs og eletriker da vi begynder at have flere ude". Fagene er fri tekst
+// på brugeren, og Testplan/Kapacitet grupperer efter teksten — så de deles op her.
+async function migrateSplitVvsEl20261127() {
+  try {
+    const name = 'split_vvs_el_20261127';
+    if (await pgOne('SELECT 1 FROM app_migrations WHERE name=$1', [name])) return;
+    const el = (await pool.query("UPDATE users SET trade='Elektriker' WHERE trade ILIKE 'eletrik%' OR trade ILIKE 'elektrik%' OR (trade='VVS / El' AND (name ILIKE '%elektri%' OR name ILIKE '%eletri%')) RETURNING id, name")).rows;
+    const vvs = (await pool.query("UPDATE users SET trade='VVS' WHERE trade='VVS / El' RETURNING id, name")).rows;
+    await pool.query('INSERT INTO app_migrations (name, details) VALUES ($1, $2)', [name, JSON.stringify({ el, vvs })]);
+  } catch (e) { console.error('migrateSplitVvsEl20261127 fejlede:', e.message); }
+}
 async function migrateQuoteMissingAddress20261125() {
   try {
     const name = 'quote_missing_address_20261125';
@@ -31456,6 +31467,7 @@ async function start() {
   migrateAddressSync20261118();
   migrateInvoiceFixedDiscount20261123();
   migrateQuoteMissingAddress20261125();
+  migrateSplitVvsEl20261127();
   migrateCapacityToTestplan20261125().then(convertCapacityRowsToTestplan);
   migrateProfitSnapshotFormula2();
   await backfillBankUploadHistory();
