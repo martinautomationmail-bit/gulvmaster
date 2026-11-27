@@ -6266,7 +6266,7 @@ body.tp-dragging,body.tp-dragging *{cursor:grabbing!important}
        i browseren faktisk ER det nyeste deploy, eller om Render/GitHub bare
        ikke er nået at opdatere endnu — i stedet for at skulle gætte om en
        rettelse "stadig ikke virker" eller bare endnu ikke er live. -->
-  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build v2.95.7 · 2026-11-02</span></div>
+  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build v2.95.8 · 2026-11-02</span></div>
 </aside>
 <div class="app-content">
 <!-- RUNDE FB — AI-ASSISTENTEN (Martin: "en ai der er nede i venstre hjørne af
@@ -14674,9 +14674,10 @@ function tpRender(){
   var tplNames={};
   TP.bk.forEach(function(b){var m=tpl[b.user_id];if(!m||tpIsV(b.gantt_task_id))return;var t=tpTask(b.gantt_task_id),nm=t?(t.project_name||'')+' – '+String(t.name||'').split('\n')[0]:'Opgave';tpBkDates(b).forEach(function(x){m[x.ds]=(m[x.ds]||0)+x.f;var k=b.user_id+':'+x.ds;(tplNames[k]=tplNames[k]||[]).push(nm);});});
   var realNames={};
-  var tpPl={};TP.bk.forEach(function(b){tpPl[String(b.gantt_task_id)]=1;}); // opgave lagt i testplan → dens rigtige booking tælles ikke dobbelt
+  var tpPl={};TP.bk.forEach(function(b){var k=String(b.gantt_task_id),o=tpPl[k]=tpPl[k]||{};tpBkDates(b).forEach(function(x){o[x.ds]=1;});}); // opgave lagt i testplan → dens rigtige booking tælles ikke dobbelt
+  function tpPlOver(b){var o=tpPl[String(b.task_id)];if(!o)return false;return planWorkDates(b).some(function(ds){return o[ds];});} // v2.95.8: kun hvis datoerne overlapper (delvis overført opgave)
   var visits={},tpVOver={};TP.bk.forEach(function(b){if(tpIsV(b.gantt_task_id))tpVOver[String(b.gantt_task_id).slice(2)]=1;});
-  if(TP.showReal)bookings.forEach(function(b){if(isCapacityBooking(b))return;var m=real[b.user_id];if(!m)return;if(b.is_visit){if(idx[String(b.start_date).slice(0,10)]!==undefined&&!tpVOver[String(b.task_id)])(visits[b.user_id]=visits[b.user_id]||[]).push(b);return;}if(tpPl[String(b.task_id)])return;var w=planWorkDates(b).filter(function(ds){return idx[ds]!==undefined;});if(!w.length)return;var all=planWorkDates(b).filter(function(ds){return tpIsWork(date(ds));}),per=Math.min(1,(+b.days||all.length)/Math.max(1,all.length));w.forEach(function(ds){m[ds]=(m[ds]||0)+per;var k=b.user_id+':'+ds;(realNames[k]=realNames[k]||[]).push(b.job_name||b.task_name||'Opgave');});});
+  if(TP.showReal)bookings.forEach(function(b){if(isCapacityBooking(b))return;var m=real[b.user_id];if(!m)return;if(b.is_visit){if(idx[String(b.start_date).slice(0,10)]!==undefined&&!tpVOver[String(b.task_id)])(visits[b.user_id]=visits[b.user_id]||[]).push(b);return;}if(tpPlOver(b))return;var w=planWorkDates(b).filter(function(ds){return idx[ds]!==undefined;});if(!w.length)return;var all=planWorkDates(b).filter(function(ds){return tpIsWork(date(ds));}),per=Math.min(1,(+b.days||all.length)/Math.max(1,all.length));w.forEach(function(ds){m[ds]=(m[ds]||0)+per;var k=b.user_id+':'+ds;(realNames[k]=realNames[k]||[]).push(b.job_name||b.task_name||'Opgave');});});
   function used(u,ds){return (timeOffFor(u.id,ds)?1:0)+(real[u.id][ds]||0)+(tpl[u.id][ds]||0);}
   TP._real=real;TP._tpl=tpl;TP._first=first;TP._last=last;
   // ── hoved ──
@@ -14749,7 +14750,7 @@ function tpRender(){
     });
     // v2.95.7 — rigtige bookinger fra Daglig plan tegnes også (lys bar med ✓), så en overført uge ikke ser tom ud.
     if(TP.showReal)bookings.forEach(function(b){
-      if(+b.user_id!==+u.id||isCapacityBooking(b)||b.is_visit||tpPl[String(b.task_id)])return;
+      if(+b.user_id!==+u.id||isCapacityBooking(b)||b.is_visit||tpPlOver(b))return;
       var w=planWorkDates(b).filter(function(ds){return tpIsWork(date(ds));});if(!w.length)return;
       var a=colOf(w[0]),bb=colOf(w[w.length-1])+1;if(bb<=0||a>=N)return;
       var t=tpTask(b.task_id)||{project_name:b.job_name||'',name:b.task_name||'Opgave'};if(!tpQHit(t))return;
@@ -15297,12 +15298,13 @@ function tpcOpen(){
   var m=document.getElementById('tpc-modal');if(!m){m=document.createElement('div');m.className='mo';m.id='tpc-modal';document.body.appendChild(m);}
   var byW={};list.forEach(function(b){bkWeeks(b).forEach(function(k){(byW[k]=byW[k]||[]).push(b);});});
   var weeksH=Object.keys(byW).sort().map(function(k){var arr=byW[k],ppl={};arr.forEach(function(b){var u=users.find(function(x){return +x.id===+b.user_id;});if(u)ppl[u.name.split(' ')[0]]=1;});
-    var d=date(k),e=add(d,5),days=arr.reduce(function(n,b){return n+(Number(b.days)||0);},0);
+    function inWk(b){var ds=(tpBkDates(b)||[]).filter(function(x){return iso(mon(date(x.ds)))===k;});return {n:ds.reduce(function(s,x){return s+x.f;},0),from:ds.length?ds[0].ds:String(b.start_date).slice(0,10)};}
+    var d=date(k),e=add(d,5),days=arr.reduce(function(n,b){return n+inWk(b).n;},0);
     return '<div class="tpc-wk" data-tpc-card="'+k+'"><label class="tpc-wh"><input type="checkbox" data-tpc-wk="'+k+'"><span class="tpc-wt"><b>Uge '+weekNo(d)+'</b><small>'+d.getDate()+'/'+(d.getMonth()+1)+' – '+e.getDate()+'/'+(e.getMonth()+1)+'</small></span>'
       +'<span class="tpc-wm">'+arr.length+' opgave'+(arr.length===1?'':'r')+' · '+String(Math.round(days*10)/10).replace('.',',')+' dage · '+esc(Object.keys(ppl).join(', '))+'</span><button type="button" class="tpc-more" data-tpc-more="'+k+'">Vælg enkelte ▾</button></label>'
       +'<div class="tpc-items" hidden>'+arr.map(function(b){var t=TP.taskById[String(b.gantt_task_id)]||{},u=users.find(function(x){return +x.id===+b.user_id;});
-        return '<label class="tpc-it"><input type="checkbox" data-tpc="'+b.id+'" data-tpc-in="'+k+'"><span>'+esc((t.project_name||'')+' · '+String(t.name||'').split('\n')[0])+'</span><small>'+esc(u?u.name.split(' ')[0]:'')+' · '+String(b.days).replace('.',',')+'d · fra '+esc(pdxDate(String(b.start_date).slice(0,10)))+'</small></label>';}).join('')+'</div></div>';}).join('');
-  m.innerHTML='<div class="modal tpc-modal"><div class="tpc-h"><div><h3>Overfør til Daglig plan</h3><p>Vælg de uger, der er klar. De valgte opgaver bliver rigtige bookinger, medarbejderne får besked, og de forsvinder fra Testplan-kladden.</p></div><button type="button" class="tpc-x" data-tpc-x>✕</button></div>'
+        return '<label class="tpc-it"><input type="checkbox" data-tpc="'+b.id+'" data-tpc-in="'+k+'"><span>'+esc((t.project_name||'')+' · '+String(t.name||'').split('\n')[0])+'</span><small>'+esc(u?u.name.split(' ')[0]:'')+' · '+(function(){var w=inWk(b),tot=+b.days||1;return String(Math.round(w.n*10)/10).replace('.',',')+(w.n<tot?' af '+String(tot).replace('.',',')+' d i ugen':'d')+' · fra '+esc(pdxDate(w.from));})()+'</small></label>';}).join('')+'</div></div>';}).join('');
+  m.innerHTML='<div class="modal tpc-modal"><div class="tpc-h"><div><h3>Overfør til Daglig plan</h3><p>Vælg de uger, der er klar. De valgte opgaver bliver rigtige bookinger, og medarbejderne får besked. Går en opgave hen over et ugeskift, bookes kun dagene i de valgte uger — resten bliver i Testplan.</p></div><button type="button" class="tpc-x" data-tpc-x>✕</button></div>'
     +(list.length?'<div class="tpc-list">'+weeksH+'</div>':'<div class="tpc-empty">Der er ingen kommende opgaver i Testplan.</div>')
     +'<div class="tpc-f"><span id="tpc-sum">Intet valgt</span><button type="button" class="btn" data-tpc-x>Annullér</button><button type="button" class="btn primary" data-tpc-go disabled>Overfør</button></div></div>';
   m.classList.add('open');
@@ -15321,9 +15323,10 @@ document.addEventListener('click',async function(e){
   if(e.target===m||e.target.closest('[data-tpc-x]')){m.classList.remove('open');return;}
   var mo=e.target.closest('[data-tpc-more]');if(mo){e.preventDefault();var box=mo.closest('.tpc-wk').querySelector('.tpc-items');box.hidden=!box.hidden;mo.textContent=box.hidden?'Vælg enkelte ▾':'Skjul ▴';return;}
   if(e.target.closest('[data-tpc-go]')){
-    var ids=Object.keys([].reduce.call(m.querySelectorAll('input[data-tpc]:checked'),function(o,c){o[c.getAttribute('data-tpc')]=1;return o;},{})).map(Number);if(!ids.length)return;
+    var wk={};m.querySelectorAll('input[data-tpc]:checked').forEach(function(c){var id=c.getAttribute('data-tpc');(wk[id]=wk[id]||[]).push(c.getAttribute('data-tpc-in'));});
+    var parts=Object.keys(wk).map(function(id){return {id:+id,weeks:wk[id]};});if(!parts.length)return;
     var g=e.target.closest('[data-tpc-go]');g.disabled=true;g.textContent='Overfører…';
-    var r=await api('/api/testplan/commit',{method:'POST',body:JSON.stringify({ids:ids})});
+    var r=await api('/api/testplan/commit',{method:'POST',body:JSON.stringify({parts:parts})});
     m.classList.remove('open');
     if(r&&r.ok){toast(r.created+' overført til Daglig plan'+(r.failed&&r.failed.length?' · '+r.failed.length+' fejlede':''),'✅');if(typeof loadAll==='function')await loadAll();await tpInit();}
     else toast((r&&r.error)||'Kunne ikke overføre','❌');
@@ -15331,8 +15334,7 @@ document.addEventListener('click',async function(e){
 });
 document.addEventListener('change',function(e){
   var m=document.getElementById('tpc-modal');if(!m||!e.target.closest||!e.target.closest('#tpc-modal'))return;
-  var w=e.target.closest('[data-tpc-wk]');if(w)m.querySelectorAll('[data-tpc-in="'+w.getAttribute('data-tpc-wk')+'"]').forEach(function(c){c.checked=w.checked;m.querySelectorAll('input[data-tpc="'+c.getAttribute('data-tpc')+'"]').forEach(function(o){o.checked=w.checked;});});
-  var it=e.target.closest('input[data-tpc]');if(it)m.querySelectorAll('input[data-tpc="'+it.getAttribute('data-tpc')+'"]').forEach(function(o){o.checked=it.checked;});
+  var w=e.target.closest('[data-tpc-wk]');if(w)m.querySelectorAll('[data-tpc-in="'+w.getAttribute('data-tpc-wk')+'"]').forEach(function(c){c.checked=w.checked;});
   tpcSync();
 });
 function capBookingOutOfSync(b){

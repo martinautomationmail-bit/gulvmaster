@@ -19317,19 +19317,48 @@ app.post('/api/testplan/bookings', auth, panelAccess('plan'), asyncRoute(async (
 // v2.93.0 — "Overfør til Daglig plan": Testplan-kladden bliver til rigtige bookinger (planning_bookings),
 // samme vej som en normal booking (normalizeBooking). Kladden slettes bagefter. Én samlet besked pr. medarbejder.
 app.post('/api/testplan/commit', auth, panelAccess('plan'), asyncRoute(async (req, res) => {
-  const ids = Array.isArray((req.body || {}).ids) ? req.body.ids.map(Number).filter(Boolean).slice(0, 300) : [];
+  // v2.95.8 — "parts": [{id, weeks:['YYYY-MM-DD' (mandag), ...]}]. En opgave der går hen over et ugeskift
+  // overføres kun med de dage der ligger i de valgte uger; resten bliver liggende i Testplan.
+  const body = req.body || {};
+  const weeksById = {};
+  if (Array.isArray(body.parts)) body.parts.slice(0, 300).forEach(pt => { const id = Number(pt && pt.id); if (id && Array.isArray(pt.weeks)) weeksById[id] = pt.weeks.filter(validDate); });
+  const ids = (Array.isArray(body.ids) ? body.ids.map(Number) : []).concat(Object.keys(weeksById).map(Number)).filter(Boolean).filter((v, i, a) => a.indexOf(v) === i).slice(0, 300);
   if (!ids.length) return res.status(400).json({ error: 'Vælg mindst én opgave' });
   const rows = (await pool.query('SELECT * FROM testplan_bookings WHERE id = ANY($1::int[]) ORDER BY start_date', [ids])).rows;
+  const dOf = s => new Date(String(s).slice(0, 10) + 'T12:00:00Z');
+  const isoD = d => d.toISOString().slice(0, 10);
+  const nextWork = d => { d = new Date(d); while (d.getUTCDay() === 0) d.setUTCDate(d.getUTCDate() + 1); return d; };
+  const monOf = ds => { const d = dOf(ds); d.setUTCDate(d.getUTCDate() - ((d.getUTCDay() + 6) % 7)); return isoD(d); };
+  const tpDates = tb => { const out = []; let d = nextWork(dOf(tb.start_date)), left = Math.max(0.5, Number(tb.days) || 1); while (left > 0) { out.push({ ds: isoD(d), f: Math.min(1, left) }); left -= 1; d.setUTCDate(d.getUTCDate() + 1); d = nextWork(d); } return out; };
+  const runs = (list, pick) => { const r = []; let cur = null; list.forEach(x => { const sel = pick(x); if (!cur || cur.sel !== sel) { cur = { sel, items: [] }; r.push(cur); } cur.items.push(x); }); return r; };
   let created = 0; const failed = [], perUser = {};
+  async function makeDaily(tb, start, days) {
+    const booking = await normalizeBooking({ task_id: tb.gantt_task_id, user_id: tb.user_id, start_date: start, days, notes: tb.note || undefined }, true);
+    await pool.query(`INSERT INTO planning_bookings (task_id,user_id,week_key,days,capacity_days,notes,note_link,note_attachments,start_time,start_date,end_date,updated_at)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,${nowTextSQL()})`,
+      [booking.task_id, booking.user_id, booking.week_key, booking.days, booking.capacity_days, booking.notes, booking.note_link, booking.note_attachments, booking.start_time, booking.start_date, booking.end_date]);
+    created++; perUser[tb.user_id] = (perUser[tb.user_id] || 0) + 1;
+  }
   for (const tb of rows) {
     if (String(tb.gantt_task_id || '').startsWith('v:')) { failed.push({ id: tb.id, error: 'Kundebesøg overføres i Kundebesøg' }); continue; }
     try {
-      const booking = await normalizeBooking({ task_id: tb.gantt_task_id, user_id: tb.user_id, start_date: tb.start_date, days: Number(tb.days) || 1, notes: tb.note || undefined }, true);
-      await pool.query(`INSERT INTO planning_bookings (task_id,user_id,week_key,days,capacity_days,notes,note_link,note_attachments,start_time,start_date,end_date,updated_at)
-        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,${nowTextSQL()})`,
-        [booking.task_id, booking.user_id, booking.week_key, booking.days, booking.capacity_days, booking.notes, booking.note_link, booking.note_attachments, booking.start_time, booking.start_date, booking.end_date]);
-      await pool.query('DELETE FROM testplan_bookings WHERE id=$1', [tb.id]);
-      created++; perUser[tb.user_id] = (perUser[tb.user_id] || 0) + 1;
+      const wk = weeksById[tb.id];
+      const all = tpDates(tb);
+      const pick = x => !wk || wk.includes(monOf(x.ds));
+      if (!all.some(pick)) continue;
+      if (all.every(pick)) {
+        await makeDaily(tb, tb.start_date, Number(tb.days) || 1);
+        await pool.query('DELETE FROM testplan_bookings WHERE id=$1', [tb.id]);
+        continue;
+      }
+      // delvis: valgte dage → Daglig plan, resten → Testplan (første rest-del genbruger rækken)
+      let reused = false;
+      for (const r of runs(all, pick)) {
+        const days = Math.round(r.items.reduce((n, x) => n + x.f, 0) * 100) / 100;
+        if (r.sel) await makeDaily(tb, r.items[0].ds, days);
+        else if (!reused) { await pool.query(`UPDATE testplan_bookings SET start_date=$1, days=$2, updated_at=${nowTextSQL()} WHERE id=$3`, [r.items[0].ds, days, tb.id]); reused = true; }
+        else await pool.query('INSERT INTO testplan_bookings (gantt_task_id, user_id, start_date, days, note, created_by) VALUES ($1,$2,$3,$4,$5,$6)', [tb.gantt_task_id, tb.user_id, r.items[0].ds, days, tb.note, req.user.id]);
+      }
     } catch (e) { failed.push({ id: tb.id, error: e.message }); }
   }
   for (const uid of Object.keys(perUser)) {
