@@ -5823,7 +5823,9 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
 .tp-av{width:30px;height:30px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:800;flex:none}
 .tp-g,.tp-b{position:absolute;height:28px;border-radius:8px;color:#fff;font-size:12px;font-weight:600;padding:0 9px;line-height:28px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;cursor:grab;transition:filter .12s,box-shadow .12s}
 .tp-g:hover,.tp-b:hover{filter:brightness(1.06);box-shadow:0 3px 10px rgba(16,24,40,.18)}
-.tp-b{box-shadow:0 1px 3px rgba(16,24,40,.18)}.tp-b::after{content:'';position:absolute;right:0;top:0;bottom:0;width:8px;cursor:ew-resize}
+.tp-b{box-shadow:0 1px 3px rgba(16,24,40,.18)}
+.tp-real{position:absolute;height:28px;border-radius:8px;font-size:12px;font-weight:700;padding:0 9px;line-height:25px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;cursor:pointer;color:#1F2937;border:1.5px solid var(--rc,#2563EB);box-sizing:border-box}
+.tp-real:hover{filter:brightness(.96);box-shadow:0 1px 4px rgba(16,24,40,.15)}.tp-b::after{content:'';position:absolute;right:0;top:0;bottom:0;width:8px;cursor:ew-resize}
 .tp-b:hover::after{background:rgba(255,255,255,.3)}
 .cutl{border-top-left-radius:0;border-bottom-left-radius:0}.cutr{border-top-right-radius:0;border-bottom-right-radius:0}
 .tp-busy{position:absolute;top:0;bottom:0;background:#ECEEF2}.tp-busy.off{background:repeating-linear-gradient(-45deg,#ECEEF2,#ECEEF2 4px,#F7F8FA 4px,#F7F8FA 8px)}
@@ -6264,7 +6266,7 @@ body.tp-dragging,body.tp-dragging *{cursor:grabbing!important}
        i browseren faktisk ER det nyeste deploy, eller om Render/GitHub bare
        ikke er nået at opdatere endnu — i stedet for at skulle gætte om en
        rettelse "stadig ikke virker" eller bare endnu ikke er live. -->
-  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build v2.95.6 · 2026-11-02</span></div>
+  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build v2.95.7 · 2026-11-02</span></div>
 </aside>
 <div class="app-content">
 <!-- RUNDE FB — AI-ASSISTENTEN (Martin: "en ai der er nede i venstre hjørne af
@@ -14745,6 +14747,14 @@ function tpRender(){
       var capD=(+u.weekly_capacity||5)/5,clash=ds.filter(function(x){return (timeOffFor(u.id,x.ds)?1:0)+(real[u.id][x.ds]||0)+(tpl[u.id][x.ds]||0)>capD+0.25;}).map(function(x){return x.ds;});
       items.push({a:a,b:bb,bk:b,t:t,crew:crew,clash:clash});
     });
+    // v2.95.7 — rigtige bookinger fra Daglig plan tegnes også (lys bar med ✓), så en overført uge ikke ser tom ud.
+    if(TP.showReal)bookings.forEach(function(b){
+      if(+b.user_id!==+u.id||isCapacityBooking(b)||b.is_visit||tpPl[String(b.task_id)])return;
+      var w=planWorkDates(b).filter(function(ds){return tpIsWork(date(ds));});if(!w.length)return;
+      var a=colOf(w[0]),bb=colOf(w[w.length-1])+1;if(bb<=0||a>=N)return;
+      var t=tpTask(b.task_id)||{project_name:b.job_name||'',name:b.task_name||'Opgave'};if(!tpQHit(t))return;
+      items.push({a:a,b:bb,real:b,t:t});
+    });
     (visits[u.id]||[]).forEach(function(v){if(tpQ&&String((v.job_name||'')+' '+(v.task_name||'')+' kundebesøg').toLowerCase().indexOf(tpQ)<0)return;var a=idx[String(v.start_date).slice(0,10)],tm=bookingTimeOn(v,String(v.start_date).slice(0,10));vm+='<div class="tp-g tp-vm" data-tp-task="v:'+esc(v.task_id)+'" style="left:'+(a*col+2)+'px;width:'+Math.max(18,col-4)+'px">'+(col>=38&&tm?'📅'+esc(tm):'📅')+'</div>';});
     if(tpQ&&!items.length&&!vm)return;
     tpQShown++;
@@ -14773,7 +14783,7 @@ function tpRender(){
     }
     var c=u.color||'#2563EB';
     eh+='<div class="tp-row tp-emp" data-tp-uid="'+u.id+'" style="height:'+h+'px"><div class="tp-lbl"><span class="tp-av" style="background:'+c+'1f;color:'+c+'">'+esc(u.initials||u.name.slice(0,2))+'</span><div class="tp-name"><b>'+esc(u.name)+'</b><small>'+esc(u.trade||(u.worker_type==='vendor'?'Vendor':'Medarbejder'))+'</small></div></div><div class="tp-track tp-drop" style="width:'+W+'px;'+grid+'">'+offH+cells+today
-      +vm+items.map(function(it){if(it.visit){var v=it.visit,tm=bookingTimeOn(v,String(v.start_date).slice(0,10));return '<div class="tp-visit" style="left:'+(it.a*col+1)+'px;width:'+Math.max(col-3,Math.min(72,(it.b-it.a)*col-3))+'px;top:'+(8+it.lane*36)+'px" title="'+esc('Kundebesøg'+(tm?' kl. '+tm:'')+': '+(v.job_name||v.task_name||'')+(v.job_address?' · '+v.job_address:''))+'">📅 '+esc(tm||'Besøg')+'</div>';}return bar('tp-b',it.a,it.b,(it.crew>1?'👥'+it.crew+' · ':'')+(it.t?(it.t.project_name||'')+' · '+(it.t.name||''):'(slettet opgave)'),'data-tp-bk="'+it.bk.id+'"',it.t?tpFagColor(it.t):'#9CA3AF','',TOPP+it.lane*36);}).join('')+'</div></div>';
+      +vm+items.map(function(it){if(it.visit){var v=it.visit,tm=bookingTimeOn(v,String(v.start_date).slice(0,10));return '<div class="tp-visit" style="left:'+(it.a*col+1)+'px;width:'+Math.max(col-3,Math.min(72,(it.b-it.a)*col-3))+'px;top:'+(8+it.lane*36)+'px" title="'+esc('Kundebesøg'+(tm?' kl. '+tm:'')+': '+(v.job_name||v.task_name||'')+(v.job_address?' · '+v.job_address:''))+'">📅 '+esc(tm||'Besøg')+'</div>';}if(it.real){var rc=it.t&&it.t.project_type?tpFagColor(it.t):(u.color||'#2563EB');return bar('tp-real',it.a,it.b,'✓ '+((it.t.project_name||'')+' · '+String(it.t.name||'').split('\n')[0]),'data-tp-real="'+it.real.id+'" title="'+esc('Daglig plan (rigtig booking): '+(it.t.project_name||'')+' · '+String(it.t.name||'').split('\n')[0]+' — klik for at åbne')+'"',rc+'26;--rc:'+rc,'',TOPP+it.lane*36);}return bar('tp-b',it.a,it.b,(it.crew>1?'👥'+it.crew+' · ':'')+(it.t?(it.t.project_name||'')+' · '+(it.t.name||''):'(slettet opgave)'),'data-tp-bk="'+it.bk.id+'"',it.t?tpFagColor(it.t):'#9CA3AF','',TOPP+it.lane*36);}).join('')+'</div></div>';
   });
   var rng=date(first),rng2=date(last);
   page.querySelector('#tp-range').textContent='Uge '+weekNo(rng)+' – '+weekNo(rng2);
@@ -15305,6 +15315,7 @@ function tpcSync(){
   if(b){b.disabled=!n;b.textContent=n?'Overfør '+n+' opgave'+(n===1?'':'r'):'Overfør';}
 }
 document.addEventListener('click',async function(e){
+  var rl=e.target.closest&&e.target.closest('[data-tp-real]');if(rl&&typeof openAssign==='function'){openAssign({bookingId:+rl.getAttribute('data-tp-real')});return;}
   if(e.target.closest&&e.target.closest('#tp-commit')){tpcOpen();return;}
   var m=document.getElementById('tpc-modal');if(!m||!e.target.closest||!e.target.closest('#tpc-modal'))return;
   if(e.target===m||e.target.closest('[data-tpc-x]')){m.classList.remove('open');return;}
