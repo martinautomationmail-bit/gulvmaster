@@ -5780,6 +5780,14 @@ async function migrateSplitVvsEl20261127() {
     await pool.query('INSERT INTO app_migrations (name, details) VALUES ($1, $2)', [name, JSON.stringify({ el, vvs })]);
   } catch (e) { console.error('migrateSplitVvsEl20261127 fejlede:', e.message); }
 }
+async function migrateJannickEl20261127() {
+  try {
+    const name = 'jannick_el_20261127';
+    if (await pgOne('SELECT 1 FROM app_migrations WHERE name=$1', [name])) return;
+    const r = (await pool.query("UPDATE users SET trade='Elektriker' WHERE trade='VVS' AND name ~* '(^|\\s)el$' RETURNING id, name")).rows;
+    await pool.query('INSERT INTO app_migrations (name, details) VALUES ($1, $2)', [name, JSON.stringify(r)]);
+  } catch (e) { console.error('migrateJannickEl20261127 fejlede:', e.message); }
+}
 async function migrateQuoteMissingAddress20261125() {
   try {
     const name = 'quote_missing_address_20261125';
@@ -31467,7 +31475,7 @@ async function start() {
   migrateAddressSync20261118();
   migrateInvoiceFixedDiscount20261123();
   migrateQuoteMissingAddress20261125();
-  migrateSplitVvsEl20261127();
+  migrateSplitVvsEl20261127().then(migrateJannickEl20261127);
   migrateCapacityToTestplan20261125().then(convertCapacityRowsToTestplan);
   migrateProfitSnapshotFormula2();
   await backfillBankUploadHistory();
