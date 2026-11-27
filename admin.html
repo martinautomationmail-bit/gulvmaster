@@ -6264,7 +6264,7 @@ body.tp-dragging,body.tp-dragging *{cursor:grabbing!important}
        i browseren faktisk ER det nyeste deploy, eller om Render/GitHub bare
        ikke er nået at opdatere endnu — i stedet for at skulle gætte om en
        rettelse "stadig ikke virker" eller bare endnu ikke er live. -->
-  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build v2.95.5 · 2026-11-02</span></div>
+  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build v2.95.6 · 2026-11-02</span></div>
 </aside>
 <div class="app-content">
 <!-- RUNDE FB — AI-ASSISTENTEN (Martin: "en ai der er nede i venstre hjørne af
@@ -14631,6 +14631,8 @@ function tpGanttList(){
   var q=TP.q.trim().toLowerCase();
   return TP.tasks.filter(function(t){
     if(t.is_group||planned[String(t.id)])return false;
+    // v2.95.6 — opgaver der allerede ligger i Daglig plan er planlagt (fx lige overført) — ikke "Ikke planlagt".
+    if(t.has_daily||(typeof bookings!=='undefined'&&bookings.some(function(b){return String(b.task_id)===String(t.id)&&!isCapacityBooking(b);})))return false;
     // Sager markeret færdige (Afsluttet/Faktureret/Ikke udført/Arkiveret) og færdige opgaver tages ikke med.
     if(['done','faktureret','ikke_udfoert','archived','cancelled','lost','on_hold'].indexOf(String(t.project_status||''))>-1)return false; // + På hold (v2.83.1)
     if((+t.progress||0)>=1||t.task_status==='done')return false;
@@ -15277,9 +15279,13 @@ document.addEventListener('drop',async function(e){
 // v2.93.1 — "Overfør til Daglig plan" som pænt vindue: vælg selv hvilke uger (og evt. enkelte opgaver).
 // Intet er valgt på forhånd, så der aldrig overføres mere end man har krydset af.
 function tpcOpen(){
-  var start=iso(mon(new Date())),list=(TP.bk||[]).filter(function(b){return !tpIsV(b.gantt_task_id)&&String(b.start_date).slice(0,10)>=start;}).sort(function(a,b){return String(a.start_date).localeCompare(String(b.start_date));});
+  // v2.95.6 — en opgave der går hen over et ugeskift (fx fre uge 48 → tir uge 49) vises under ALLE de uger den rører,
+  // og opgaver der startede før denne uge men stadig kører, kommer også med.
+  var start=iso(mon(new Date()));
+  function bkWeeks(b){var w={};(tpBkDates(b)||[]).forEach(function(x){var k=iso(mon(date(x.ds)));if(k>=start)w[k]=1;});if(!Object.keys(w).length){var k0=iso(mon(date(String(b.start_date).slice(0,10))));if(k0>=start)w[k0]=1;}return Object.keys(w);}
+  var list=(TP.bk||[]).filter(function(b){return !tpIsV(b.gantt_task_id)&&bkWeeks(b).length;}).sort(function(a,b){return String(a.start_date).localeCompare(String(b.start_date));});
   var m=document.getElementById('tpc-modal');if(!m){m=document.createElement('div');m.className='mo';m.id='tpc-modal';document.body.appendChild(m);}
-  var byW={};list.forEach(function(b){var k=iso(mon(date(String(b.start_date).slice(0,10))));(byW[k]=byW[k]||[]).push(b);});
+  var byW={};list.forEach(function(b){bkWeeks(b).forEach(function(k){(byW[k]=byW[k]||[]).push(b);});});
   var weeksH=Object.keys(byW).sort().map(function(k){var arr=byW[k],ppl={};arr.forEach(function(b){var u=users.find(function(x){return +x.id===+b.user_id;});if(u)ppl[u.name.split(' ')[0]]=1;});
     var d=date(k),e=add(d,5),days=arr.reduce(function(n,b){return n+(Number(b.days)||0);},0);
     return '<div class="tpc-wk" data-tpc-card="'+k+'"><label class="tpc-wh"><input type="checkbox" data-tpc-wk="'+k+'"><span class="tpc-wt"><b>Uge '+weekNo(d)+'</b><small>'+d.getDate()+'/'+(d.getMonth()+1)+' – '+e.getDate()+'/'+(e.getMonth()+1)+'</small></span>'
@@ -15294,7 +15300,7 @@ function tpcOpen(){
 function tpcSync(){
   var m=document.getElementById('tpc-modal');if(!m)return;
   m.querySelectorAll('[data-tpc-wk]').forEach(function(w){var its=m.querySelectorAll('[data-tpc-in="'+w.getAttribute('data-tpc-wk')+'"]'),c=0;its.forEach(function(x){if(x.checked)c++;});w.checked=its.length&&c===its.length;w.indeterminate=c>0&&c<its.length;w.closest('.tpc-wk').classList.toggle('on',c>0);});
-  var sel=m.querySelectorAll('input[data-tpc]:checked'),n=sel.length,b=m.querySelector('[data-tpc-go]');
+  var uq={};m.querySelectorAll('input[data-tpc]:checked').forEach(function(c){uq[c.getAttribute('data-tpc')]=1;});var n=Object.keys(uq).length,b=m.querySelector('[data-tpc-go]');
   m.querySelector('#tpc-sum').textContent=n?n+' opgave'+(n===1?'':'r')+' valgt':'Intet valgt';
   if(b){b.disabled=!n;b.textContent=n?'Overfør '+n+' opgave'+(n===1?'':'r'):'Overfør';}
 }
@@ -15304,7 +15310,7 @@ document.addEventListener('click',async function(e){
   if(e.target===m||e.target.closest('[data-tpc-x]')){m.classList.remove('open');return;}
   var mo=e.target.closest('[data-tpc-more]');if(mo){e.preventDefault();var box=mo.closest('.tpc-wk').querySelector('.tpc-items');box.hidden=!box.hidden;mo.textContent=box.hidden?'Vælg enkelte ▾':'Skjul ▴';return;}
   if(e.target.closest('[data-tpc-go]')){
-    var ids=[].map.call(m.querySelectorAll('input[data-tpc]:checked'),function(c){return +c.getAttribute('data-tpc');});if(!ids.length)return;
+    var ids=Object.keys([].reduce.call(m.querySelectorAll('input[data-tpc]:checked'),function(o,c){o[c.getAttribute('data-tpc')]=1;return o;},{})).map(Number);if(!ids.length)return;
     var g=e.target.closest('[data-tpc-go]');g.disabled=true;g.textContent='Overfører…';
     var r=await api('/api/testplan/commit',{method:'POST',body:JSON.stringify({ids:ids})});
     m.classList.remove('open');
@@ -15314,7 +15320,8 @@ document.addEventListener('click',async function(e){
 });
 document.addEventListener('change',function(e){
   var m=document.getElementById('tpc-modal');if(!m||!e.target.closest||!e.target.closest('#tpc-modal'))return;
-  var w=e.target.closest('[data-tpc-wk]');if(w)m.querySelectorAll('[data-tpc-in="'+w.getAttribute('data-tpc-wk')+'"]').forEach(function(c){c.checked=w.checked;});
+  var w=e.target.closest('[data-tpc-wk]');if(w)m.querySelectorAll('[data-tpc-in="'+w.getAttribute('data-tpc-wk')+'"]').forEach(function(c){c.checked=w.checked;m.querySelectorAll('input[data-tpc="'+c.getAttribute('data-tpc')+'"]').forEach(function(o){o.checked=w.checked;});});
+  var it=e.target.closest('input[data-tpc]');if(it)m.querySelectorAll('input[data-tpc="'+it.getAttribute('data-tpc')+'"]').forEach(function(o){o.checked=it.checked;});
   tpcSync();
 });
 function capBookingOutOfSync(b){

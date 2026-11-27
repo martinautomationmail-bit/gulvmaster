@@ -8761,7 +8761,8 @@ app.get('/api/gantt/all-tasks', auth, asyncRoute(async (req, res) => {
     SELECT g.id, g.project_id, g.name, g.description, g.start_date, g.end_date,
            g.progress, g.is_group, g.parent_task_id, g.position, g.depends_on, g.type_guess, g.trade, g.trade_source, g.status AS task_status,
            p.name AS project_name, p.job_number, p.status AS project_status, p.project_type,
-           p.customer_address, p.customer_phone, p.customer_email
+           p.customer_address, p.customer_phone, p.customer_email,
+           EXISTS (SELECT 1 FROM planning_bookings b WHERE b.task_id = g.id AND COALESCE(b.planning_mode,'daily') <> 'capacity') AS has_daily
     FROM gantt_tasks g
     JOIN projects p ON p.id = g.project_id
     WHERE g.project_id IS NOT NULL
@@ -8781,7 +8782,8 @@ app.get('/api/gantt/all-tasks', auth, asyncRoute(async (req, res) => {
       depends_on: safeJsonParse(r.depends_on, []) || [],
       type_guess: r.type_guess, task_status: r.task_status,
       customer_phone: r.customer_phone, customer_email: r.customer_email,
-      customer_address: r.customer_address
+      customer_address: r.customer_address,
+      has_daily: !!r.has_daily
     }))
   });
 }));
