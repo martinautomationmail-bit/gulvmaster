@@ -5232,6 +5232,18 @@ input[type="date"].tld-input,input[type="time"].tld-input{cursor:pointer}
 #pd-gantt-strip .gantt-bar.pdx-gb.st-prog{background:#3B82F6;color:#fff}
 #pd-gantt-strip .gantt-bar.pdx-gb.st-wait{background:#F59E0B;color:#fff}
 #pd-gantt-strip .gantt-bar.pdx-gb .gantt-bar-progress{background:rgba(255,255,255,.18)}
+/* v2.95.4 — lyst "udkast-look" på hele tidslinjen (Martin valgte model B): lys bar, farvet kant, farve efter status.
+   lilla = booket · gul = ikke booket · grøn = færdig · koral = afventer. */
+#pd-gantt-strip .gantt-bar.pdx-gb{background:#EEEDFE;border:1.5px solid #534AB7;color:#3C3489;font-weight:600;box-sizing:border-box}
+#pd-gantt-strip .gantt-bar.pdx-gb .pdx-gb-label{line-height:29px}
+#pd-gantt-strip .gantt-bar.pdx-gb.nobk{background:#FAEEDA;border-color:#BA7517;color:#633806}
+#pd-gantt-strip .gantt-bar.pdx-gb.st-prog{background:#CECBF6;border-color:#3C3489;color:#26215C}
+#pd-gantt-strip .gantt-bar.pdx-gb.st-wait{background:#FAECE7;border-color:#D85A30;color:#712B13}
+#pd-gantt-strip .gantt-bar.pdx-gb.st-done{background:#EAF3DE;border-color:#639922;color:#27500A}
+#pd-gantt-strip .gantt-bar.pdx-gb .gantt-bar-progress{background:rgba(83,74,183,.14)}
+#pd-gantt-strip .gantt-bar.pdx-gb.st-done .gantt-bar-progress{background:transparent}
+#pd-gantt-strip .pdx-gl .gantt-inline-name{color:#3C3489}
+#pd-gantt-strip .pdx-gl.st-done .gantt-inline-name{color:#27500A}
 .pdx-gb-label{position:relative;z-index:1;padding:0 9px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:block;line-height:32px;pointer-events:none}
 #pd-gantt-strip .gantt-bar.pdx-gb.selected{box-shadow:0 0 0 2.5px #F59E0B}
 
@@ -6005,7 +6017,7 @@ body.tp-dragging,body.tp-dragging *{cursor:grabbing!important}
 #pd-gantt-strip .pd-ins span{position:absolute;left:50%;top:-3px;transform:translateX(-50%);width:17px;height:17px;border-radius:50%;background:#534AB7;color:#fff;font-size:14px;line-height:16px;font-weight:700;text-align:center}
 #pd-gantt-strip .pd-ins:hover,#pd-gantt-strip .pd-ins:focus-visible{opacity:1}
 .pdd-use{background:#3C3489!important;color:#fff!important;border-color:#3C3489!important}
-#pd-gantt-strip.pd-drafting .gantt-bar.pd-dchg{background:#EEEDFE!important;outline:1.5px dashed #534AB7;outline-offset:-1.5px}
+#pd-gantt-strip.pd-drafting .gantt-bar.pd-dchg{background:#EEEDFE!important;border:1.5px dashed #534AB7!important;color:#3C3489!important}
 #pd-gantt-strip.pd-drafting .gantt-bar.pd-dchg .pdx-gb-label{color:#3C3489!important}
 #pd-gantt-strip.pd-drafting .gantt-list-row.pd-dchg .gantt-inline-name{color:#3C3489;font-style:italic}
 .tp-wover::before{content:'';position:absolute;left:0;right:0;top:-6px;bottom:-4px}
@@ -6252,7 +6264,7 @@ body.tp-dragging,body.tp-dragging *{cursor:grabbing!important}
        i browseren faktisk ER det nyeste deploy, eller om Render/GitHub bare
        ikke er nået at opdatere endnu — i stedet for at skulle gætte om en
        rettelse "stadig ikke virker" eller bare endnu ikke er live. -->
-  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build v2.95.3 · 2026-11-02</span></div>
+  <div class="sidebar-foot"><span title="Build-version — brug denne til at bekræfte om nyt deploy er live">build v2.95.4 · 2026-11-02</span></div>
 </aside>
 <div class="app-content">
 <!-- RUNDE FB — AI-ASSISTENTEN (Martin: "en ai der er nede i venstre hjørne af
@@ -39486,7 +39498,7 @@ function pdGanttStripInner(){
     var offset=Math.round((s-range.start)/86400000),span=Math.max(1,Math.round((e-s)/86400000)+1);
     timelineRows+='<div class="gantt-row">'+
       '<div class="gantt-row-bg">'+bgCols+'</div>'+
-      '<div class="gantt-bar pdx-gb st-'+stCls+(pdGanttSelected.has(String(t.id))?' selected':'')+(pjCurrent.customer_deadline&&stCls!=='done'&&String(t.end_date||t.start_date||'').slice(0,10)>pjCurrent.customer_deadline?' pd-late':'')+'" data-pd-task-id="'+t.id+'" style="left:'+(offset*dw)+'px;width:'+(span*dw-4)+'px" title="'+esc(t.name)+' ('+(t.start_date||'?')+' – '+(t.end_date||'?')+') — træk for at flytte, træk i kanten for at ændre varighed">'+
+      '<div class="gantt-bar pdx-gb st-'+stCls+(stCls!=='done'&&!t.has_booking&&!(t.testplan&&t.testplan.length)?' nobk':'')+(pdGanttSelected.has(String(t.id))?' selected':'')+(pjCurrent.customer_deadline&&stCls!=='done'&&String(t.end_date||t.start_date||'').slice(0,10)>pjCurrent.customer_deadline?' pd-late':'')+'" data-pd-task-id="'+t.id+'" style="left:'+(offset*dw)+'px;width:'+(span*dw-4)+'px" title="'+esc(t.name)+' ('+(t.start_date||'?')+' – '+(t.end_date||'?')+') — træk for at flytte, træk i kanten for at ændre varighed">'+
         '<div class="gantt-bar-progress" style="width:'+Math.round((t.progress||0)*100)+'%"></div>'+
         '<span class="pdx-gb-label">'+(stCls==='done'?'✓ ':'')+esc(who.ini.length?who.ini.join(' '):(t.name||''))+'</span>'+
         '<div class="gantt-bar-handle left" data-handle="left"></div>'+
